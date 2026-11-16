@@ -8,14 +8,14 @@
 
 ## Ready (3)
 
-- [Kanban items stay in the reply; the band holds the status, Submit and the answers waiting to be sent](kanban-answers-in-transcript/open/kanban-answers-in-transcript.md) `kanban-answers-in-transcript`, part of [The kanban turns mod lives in its own repository, in TypeScript only, beside the kanban skill](kanban-answers-in-transcript/open/kanban-mod-own-repository.md)
-- [The tool row draws the turn's Decide items with their buttons, marked by a bar](kanban-answers-in-transcript/open/kanban-items-tool-row.md) `kanban-items-tool-row`, part of [Kanban items stay in the reply; the band holds the status, Submit and the answers waiting to be sent](kanban-answers-in-transcript/open/kanban-answers-in-transcript.md)
+- [Kanban items stay in the reply; the band holds the status, the latest Decide buttons, Submit and the answers waiting to be sent](kanban-answers-in-transcript/open/kanban-answers-in-transcript.md) `kanban-answers-in-transcript`, part of [The kanban turns mod lives in its own repository, in TypeScript only, beside the kanban skill](kanban-answers-in-transcript/open/kanban-mod-own-repository.md)
+- [The tool row draws the turn's Decide items with their buttons, marked by a bar](kanban-answers-in-transcript/open/kanban-items-tool-row.md) `kanban-items-tool-row`, part of [Kanban items stay in the reply; the band holds the status, the latest Decide buttons, Submit and the answers waiting to be sent](kanban-answers-in-transcript/open/kanban-answers-in-transcript.md)
 - [The kanban turns mod lives in its own repository, in TypeScript only, beside the kanban skill](kanban-answers-in-transcript/open/kanban-mod-own-repository.md) `kanban-mod-own-repository`
 
 ## Blocked (3)
 
-- [Answers gather in a basket and go out in one prompt on Submit](kanban-answers-in-transcript/open/kanban-answers-basket.md) `kanban-answers-basket`, part of [Kanban items stay in the reply; the band holds the status, Submit and the answers waiting to be sent](kanban-answers-in-transcript/open/kanban-answers-in-transcript.md), waiting on `kanban-items-tool-row`
-- [The band shows the open counts and the answers waiting to be submitted](kanban-answers-in-transcript/open/kanban-band-status.md) `kanban-band-status`, part of [Kanban items stay in the reply; the band holds the status, Submit and the answers waiting to be sent](kanban-answers-in-transcript/open/kanban-answers-in-transcript.md), waiting on `kanban-mod-reads-transcript`, `kanban-answers-basket`
+- [Answers gather in a basket and go out in one prompt on Submit](kanban-answers-in-transcript/open/kanban-answers-basket.md) `kanban-answers-basket`, part of [Kanban items stay in the reply; the band holds the status, the latest Decide buttons, Submit and the answers waiting to be sent](kanban-answers-in-transcript/open/kanban-answers-in-transcript.md), waiting on `kanban-items-tool-row`
+- [The band shows the open counts, the latest reply's Decide buttons and the answers waiting to be submitted](kanban-answers-in-transcript/open/kanban-band-status.md) `kanban-band-status`, part of [Kanban items stay in the reply; the band holds the status, the latest Decide buttons, Submit and the answers waiting to be sent](kanban-answers-in-transcript/open/kanban-answers-in-transcript.md), waiting on `kanban-mod-reads-transcript`, `kanban-items-tool-row`, `kanban-answers-basket`
 - [The mod reads the turns, the items and the answers from the transcript in TypeScript](kanban-answers-in-transcript/open/kanban-mod-reads-transcript.md) `kanban-mod-reads-transcript`, part of [The kanban turns mod lives in its own repository, in TypeScript only, beside the kanban skill](kanban-answers-in-transcript/open/kanban-mod-own-repository.md), waiting on `kanban-mod-split`
 
 ## Proposed (0)
