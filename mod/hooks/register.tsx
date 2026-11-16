@@ -38,7 +38,16 @@ import { TOOL, TOOL_CALLED, withInstructions } from "../src/instructions.ts";
 import { glyphOf, itemsOf, refOf } from "../src/items.ts";
 import { codeSpans, fitsBand } from "../src/layout.ts";
 import { itemOfLink, linkedQuestions } from "../src/links.ts";
-import { expandHome } from "../src/config.ts";
+import {
+  NOTHING,
+  failedRun,
+  foundFrom,
+  missingScript,
+  outstandingArgv,
+  scriptPath,
+  withProblems,
+} from "../src/outstanding.ts";
+import type { Found } from "../src/outstanding.ts";
 import type {
   Band,
   DecideItem,
@@ -137,59 +146,32 @@ const TOOL_DESCRIPTION = [
   "A click writes the item's reference into the user's prompt draft; nothing is sent.",
 ].join(" ");
 
-type Found = Readonly<{ items: readonly DecideItem[]; problem: string }>;
-
 /** Runs `outstanding.py decide --json` over this session's transcript, as `outstanding` sets it: the open items, or why there are none. */
 const openItems = async (
   $: EngineInterface,
   outstanding: Settings["outstanding"],
 ): Promise<Found> => {
-  const script = expandHome(outstanding.script, await $.env.get("HOME"));
+  const home = await $.env.get("HOME");
+  const script = scriptPath(outstanding, home);
 
-  if (!(await $.fs.exists(script))) {
-    return {
-      items: [],
-      problem: `${script} isn't there; set outstanding.script in your config.jsonc (/answers-config shows it)`,
-    };
-  }
-
-  const ran = await $.process.run(
-    [
-      outstanding.python,
-      "-I",
-      script,
-      "--session",
-      await $.session.id(),
-      "decide",
-      "--json",
-    ],
-    { cwd: await $.session.cwd(), timeoutMs: outstanding["timeout-ms"] },
-  );
-
-  return ran.exitCode === 0
-    ? { items: itemsOf(JSON.parse(ran.stdout || '{"items": []}')), problem: "" }
-    : {
-        items: [],
-        problem:
-          ran.stderr.trim().split("\n").at(-1) ?? "outstanding.py failed",
-      };
+  return (await $.fs.exists(script))
+    ? foundFrom(
+        await $.process.run(
+          outstandingArgv(outstanding, home, await $.session.id()),
+          { cwd: await $.session.cwd(), timeoutMs: outstanding["timeout-ms"] },
+        ),
+      )
+    : missingScript(script);
 };
 
 /** The open items, or why there are none: the settings' problems first, then the script's. */
 const found = async ($: EngineInterface): Promise<Found> => {
   const { settings: s, problems } = await read($, settings);
-  const ran =
-    s === null
-      ? { items: [], problem: "" }
-      : await openItems($, s.outstanding).catch((error: unknown) => ({
-          items: [],
-          problem: String(error),
-        }));
 
-  return {
-    items: ran.items,
-    problem: [...problems, ran.problem].filter((p) => p !== "").join("; "),
-  };
+  return withProblems(
+    problems,
+    s === null ? NOTHING : await openItems($, s.outstanding).catch(failedRun),
+  );
 };
 
 /** Reads the settings files again, so an edit to either is taken up at the next refresh. */
