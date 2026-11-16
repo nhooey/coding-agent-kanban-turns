@@ -14,55 +14,49 @@
 import { atom, read, update } from "claude-code";
 import type { EngineInterface, Register } from "claude-code";
 
-import type { Band, DecideItem } from "../types";
+import { choose, lettersFor, noteFor, withNote } from "../src/answers.ts";
 import {
-  afterAnswer,
+  afterChoice,
   away,
   back,
-  choose,
-  codeSpans,
   dismissed,
-  fitsBand,
-  glyphOf,
   drawnByTool,
+  drawnMark,
   emptyBand,
   header,
-  itemsOf,
-  itemOfLink,
-  lettersFor,
-  linkedQuestions,
+  movedOn,
   nextPosition,
-  noteFor,
-  withNote,
-  positionIn,
   prevPosition,
   progressMarks,
-  refOf,
   refreshed,
   reopened,
+  shownAt,
+  shownItem,
   skipped,
-} from "./answers";
+} from "../src/band.ts";
+import { glyphOf, itemsOf, refOf } from "../src/items.ts";
+import { codeSpans, fitsBand } from "../src/layout.ts";
+import { itemOfLink, linkedQuestions } from "../src/links.ts";
+import { expandHome } from "../src/config.ts";
+import type {
+  Band,
+  DecideItem,
+  Loaded,
+  Settings,
+} from "../types/index.d.ts";
+import { loadSettings } from "./settings.ts";
 
 const TOOL = "kanban_options";
 const TOOL_CALLED = "mcp__coding-agent-kanban-answers__kanban_options";
 const REASSESS = "reassess";
 // The pane that holds the item, and its title.
 const PANE = { id: "kanban-answers", title: "🧠 Decide" } as const;
-const SCRIPT =
-  "skills/coding-agent-kanban-turn-responses/scripts/outstanding.py";
-// Hotkeys for the band's controls, pressed while the band holds the keys
-// (ctrl+x tab or a click).
-const KEYS = { prev: "h", skip: "j", next: "l", dismiss: "q" } as const;
-
-// Theme colours, so each part keeps its contrast in light and dark themes.
-const COLOR = {
-  border: "promptBorder",
-  title: "claude",
-  code: "permission",
-  chosen: "diffAddedWord",
-} as const;
-// Columns an option sits in from its summary, and its ➕ and ➖ lines from it.
+// Columns an option sits in from its summary, and its ➕ and ➖ lines from
+// it: fixed, since rowsNeeded counts with it. The hotkeys and colours are
+// settings, in defaults/config.jsonc.
 const INDENT = 3;
+// Nothing read yet: no settings until session.start reads the files.
+const UNREAD: Loaded = { settings: null, effective: [], problems: [] };
 
 // Change the tag when Band's fields change: it declines what an earlier
 // version stored, which outlives a reload.
@@ -77,6 +71,15 @@ const draft = atom(
   { plugin: "coding-agent-kanban-answers", key: "draft" } as const,
   "",
 );
+const settings = atom(
+  { plugin: "coding-agent-kanban-answers", key: "settings" } as const,
+  UNREAD,
+  { shape: "settings-1" },
+);
+
+/** The settings in effect, or none while the defaults file can't be used. */
+const settingsNow = async ($: EngineInterface): Promise<Settings | null> =>
+  (await read($, settings)).settings;
 
 const ITEM_SCHEMA = {
   type: "object",
@@ -135,35 +138,33 @@ const TOOL_DESCRIPTION = [
   "A click writes the item's reference into the user's prompt draft; nothing is sent.",
 ].join(" ");
 
-/**
- * The skill's `outstanding.py` in the repository this plugin was loaded from,
- * never an installed copy, which can lag behind the plugin.
- */
-const scriptPath = async ($: EngineInterface): Promise<string | undefined> => {
-  const repository = $.plugin.root.split("/").slice(0, -2).join("/");
-  const path = `${repository}/${SCRIPT}`;
+type Found = Readonly<{ items: readonly DecideItem[]; problem: string }>;
 
-  return (await $.fs.exists(path)) ? path : undefined;
-};
-
-/** Runs `outstanding.py decide --json` over this session's transcript: the open items, or why there are none. */
+/** Runs `outstanding.py decide --json` over this session's transcript, as `outstanding` sets it: the open items, or why there are none. */
 const openItems = async (
   $: EngineInterface,
-): Promise<{ items: DecideItem[]; problem: string }> => {
-  const cwd = await $.session.cwd();
-  const session = await $.session.id();
-  const script = await scriptPath($);
+  outstanding: Settings["outstanding"],
+): Promise<Found> => {
+  const script = expandHome(outstanding.script, await $.env.get("HOME"));
 
-  if (script === undefined) {
+  if (!(await $.fs.exists(script))) {
     return {
       items: [],
-      problem: `the plugin is not loaded from a coding-agent-skills checkout, so ${SCRIPT} is not beside it`,
+      problem: `${script} isn't there; set outstanding.script in your config.jsonc (/answers-config shows it)`,
     };
   }
 
   const ran = await $.process.run(
-    ["python3", "-I", script, "--session", session, "decide", "--json"],
-    { cwd, timeoutMs: 20_000 },
+    [
+      outstanding.python,
+      "-I",
+      script,
+      "--session",
+      await $.session.id(),
+      "decide",
+      "--json",
+    ],
+    { cwd: await $.session.cwd(), timeoutMs: outstanding["timeout-ms"] },
   );
 
   return ran.exitCode === 0
@@ -175,54 +176,76 @@ const openItems = async (
       };
 };
 
+/** The open items, or why there are none: the settings' problems first, then the script's. */
+const found = async ($: EngineInterface): Promise<Found> => {
+  const { settings: s, problems } = await read($, settings);
+  const ran =
+    s === null
+      ? { items: [], problem: "" }
+      : await openItems($, s.outstanding).catch((error: unknown) => ({
+          items: [],
+          problem: String(error),
+        }));
+
+  return {
+    items: ran.items,
+    problem: [...problems, ran.problem].filter((p) => p !== "").join("; "),
+  };
+};
+
+/** Reads the settings files again, so an edit to either is taken up at the next refresh. */
+const reloadSettings = async ($: EngineInterface): Promise<Loaded> => {
+  const now = await loadSettings($).catch(
+    (error: unknown): Loaded => ({ ...UNREAD, problems: [String(error)] }),
+  );
+  await update($, settings, () => now);
+
+  return now;
+};
+
+/** Reads the settings and the open items again, and moves the band to match. */
 const refresh = async ($: EngineInterface): Promise<void> => {
-  const found = await openItems($).catch((error: unknown) => ({
-    items: [] as DecideItem[],
-    problem: String(error),
-  }));
+  await reloadSettings($);
+  const open = await found($);
   const text = await read($, draft);
   await update($, band, (b) => ({
-    ...refreshed(b, found.items, text),
-    problem: found.problem,
+    ...refreshed(b, open.items, text),
+    problem: open.problem,
   }));
+};
+
+/**
+ * Rewrites the prompt draft with `edit`, and moves the band with `move`
+ * once the draft holds the edit: the one way a click or a note reaches the
+ * draft.
+ */
+const rewriteDraft = async (
+  $: EngineInterface,
+  edit: (text: string) => string,
+  move: (b: Band, text: string) => Band,
+): Promise<void> => {
+  const box = await $.prompt.read();
+  const text = edit(box.text);
+  await $.prompt.fill({ text, mode: "replace" });
+  await update($, draft, () => text);
+  await update($, band, (b) => move(b, text));
 };
 
 /** Writes the draft with the item's answer for `letter`, and moves the band on when it shows that item. */
-const answer = async (
-  $: EngineInterface,
-  item: DecideItem,
-  letter: string,
-): Promise<void> => {
-  const box = await $.prompt.read();
-  const text = choose(box.text, item, letter);
-  await $.prompt.fill({ text, mode: "replace" });
-  await update($, draft, () => text);
-  await update($, band, (b) => {
-    const shown = b.items[positionIn(b)];
-    const isShown = shown !== undefined && refOf(shown) === refOf(item);
-    const stays = item.kind === "checkbox";
-
-    return isShown && !stays ? { ...b, position: afterAnswer(b, text) } : b;
-  });
-};
+const answer = ($: EngineInterface, item: DecideItem, letter: string) =>
+  rewriteDraft(
+    $,
+    (text) => choose(text, item, letter),
+    (b, text) => afterChoice(b, item, text),
+  );
 
 /** Writes the item's note into the draft, on a line of its own, and moves the band on as an answer does. */
-const note = async (
-  $: EngineInterface,
-  item: DecideItem,
-  text: string,
-): Promise<void> => {
-  const box = await $.prompt.read();
-  const written = withNote(box.text, item, text);
-  await $.prompt.fill({ text: written, mode: "replace" });
-  await update($, draft, () => written);
-  await update($, band, (b) => {
-    const shown = b.items[positionIn(b)];
-    const isShown = shown !== undefined && refOf(shown) === refOf(item);
-
-    return isShown ? { ...b, position: afterAnswer(b, written) } : b;
-  });
-};
+const note = ($: EngineInterface, item: DecideItem, said: string) =>
+  rewriteDraft(
+    $,
+    (text) => withNote(text, item, said),
+    (b, text) => movedOn(b, item, text),
+  );
 
 /** /answers and the 🧠 above the prompt: re-reads the open items and shows them at the first unanswered one. */
 const reopen = async ($: EngineInterface): Promise<void> => {
@@ -234,11 +257,7 @@ const reopen = async ($: EngineInterface): Promise<void> => {
 /** A question's link pressed: the band, shown again, at its item. */
 const showItem = async ($: EngineInterface, href: string): Promise<void> => {
   const text = await read($, draft);
-  await update($, band, (b) => {
-    const n = itemOfLink(b.items, href);
-
-    return n < 0 ? b : { ...reopened(b, text), position: n };
-  });
+  await update($, band, (b) => shownAt(b, itemOfLink(b.items, href), text));
 };
 
 /** Opens the pane with the keyboard in it, so its hotkeys work at once. */
@@ -267,6 +286,11 @@ export const register: Register = (on) => {
       description:
         "Show the kanban Decide items again, at the first unanswered one",
     });
+    await $.command.register({
+      name: "answers-config",
+      description:
+        "List the kanban answers mod's settings in effect, and the file each came from",
+    });
     await $.tool.register({
       name: TOOL,
       description: TOOL_DESCRIPTION,
@@ -280,6 +304,17 @@ export const register: Register = (on) => {
     void refresh($);
 
     return started;
+  });
+
+  on("command.run", { command: "answers-config" }, async ($) => {
+    const { effective, problems } = await reloadSettings($);
+
+    return {
+      text: [
+        ...effective,
+        ...problems.map((problem) => `Not used: ${problem}`),
+      ].join("\n"),
+    };
   });
 
   on("command.run", { command: "answers" }, async ($) => {
@@ -344,9 +379,11 @@ export const register: Register = (on) => {
   // so the band can't open the pane by itself.
   on("ui.render", { component: "AbovePrompt" }, async ($, e, next) => {
     const b = await read($, band);
+    const item = shownItem(b);
+    const s = await settingsNow($);
     const seen = { rows: e.props.maxRows, columns: e.props.bodyColumns };
 
-    if (e.props.hasSurvey || b.items.length === 0) {
+    if (e.props.hasSurvey || item === undefined || s === null) {
       return next(e);
     }
 
@@ -355,7 +392,7 @@ export const register: Register = (on) => {
     const fits = fitsBand(b.items, seen);
 
     if (!b.isDismissed && !b.isAway && fits && !(await isPaneShown($))) {
-      return fullView($, elements, b, await read($, draft));
+      return fullView($, elements, s, b, item, await read($, draft));
     }
 
     return (
@@ -408,13 +445,15 @@ export const register: Register = (on) => {
   on("ui.render", { component: "Pane", requestId: PANE.id }, async ($, e) => {
     const b = await read($, band);
     const elements = $.ui.resolve(e);
+    const item = shownItem(b);
+    const s = await settingsNow($);
 
-    return b.items[positionIn(b)] === undefined ? (
+    return item === undefined || s === null ? (
       <elements.Text dimColor>
         No open Decide items{b.problem ? `: ${b.problem}` : ""}.
       </elements.Text>
     ) : (
-      fullView($, elements, b, await read($, draft))
+      fullView($, elements, s, b, item, await read($, draft))
     );
   });
 
@@ -443,12 +482,13 @@ export const register: Register = (on) => {
     // the buttons, which repeat both. Keep it only where it says more: ctrl+o,
     // an error, an interrupted call, or a call that drew no items.
     const items = itemsOf(e.props.input);
+    const s = await settingsNow($);
     const isPlain =
       !e.props.isExpanded &&
       !e.props.isErrored &&
       !e.props.isInterrupted &&
       items.length > 0;
-    if (!isPlain) {
+    if (!isPlain || s === null) {
       return next(e);
     }
     const b = await read($, band);
@@ -465,11 +505,11 @@ export const register: Register = (on) => {
               key={refOf(item)}
               flexDirection="column"
               borderStyle="round"
-              borderColor={COLOR.border}
+              borderColor={s.colors.border}
               borderDimColor={isSettled}
               paddingX={1}
             >
-              {itemView({ Box, Button, Text, Input }, item, {
+              {itemView({ Box, Button, Text, Input }, s.colors, item, {
                 title: `🧠 Decide.${item.number} · ${item.summary}${isSettled ? " (settled)" : ""}`,
                 chosen: isSettled ? [] : lettersFor(text, item),
                 note: isSettled ? "" : noteFor(text, item),
@@ -491,11 +531,13 @@ export const register: Register = (on) => {
 const fullView = (
   $: EngineInterface,
   elements: Elements,
+  s: Settings,
   b: Band,
+  item: DecideItem,
   text: string,
 ) => {
+  const { keys, colors } = s;
   const { Box, Button, Text, Input } = elements;
-  const item = b.items[positionIn(b)] as DecideItem;
   const move = (position: (b: Band) => number) => () =>
     update($, band, (current) => ({
       ...current,
@@ -525,19 +567,19 @@ const fullView = (
     <Box
       flexDirection="column"
       borderStyle="round"
-      borderColor={COLOR.border}
+      borderColor={colors.border}
       paddingX={1}
     >
       <Box marginBottom={1} flexWrap="wrap" columnGap={2}>
-        {control("prev", "⏪", "Prev", move(prevPosition), KEYS.prev)}
+        {control("prev", "⏪", "Prev", move(prevPosition), keys.prev)}
         {control(
           "skip",
           "⏭️",
           "Skip",
           move((current) => skipped(current, text)),
-          KEYS.skip,
+          keys.skip,
         )}
-        {control("next", "⏩", "Next", move(nextPosition), KEYS.next)}
+        {control("next", "⏩", "Next", move(nextPosition), keys.next)}
         {control("reassess", "🔄", "Reassess", async () => {
           // The plugin's own submit skips its `prompt.submit` hook.
           await $.prompt.submit({ text: REASSESS });
@@ -549,7 +591,7 @@ const fullView = (
           plain
           dimColor
           role="dismiss"
-          hotkey={KEYS.dismiss}
+          hotkey={keys.dismiss}
           onPress={() => dismiss($)}
         />
         <Box columnGap={1}>
@@ -560,14 +602,14 @@ const fullView = (
               dimColor={!isShown}
               onPress={move(() => n)}
             >
-              <Text color={isShown ? COLOR.title : undefined} bold={isShown}>
-                {isShown ? (mark === "●" ? "◉" : "◎") : mark}
+              <Text color={isShown ? colors.title : undefined} bold={isShown}>
+                {drawnMark(mark, isShown)}
               </Text>
             </Button>
           ))}
         </Box>
       </Box>
-      {itemView({ Box, Button, Text, Input }, item, {
+      {itemView({ Box, Button, Text, Input }, colors, item, {
         title: header(b),
         chosen: lettersFor(text, item),
         note: noteFor(text, item),
@@ -592,10 +634,11 @@ type Elements = Pick<
  */
 const itemView = (
   elements: Elements,
+  colors: Settings["colors"],
   item: DecideItem,
   view: {
     title: string;
-    chosen: string[];
+    chosen: readonly string[];
     note: string;
     isSettled?: boolean;
     keyOf: (letter: string) => string;
@@ -614,14 +657,14 @@ const itemView = (
       <Text
         key={`${key}-${n}`}
         {...props}
-        {...(part.isCode ? { color: COLOR.code } : {})}
+        {...(part.isCode ? { color: colors.code } : {})}
       >
         {part.text}
       </Text>
     ));
   const lines = (
     prefix: string,
-    texts: string[] | undefined,
+    texts: readonly string[] | undefined,
     background: string | undefined,
     key: string,
   ) =>
@@ -643,7 +686,7 @@ const itemView = (
       <Text
         bold={!dim}
         dimColor={dim}
-        color={dim ? undefined : COLOR.title}
+        color={dim ? undefined : colors.title}
         wrap="wrap"
       >
         {inline(view.title, "title")}
@@ -651,7 +694,7 @@ const itemView = (
       {lines("", item.note, undefined, "note")}
       {item.options.map((option) => {
         const isChosen = view.chosen.includes(option.letter);
-        const pick = isChosen ? { backgroundColor: COLOR.chosen } : {};
+        const pick = isChosen ? { backgroundColor: colors.chosen } : {};
         const key = view.keyOf(option.letter);
         // A Button holds only text, so each of the option's lines is a button
         // of its own that picks it, and the lines light up together on hover.
@@ -663,7 +706,7 @@ const itemView = (
         } as const;
         const under = (
           prefix: string,
-          texts: string[] | undefined,
+          texts: readonly string[] | undefined,
           part: string,
         ) =>
           (texts ?? []).map((line, n) => (

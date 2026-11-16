@@ -1,0 +1,57 @@
+// The defaults of the coding-agent-kanban-answers mod: every setting it
+// reads, with the value it uses when no file of yours sets it.
+//
+// The mod reads this file from its own folder each session, and nothing
+// else holds these values. To change a setting, write only that key in
+// your own file, $XDG_CONFIG_HOME/coding-agent-kanban-answers/config.jsonc
+// (~/.config/coding-agent-kanban-answers/config.jsonc when XDG_CONFIG_HOME
+// is unset), such as
+//
+//   {"keys": {"dismiss": "x"}}
+//
+// Sections merge key by key, so every key you leave out comes from here
+// and follows this file as it changes. A key that's no setting here, or a
+// value of the wrong type, refuses your whole file: the mod uses these
+// defaults and says why in the band and in /answers-config, which lists
+// every setting in effect and the file it came from.
+{
+  // Where the open Decide items come from: the kanban skill's
+  // outstanding.py, run over this session's transcript.
+  "outstanding": {
+    // The script's path. A leading ~/ is your home directory. The default
+    // is where Claude Code installs the coding-agent-kanban-turn-responses
+    // skill for you; point it at a checkout's copy to follow that instead.
+    "script": "~/.claude/skills/coding-agent-kanban-turn-responses/scripts/outstanding.py",
+    // The Python that runs it, a name on your PATH or a path.
+    "python": "python3",
+    // How long one run may take before the band gives up on it, in
+    // milliseconds.
+    "timeout-ms": 20000
+  },
+
+  // The band's and the pane's hotkeys, one key each, pressed while the
+  // band or the pane holds the keyboard (ctrl+x tab, or a click).
+  "keys": {
+    // ⏪ Prev: the previous item, wrapping round.
+    "prev": "h",
+    // ⏭️ Skip: the next item the draft doesn't answer.
+    "skip": "j",
+    // ⏩ Next: the next item, wrapping round.
+    "next": "l",
+    // ❌: fold the band to its 🧠 and close the pane.
+    "dismiss": "q"
+  },
+
+  // The colours each part is drawn in, by the name of a colour in Claude
+  // Code's theme, so each keeps its contrast in light and dark themes.
+  "colors": {
+    // The rounded border round an item.
+    "border": "promptBorder",
+    // The item's title line, and the ring on the shown item's mark.
+    "title": "claude",
+    // Code spans in a summary, note or option.
+    "code": "permission",
+    // The background of the option the draft picks.
+    "chosen": "diffAddedWord"
+  }
+}

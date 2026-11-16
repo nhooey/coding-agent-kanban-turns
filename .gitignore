@@ -1,3 +1,17 @@
-# Laid by Claude Code when it loads the mod, and by `skills-dev mods check`: the
-# API declarations of whichever build ran last.
-.claude-plugin/types/
+# Laid by Claude Code when it loads the mod: the API declarations of
+# whichever build ran last.
+mod/.claude-plugin/types/
+# A directory from npm, or the dev shell's link into the Nix store.
+mod/node_modules
+
+# Nix: build outputs, and the dev shell's state.
+result
+result-*
+.direnv/
+
+# Project-scope skill installs from the dev shell's startup hook, symlinks
+# into the Nix store; the skills' preferences files beside them are the
+# project's own.
+/.agents/skills/*
+!/.agents/skills/*.preferences.md
+/.claude/skills/

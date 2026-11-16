@@ -1,0 +1,16 @@
+{
+  "name": "coding-agent-kanban-answers",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test 'test/*.test.ts'",
+    "typecheck": "tsc -p .",
+    "typecheck:plugin": "test -f .claude-plugin/types/tsconfig.json || { echo 'no .claude-plugin/types/: load the mod in Claude Code once (see README)' >&2; exit 1; }; tsc -p tsconfig.plugin.json",
+    "test:plugin": "bash tools/plugin-test.sh"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "expect": "^30.5.2",
+    "typescript": "^7.0.2"
+  }
+}
