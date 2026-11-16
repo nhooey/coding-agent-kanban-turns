@@ -44,6 +44,22 @@ const ITEMS = [
   },
 ] as const;
 
+// The settings the tests draw with: defaults/config.jsonc's values.
+const DEFAULTS = JSON.stringify({
+  outstanding: {
+    script: "~/.claude/skills/coding-agent-kanban-turn-responses/scripts/outstanding.py",
+    python: "python3",
+    "timeout-ms": 20000,
+  },
+  keys: { prev: "h", skip: "j", next: "l", dismiss: "q" },
+  colors: {
+    border: "promptBorder",
+    title: "claude",
+    code: "permission",
+    chosen: "diffAddedWord",
+  },
+});
+
 const BAND = {
   plugin: PLUGIN,
   component: "AbovePrompt",
@@ -111,7 +127,14 @@ const engine = (on: On, open: () => readonly unknown[]) => {
   on("session.id", () => ({ value: "session-1" }));
   on("session.cwd", () => ({ value: "/work" }));
   on("env.get", () => ({ value: "/home/neil" }));
-  on("fs.exists", () => ({ value: true }));
+  // The script is there; no user settings file is, so the shipped defaults
+  // are what's in effect.
+  on("fs.exists", (_, e) => ({
+    value: !e.path.endsWith("/coding-agent-kanban-answers/config.jsonc"),
+  }));
+  // A test has no files, so the defaults file reads as this; the Node tests
+  // (test/config.test.ts) hold the real one to the shape.
+  on("fs.read", () => ({ value: DEFAULTS }));
   on("process.run", () => ({
     value: {
       exitCode: 0,
@@ -211,6 +234,12 @@ test("/answers opens the pane, and dismiss closes it", async ($, on) => {
   expect(await headerText(ui)).toBe("🧠 2/3 · Cleanups to start");
   expect(state.box).toBe("9efb08a1.Decide.1.A");
   await ui.unmount();
+});
+
+test("/answers-config lists each setting in effect and its file", async ($, on) => {
+  engine(on, () => ITEMS);
+  const shown = await $.command.run({ ...ANSWERS, command: "answers-config" });
+  expect(JSON.stringify(shown)).toContain('keys.dismiss = \\"q\\"  # defaults: ');
 });
 
 for (const surface of ["terminal", "desktop"] as const) {

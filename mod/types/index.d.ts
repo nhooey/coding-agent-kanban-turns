@@ -57,11 +57,51 @@ export type Band = Readonly<{
   problem: string;
 }>;
 
+/** A value a JSON or JSONC file holds. */
+export type Json =
+  | null
+  | boolean
+  | number
+  | string
+  | readonly Json[]
+  | { readonly [key: string]: Json };
+
+/**
+ * The mod's settings. defaults/config.jsonc lists each with its default and
+ * what it does; `SETTINGS_SHAPE` in src/config.ts is the same list as a
+ * schema.
+ */
+export type Settings = Readonly<{
+  outstanding: Readonly<{
+    script: string;
+    python: string;
+    "timeout-ms": number;
+  }>;
+  keys: Readonly<{ prev: string; skip: string; next: string; dismiss: string }>;
+  colors: Readonly<{
+    border: string;
+    title: string;
+    code: string;
+    chosen: string;
+  }>;
+}>;
+
+/** The settings in effect, where each came from, and what was wrong with the files. */
+export type Loaded = Readonly<{
+  /** Null while the defaults file can't be used. */
+  settings: Settings | null;
+  /** One line per setting: its key, its value and the file it came from. */
+  effective: readonly string[];
+  /** What was wrong with a file, each naming the file; empty when nothing was. */
+  problems: readonly string[];
+}>;
+
 declare module "claude-code" {
   interface PluginState {
     "coding-agent-kanban-answers": {
       band: Shaped<Band>;
       draft: string;
+      settings: Shaped<Loaded>;
     };
   }
 }
