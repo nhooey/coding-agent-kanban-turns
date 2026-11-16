@@ -34,6 +34,7 @@ import {
   shownItem,
   skipped,
 } from "../src/band.ts";
+import { TOOL, TOOL_CALLED, withInstructions } from "../src/instructions.ts";
 import { glyphOf, itemsOf, refOf } from "../src/items.ts";
 import { codeSpans, fitsBand } from "../src/layout.ts";
 import { itemOfLink, linkedQuestions } from "../src/links.ts";
@@ -46,8 +47,6 @@ import type {
 } from "../types/index.d.ts";
 import { loadSettings } from "./settings.ts";
 
-const TOOL = "kanban_options";
-const TOOL_CALLED = "mcp__coding-agent-kanban-answers__kanban_options";
 const REASSESS = "reassess";
 // The pane that holds the item, and its title.
 const PANE = { id: "kanban-answers", title: "🧠 Decide" } as const;
@@ -305,6 +304,10 @@ export const register: Register = (on) => {
 
     return started;
   });
+
+  // The mod tells the agent about its tool itself: the instructions go in the
+  // conversation's context, after whatever the engine and other hooks put there.
+  on("prompt.context", async ($, e, next) => withInstructions(await next(e)));
 
   on("command.run", { command: "answers-config" }, async ($) => {
     const { effective, problems } = await reloadSettings($);

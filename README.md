@@ -75,7 +75,9 @@ Submitting a prompt folds the band to its `🧠` and closes the pane while the r
 
 ### Buttons in the transcript
 
-The mod registers the tool `kanban_options`, listed as `mcp__coding-agent-kanban-answers__kanban_options`. The skill tells the agent to call it with the turn's Decide items right before writing its final response, so the tool's row, with each item drawn in its own border as the band draws it, sits just above the reply. The row draws only the items, with each option's consequence, ➕ and ➖ lines when the call passes them; the call's input and result show in ctrl+o, or when the call failed, and so does the result line where it's drawn apart from the row, as after a compaction. Its buttons write the draft as the band's do. Once a refresh finds an item no longer open, its row is dimmed, marked `(settled)`, and its buttons do nothing.
+The mod registers the tool `kanban_options`, listed as `mcp__coding-agent-kanban-answers__kanban_options`. The agent calls it with the turn's Decide items right before writing its final response, so the tool's row, with each item drawn in its own border as the band draws it, sits just above the reply. The row draws only the items, with each option's consequence, ➕ and ➖ lines when the call passes them; the call's input and result show in ctrl+o, or when the call failed, and so does the result line where it's drawn apart from the row, as after a compaction. Its buttons write the draft as the band's do. Once a refresh finds an item no longer open, its row is dimmed, marked `(settled)`, and its buttons do nothing.
+
+The mod tells the agent about its tool itself, so the kanban skill needn't: a `prompt.context` hook adds a `kanbanAnswers` block to the conversation's context, saying when to call the tool, what its input holds, that a click writes into the draft and sends nothing, and that the reply is written as it would be without the tool. The text, in [`mod/src/instructions.ts`](mod/src/instructions.ts), is built from the tool's registered name.
 
 ### Questions in a reply
 
@@ -109,9 +111,9 @@ claude --plugin-dir mod
 
 | File                                                         | Holds                                                                                                   |
 | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
-| [`mod/hooks/register.tsx`](mod/hooks/register.tsx)           | the hooks: the band and its `🧠`, the tool and its row, `/answers`, `/answers-config`, the refreshes    |
+| [`mod/hooks/register.tsx`](mod/hooks/register.tsx)           | the hooks: the band and its `🧠`, the tool, its row and its instructions, `/answers`, `/answers-config`, the refreshes |
 | [`mod/hooks/settings.ts`](mod/hooks/settings.ts)             | reads the defaults file and the user's                                                                  |
-| [`mod/src/`](mod/src/)                                       | the pure core: the draft's answers, the band's moves, the items, their layout and links, the settings |
+| [`mod/src/`](mod/src/)                                       | the pure core: the draft's answers, the band's moves, the items, their layout and links, the settings, the tool's instructions |
 | [`mod/defaults/config.jsonc`](mod/defaults/config.jsonc)     | every setting, with its default and what it does                                                       |
 | [`mod/types/index.d.ts`](mod/types/index.d.ts)               | the item, band and settings shapes, and the `$.state` contract                                          |
 | [`mod/test/`](mod/test/)                                     | the core's tests, run by `node --test`                                                                  |

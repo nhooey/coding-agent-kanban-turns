@@ -1,6 +1,6 @@
 ---
 title: The band becomes the navigator of the outstanding items, stepping through them in the transcript
-state: approved
+state: abandoned
 kind: implementation
 part-of: kanban-answers-in-transcript
 needs:
@@ -19,3 +19,7 @@ touches:
 - When the scroll is denied, because the item's row was compacted away or never drawn, the pane opens at the item instead, drawn by the same view as the row.
 - The band's full item view, its height checks and the ❌ fold go; `/answers` opens the pane.
 - The mod draws nothing in a reply: the `AssistantMessage` hook and the question links go, since the reply holds no items.
+
+## Why it was dropped
+
+The items stay in the reply, where the kanban skill writes them, and `reassess` restates every open item in the latest reply, so the band needs no list of them to step through. The band holds the status, 📨 Submit and the basket instead: [The band shows the open counts and the answers waiting to be submitted](../open/kanban-band-status.md).

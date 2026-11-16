@@ -509,3 +509,17 @@ test("the tool row draws buttons that build the draft, and dims a settled item",
   expect(state.box).toBe("9efb08a1.Decide.3.N");
   await row.unmount();
 });
+
+test("the context tells the agent about the mod's tool, and keeps the rest", async ($, on) => {
+  engine(on, () => []);
+  on("prompt.context", (_, e) => ({ blocks: e.blocks }));
+  const engineBlocks = [
+    { name: "claudeMd", text: "the instruction files" },
+    { name: "currentDate", text: "Today's date is 2026-11-17." },
+  ];
+  const { blocks } = await $.prompt.context({ blocks: engineBlocks });
+
+  expect(blocks.slice(0, -1)).toEqual(engineBlocks);
+  expect(blocks.at(-1)?.name).toBe("kanbanAnswers");
+  expect(blocks.at(-1)?.text).toContain(`\`${TOOL}\``);
+});
