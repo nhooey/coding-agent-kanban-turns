@@ -1,5 +1,5 @@
 {
-  "name": "claude-code-kanban-turns",
+  "name": "coding-agent-kanban-turns",
   "owner": { "name": "Neil Hooey" },
   "description": "The kanban turn responses' Claude Code mod, from this repository",
   "plugins": [

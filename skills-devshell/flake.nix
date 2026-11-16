@@ -1,5 +1,5 @@
 {
-  description = "claude-code-kanban-turns dev-shell skill set — an isolated sub-flake invoked at RUNTIME by the root devShell, never a root input. The skill sources live only in THIS flake's lock, so the root flake stays a leaf with zero skill inputs and transitive consumers never drag the skill mesh in.";
+  description = "coding-agent-kanban-turns dev-shell skill set — an isolated sub-flake invoked at RUNTIME by the root devShell, never a root input. The skill sources live only in THIS flake's lock, so the root flake stays a leaf with zero skill inputs and transitive consumers never drag the skill mesh in.";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -100,7 +100,7 @@
     agent-skill-flake.lib.mkDevshellSkillsFlake {
       inherit nixpkgs;
       systems = import inputs.systems;
-      name = "claude-code-kanban-turns-devshell";
+      name = "coding-agent-kanban-turns-devshell";
       sources = [
         { source = inputs.coding-agent-skills; }
         { source = inputs.document-skills; }

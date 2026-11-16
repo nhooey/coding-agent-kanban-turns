@@ -1,4 +1,4 @@
-# claude-code-kanban-turns
+# coding-agent-kanban-turns
 
 The `coding-agent-kanban-answers` Claude Code mod, which makes the Decide items of the `coding-agent-kanban-turn-responses` skill clickable. A click writes the answer's reference, such as `9efb08a1.Decide.2.B`, into the prompt draft and never sends it, so you can pick several answers, add words of your own and press Enter when you're ready.
 
@@ -9,13 +9,13 @@ The mod began in [nhooey/coding-agent-skills](https://github.com/nhooey/coding-a
 At the prompt of a terminal session:
 
 ```text
-/plugin install coding-agent-kanban-answers --marketplace nhooey/claude-code-kanban-turns
+/plugin install coding-agent-kanban-answers --marketplace nhooey/coding-agent-kanban-turns
 ```
 
 Answer `y` to add the marketplace, then choose a scope. From a shell:
 
 ```bash
-claude plugin install coding-agent-kanban-answers --marketplace nhooey/claude-code-kanban-turns
+claude plugin install coding-agent-kanban-answers --marketplace nhooey/coding-agent-kanban-turns
 ```
 
 The mod reads the open items with the kanban skill's `scripts/outstanding.py`, by default the copy Claude Code installs with the skill, `~/.claude/skills/coding-agent-kanban-turn-responses/scripts/outstanding.py`, run with `python3` from your `PATH`. Where the script isn't there, the band stays empty and `/answers` says why; set `outstanding.script` (see [Settings](#settings)) to use another copy, such as a checkout's.

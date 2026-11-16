@@ -1,5 +1,5 @@
 {
-  description = "claude-code-kanban-turns: the coding-agent-kanban-answers Claude Code mod";
+  description = "coding-agent-kanban-turns: the coding-agent-kanban-answers Claude Code mod";
 
   inputs = {
     # Rolling, for a current Node: the mod's tests run TypeScript straight
@@ -41,9 +41,9 @@
       ];
 
       agent-skill-flake.devshellSkills = {
-        name = "claude-code-kanban-turns";
+        name = "coding-agent-kanban-turns";
         motd = ''
-          {bold}{14}🧠 Entering the claude-code-kanban-turns dev shell{reset}
+          {bold}{14}🧠 Entering the coding-agent-kanban-turns dev shell{reset}
           Run {bold}menu{reset} to list available commands.
         '';
       };
@@ -70,7 +70,7 @@
           # mod/, with the flake's node_modules linked in.
           modCheck =
             name: script:
-            pkgs.runCommand "claude-code-kanban-turns-${name}"
+            pkgs.runCommand "coding-agent-kanban-turns-${name}"
               {
                 nativeBuildInputs = [ nodejs ];
                 src = ./mod;
