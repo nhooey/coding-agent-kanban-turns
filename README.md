@@ -18,6 +18,8 @@ Answer `y` to add the marketplace, then choose a scope. From a shell:
 claude plugin install coding-agent-kanban-turns --marketplace nhooey/coding-agent-kanban-turns
 ```
 
+With Nix, the flake's `plugin` package (also `default`) is the mod's directory as Claude Code loads it, without the tests or the npm files: `nix build github:nhooey/coding-agent-kanban-turns#plugin`. It's built with [agent-plugins-nixpkgs](https://github.com/nhooey/agent-plugins-nixpkgs)' `lib.mkClaudePlugin`, so that repository can pass it through for a nix-darwin configuration to list in `services.agent-plugins.plugins`.
+
 The mod reads the open items with the kanban skill's `scripts/outstanding.py`, by default the copy Claude Code installs with the skill, `~/.claude/skills/coding-agent-kanban-turn-responses/scripts/outstanding.py`, run with `python3` from your `PATH`. Where the script isn't there, the band stays empty and `/answers` says why; set `outstanding.script` (see [Settings](#settings)) to use another copy, such as a checkout's.
 
 ## Settings

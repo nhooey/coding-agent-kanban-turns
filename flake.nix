@@ -22,6 +22,14 @@
       url = "github:numtide/treefmt-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    # Read only for `lib.mkClaudePlugin`, which builds `plugin`. A plain
+    # source, not a flake: agent-plugins-nixpkgs takes this repository as an
+    # input to pass `plugin` through, and a flake input here would make the
+    # two lock files nest each other at every update.
+    agent-plugins-nixpkgs = {
+      url = "github:nhooey/agent-plugins-nixpkgs";
+      flake = false;
+    };
   };
 
   outputs =
@@ -51,6 +59,28 @@
       perSystem =
         { pkgs, ... }:
         let
+          inherit (pkgs) lib;
+          claudePlugins = import "${inputs.agent-plugins-nixpkgs}/lib" { inherit lib; };
+
+          # The mod as Claude Code loads it: mod/ with only what runs, its
+          # manifest, hooks, pure core, shipped defaults and the types the
+          # manifest names. The tests, the engine-driven tests, the tools and
+          # the npm files stay out, since every npm dependency is for
+          # development; agent-plugins-nixpkgs installs this through its
+          # nix-darwin module.
+          plugin = claudePlugins.mkClaudePlugin pkgs {
+            src = lib.fileset.toSource {
+              root = ./mod;
+              fileset = lib.fileset.unions [
+                ./mod/.claude-plugin/plugin.json
+                ./mod/hooks
+                ./mod/src
+                ./mod/defaults
+                ./mod/types
+              ];
+            };
+          };
+
           # The one Node: the mod's node_modules are built with it, and the
           # dev shell and the checks run it.
           nodejs = pkgs.nodejs_26;
@@ -86,6 +116,11 @@
               '';
         in
         {
+          packages = {
+            inherit plugin;
+            default = plugin;
+          };
+
           # Repo-specific packages and commands, merged onto the module's.
           devshells.default = {
             packages = [
@@ -131,6 +166,7 @@
           # hooks' type-check and mod-tests/ need the engine (its API
           # declarations, and claude plugin test), which a build has not.
           checks = {
+            inherit plugin;
             typecheck = modCheck "typecheck" "typecheck";
             tests = modCheck "tests" "test";
           };
