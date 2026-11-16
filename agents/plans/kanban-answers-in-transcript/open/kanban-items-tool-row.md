@@ -3,7 +3,7 @@ title: The tool row draws the turn's Decide items with their buttons, marked by 
 state: approved
 kind: implementation
 part-of: kanban-answers-in-transcript
-needs: [kanban-mod-instructions]
+needs: [kanban-mod-instructions, mod-view-text-in-core, mod-tool-schema-in-core, mod-outstanding-in-core, band-transitions-reducer, option-button-component]
 touches: [mod/hooks/register.tsx, mod/src/items.ts, mod/src/answers.ts]
 ---
 
