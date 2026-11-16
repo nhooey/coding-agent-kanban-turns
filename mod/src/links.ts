@@ -5,7 +5,7 @@ import { refOf } from "./items.ts";
 import type { DecideItem } from "../types/index.d.ts";
 
 /** Where a question's link points: a name that never resolves, so a click the mod misses opens nothing real. */
-export const QUESTION_LINK = "https://kanban-answers.invalid/";
+export const QUESTION_LINK = "https://kanban-turns.invalid/";
 
 // A numbered item's bold summary, alone on its line.
 const SUMMARY_LINE = /^(\s*\d+\.\s+)\*\*(.+?)\*\*([ \t]*)$/gm;

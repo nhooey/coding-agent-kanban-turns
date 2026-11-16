@@ -1,10 +1,10 @@
-// The defaults of the coding-agent-kanban-answers mod: every setting it
+// The defaults of the coding-agent-kanban-turns mod: every setting it
 // reads, with the value it uses when no file of yours sets it.
 //
 // The mod reads this file from its own folder each session, and nothing
 // else holds these values. To change a setting, write only that key in
-// your own file, $XDG_CONFIG_HOME/coding-agent-kanban-answers/config.jsonc
-// (~/.config/coding-agent-kanban-answers/config.jsonc when XDG_CONFIG_HOME
+// your own file, $XDG_CONFIG_HOME/coding-agent-kanban-turns/config.jsonc
+// (~/.config/coding-agent-kanban-turns/config.jsonc when XDG_CONFIG_HOME
 // is unset), such as
 //
 //   {"keys": {"dismiss": "x"}}

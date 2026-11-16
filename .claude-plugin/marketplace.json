@@ -4,7 +4,7 @@
   "description": "The kanban turn responses' Claude Code mod, from this repository",
   "plugins": [
     {
-      "name": "coding-agent-kanban-answers",
+      "name": "coding-agent-kanban-turns",
       "source": "./mod",
       "description": "Clickable answers to the kanban turn responses' Decide items: a band above the prompt and buttons in the transcript that write references into the draft"
     }

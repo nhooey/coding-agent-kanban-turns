@@ -1,6 +1,6 @@
 # coding-agent-kanban-turns
 
-The `coding-agent-kanban-answers` Claude Code mod, in TypeScript: a band above the prompt and buttons in the transcript that answer the kanban turn responses' Decide items. See `README.md`. Plans live in `agents/plans/`; `agents/plans/README.md` is their overview.
+The `coding-agent-kanban-turns` Claude Code mod, in TypeScript: a band above the prompt and buttons in the transcript that answer the kanban turn responses' Decide items. See `README.md`. Plans live in `agents/plans/`; `agents/plans/README.md` is their overview.
 
 ## Layout
 

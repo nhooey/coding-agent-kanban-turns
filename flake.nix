@@ -1,5 +1,5 @@
 {
-  description = "coding-agent-kanban-turns: the coding-agent-kanban-answers Claude Code mod";
+  description = "coding-agent-kanban-turns: the kanban turn responses' Claude Code mod";
 
   inputs = {
     # Rolling, for a current Node: the mod's tests run TypeScript straight

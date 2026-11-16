@@ -25,7 +25,7 @@ export const SETTINGS_SHAPE: Shape = {
 };
 
 /** The folder under $XDG_CONFIG_HOME, or ~/.config, the user's file sits in. */
-export const APP = "coding-agent-kanban-answers";
+export const APP = "coding-agent-kanban-turns";
 
 /** The defaults file, from the mod's own folder. */
 export const DEFAULTS_FILE = "defaults/config.jsonc";

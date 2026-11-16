@@ -1,8 +1,8 @@
 import { expect, test } from "claude-code/testing";
 import type { On } from "claude-code";
 
-const PLUGIN = "coding-agent-kanban-answers";
-const TOOL = "mcp__coding-agent-kanban-answers__kanban_options";
+const PLUGIN = "coding-agent-kanban-turns";
+const TOOL = "mcp__coding-agent-kanban-turns__kanban_options";
 
 const ITEMS = [
   {
@@ -77,7 +77,7 @@ const BAND = {
 const PANE = {
   plugin: PLUGIN,
   component: "Pane",
-  requestId: "kanban-answers",
+  requestId: "kanban-turns",
   props: {
     title: "🧠 Decide",
     isFocused: false,
@@ -110,7 +110,7 @@ const engine = (on: On, open: () => readonly unknown[]) => {
     value: state.isPaneOpen
       ? [
           {
-            id: "kanban-answers",
+            id: "kanban-turns",
             title: "🧠 Decide",
             isShown: true,
             isPlaced: true,
@@ -130,7 +130,7 @@ const engine = (on: On, open: () => readonly unknown[]) => {
   // The script is there; no user settings file is, so the shipped defaults
   // are what's in effect.
   on("fs.exists", (_, e) => ({
-    value: !e.path.endsWith("/coding-agent-kanban-answers/config.jsonc"),
+    value: !e.path.endsWith("/coding-agent-kanban-turns/config.jsonc"),
   }));
   // A test has no files, so the defaults file reads as this; the Node tests
   // (test/config.test.ts) hold the real one to the shape.
@@ -374,7 +374,7 @@ test("a question in a reply opens the band at its item", async ($, on) => {
 
   await reply.press({
     key: "kanban-questions",
-    link: { href: "https://kanban-answers.invalid/9efb08a1.Decide.3" },
+    link: { href: "https://kanban-turns.invalid/9efb08a1.Decide.3" },
   });
   expect(await headerText(band)).toBe("🧠 3/3 · Ship tonight?");
   await reply.unmount();
@@ -520,6 +520,6 @@ test("the context tells the agent about the mod's tool, and keeps the rest", asy
   const { blocks } = await $.prompt.context({ blocks: engineBlocks });
 
   expect(blocks.slice(0, -1)).toEqual(engineBlocks);
-  expect(blocks.at(-1)?.name).toBe("kanbanAnswers");
+  expect(blocks.at(-1)?.name).toBe("kanbanTurns");
   expect(blocks.at(-1)?.text).toContain(`\`${TOOL}\``);
 });

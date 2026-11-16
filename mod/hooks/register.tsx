@@ -49,7 +49,7 @@ import { loadSettings } from "./settings.ts";
 
 const REASSESS = "reassess";
 // The pane that holds the item, and its title.
-const PANE = { id: "kanban-answers", title: "🧠 Decide" } as const;
+const PANE = { id: "kanban-turns", title: "🧠 Decide" } as const;
 // Columns an option sits in from its summary, and its ➕ and ➖ lines from
 // it: fixed, since rowsNeeded counts with it. The hotkeys and colours are
 // settings, in defaults/config.jsonc.
@@ -60,18 +60,18 @@ const UNREAD: Loaded = { settings: null, effective: [], problems: [] };
 // Change the tag when Band's fields change: it declines what an earlier
 // version stored, which outlives a reload.
 const band = atom(
-  { plugin: "coding-agent-kanban-answers", key: "band" } as const,
+  { plugin: "coding-agent-kanban-turns", key: "band" } as const,
   emptyBand,
   {
     shape: "band-2",
   },
 );
 const draft = atom(
-  { plugin: "coding-agent-kanban-answers", key: "draft" } as const,
+  { plugin: "coding-agent-kanban-turns", key: "draft" } as const,
   "",
 );
 const settings = atom(
-  { plugin: "coding-agent-kanban-answers", key: "settings" } as const,
+  { plugin: "coding-agent-kanban-turns", key: "settings" } as const,
   UNREAD,
   { shape: "settings-1" },
 );
@@ -288,7 +288,7 @@ export const register: Register = (on) => {
     await $.command.register({
       name: "answers-config",
       description:
-        "List the kanban answers mod's settings in effect, and the file each came from",
+        "List the kanban turns mod's settings in effect, and the file each came from",
     });
     await $.tool.register({
       name: TOOL,

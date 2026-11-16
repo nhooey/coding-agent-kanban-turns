@@ -98,7 +98,7 @@ export type Loaded = Readonly<{
 
 declare module "claude-code" {
   interface PluginState {
-    "coding-agent-kanban-answers": {
+    "coding-agent-kanban-turns": {
       band: Shaped<Band>;
       draft: string;
       settings: Shaped<Loaded>;
