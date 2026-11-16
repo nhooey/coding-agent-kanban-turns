@@ -79,16 +79,6 @@
         agent-skill-flake.follows = "agent-skill-flake";
       };
     };
-
-    # Pyroxin's opinionated-software-engineering plugin, packaged by
-    # skillspkgs: the functional style the mod's TypeScript is written in.
-    skillspkgs-opinionated-software-engineering = {
-      url = "github:nhooey/skillspkgs?dir=pkgs/opinionated-software-engineering";
-      inputs = {
-        nixpkgs.follows = "nixpkgs";
-        agent-skill-flake.follows = "agent-skill-flake";
-      };
-    };
   };
 
   outputs =
@@ -112,10 +102,6 @@
         { source = inputs.shell-skills; }
         { source = inputs.writing-skills; }
         { source = inputs.software-design-skills; }
-        {
-          source = inputs.skillspkgs-opinionated-software-engineering;
-          prefix = "opsofteng";
-        }
       ];
     };
 }

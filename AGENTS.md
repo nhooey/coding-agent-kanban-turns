@@ -27,7 +27,7 @@ Enter the dev shell with `nix develop` (or direnv); it links `mod/node_modules` 
 
 ## Style
 
-The mod is pure functional TypeScript, as `opsofteng-functional-programmer` asks: small pure functions over readonly data, no mutation or classes, array pipelines over loops, one expression or one return per function where it reads, effects only in `mod/hooks/`, and well-known libraries over hand-rolled code where the mod's runtime can load them. Every pure function has a test in `mod/test/`. Settings go in `mod/defaults/config.jsonc`, never as values in code, as `config-hygiene-shipped-defaults` says.
+The mod is pure functional TypeScript: small pure functions over readonly data, no mutation or classes, array pipelines over loops, one expression or one return per function where it reads, effects only in `mod/hooks/`, and well-known libraries over hand-rolled code where the mod's runtime can load them. Every pure function has a test in `mod/test/`. Settings go in `mod/defaults/config.jsonc`, never as values in code, as `config-hygiene-shipped-defaults` says.
 
 ## Rules shared with the kanban skill
 
