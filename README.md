@@ -1,22 +1,34 @@
-# coding-agent-kanban-answers
+# claude-code-kanban-turns
 
-A Claude Code mod that makes the Decide items of the [`coding-agent-kanban-turn-responses` skill](../../skills/coding-agent-kanban-turn-responses/SKILL.md) clickable. A click writes the answer's reference, such as `9efb08a1.Decide.2.B`, into the prompt draft and never sends it, so you can pick several answers, add words of your own and press Enter when you're ready.
+The `coding-agent-kanban-answers` Claude Code mod, which makes the Decide items of the `coding-agent-kanban-turn-responses` skill clickable. A click writes the answer's reference, such as `9efb08a1.Decide.2.B`, into the prompt draft and never sends it, so you can pick several answers, add words of your own and press Enter when you're ready.
+
+The mod began in [nhooey/coding-agent-skills](https://github.com/nhooey/coding-agent-skills), beside the skill, and moved here with its history by `git subtree split`.
 
 ## Install
 
 At the prompt of a terminal session:
 
 ```text
-/plugin install coding-agent-kanban-answers --marketplace nhooey/coding-agent-skills
+/plugin install coding-agent-kanban-answers --marketplace nhooey/claude-code-kanban-turns
 ```
 
 Answer `y` to add the marketplace, then choose a scope. From a shell:
 
 ```bash
-claude plugin install coding-agent-kanban-answers --marketplace nhooey/coding-agent-skills
+claude plugin install coding-agent-kanban-answers --marketplace nhooey/claude-code-kanban-turns
 ```
 
-The mod reads the open items with the skill's `scripts/outstanding.py`, and only the copy beside it in this repository, `skills/coding-agent-kanban-turn-responses/scripts/outstanding.py`, so the mod and the script always come from the same commit. That copy is there when the mod runs from a checkout (`skills-dev mods try`, or `claude --plugin-dir plugins/coding-agent-kanban-answers`) or from the marketplace's clone. Anywhere else the band stays empty and `/answers` says why. It runs `python3` from your `PATH`.
+The mod reads the open items with the kanban skill's `scripts/outstanding.py`, by default the copy Claude Code installs with the skill, `~/.claude/skills/coding-agent-kanban-turn-responses/scripts/outstanding.py`, run with `python3` from your `PATH`. Where the script isn't there, the band stays empty and `/answers` says why; set `outstanding.script` (see [Settings](#settings)) to use another copy, such as a checkout's.
+
+## Settings
+
+Every setting, with its default and what it does, is in [`mod/defaults/config.jsonc`](mod/defaults/config.jsonc): how `outstanding.py` is run, the band's hotkeys and the colours it draws in. To change one, write only that key in your own file, `$XDG_CONFIG_HOME/coding-agent-kanban-answers/config.jsonc` (`~/.config/coding-agent-kanban-answers/config.jsonc` when `XDG_CONFIG_HOME` is unset):
+
+```jsonc
+{ "keys": { "dismiss": "x" } }
+```
+
+Sections merge key by key, so everything else follows the defaults as they change. A key that's no setting, or a value of the wrong type, refuses your whole file: the mod uses the defaults and says why in the band. `/answers-config` lists every setting in effect and the file it came from. Both files are read again whenever the band refreshes.
 
 ## What it draws
 
@@ -55,7 +67,7 @@ Each part has its own colour from the theme, so it reads in light and dark theme
 
 The circles after the controls show which items the draft answers, `●` answered and `○` not, the shown item ringed, `◉` or `◎`, in the accent colour. Click a circle to go to its item. The band refreshes when a reply finishes.
 
-The hotkeys work only where the keyboard is. The prompt holds it by default, so letters typed there stay in the prompt. The pane takes the keyboard as it opens, from `🪟 Open in a pane` or `/answers`; for the band, press ctrl+x then tab, or click it. Then `h`, `j`, `l` and `q` press `⏪ Prev`, `⏭️ Skip`, `⏩ Next` and `❌`, as their labels show, and Escape gives the keyboard back to the prompt. Options have no hotkey, so they read exactly as the skill writes them; click them, or move the focus to one and press Enter.
+The hotkeys work only where the keyboard is. The prompt holds it by default, so letters typed there stay in the prompt. The pane takes the keyboard as it opens, from `🪟 Open in a pane` or `/answers`; for the band, press ctrl+x then tab, or click it. Then `h`, `j`, `l` and `q`, or the keys your settings give `keys`, press `⏪ Prev`, `⏭️ Skip`, `⏩ Next` and `❌`, as their labels show, and Escape gives the keyboard back to the prompt. Options have no hotkey, so they read exactly as the skill writes them; click them, or move the focus to one and press Enter.
 
 ### Bringing the band back
 
@@ -85,25 +97,22 @@ The mod never parses Markdown. It runs `outstanding.py --session <id> decide --j
 }
 ```
 
-under `{"items": [...]}`. The `kanban_options` tool takes the same object. The skill's [scripts.md](../../skills/coding-agent-kanban-turn-responses/scripts.md) says what counts as open.
+under `{"items": [...]}`. The `kanban_options` tool takes the same object. The skill's `scripts.md` says what counts as open.
 
 ## Developing
 
-From the repository's dev shell:
+See [`AGENTS.md`](AGENTS.md) for the dev shell's commands and what `nix flake check` runs. To try the mod from a checkout without installing it:
 
 ```bash
-skills-dev mods check coding-agent-kanban-answers
+claude --plugin-dir mod
 ```
 
-It runs [`skills-dev`](../../scripts/skills_dev.py), which with no name checks every mod in the repository: `claude plugin validate`, `tsc -p` and `claude plugin test`. `tsc` needs the Claude Code API declarations in `.claude-plugin/types/`, which the engine lays there when it loads the mod from a folder it watches; where none has, the tool copies the running build's from the files its `plugin-authoring` skill wrote. To try the mod without installing it:
-
-```bash
-skills-dev mods try coding-agent-kanban-answers
-```
-
-| File                                       | Holds                                                                                            |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| [`hooks/register.tsx`](hooks/register.tsx) | the hooks: the band and its `🧠`, the tool and its row, `/answers`, the refresh after each reply |
-| [`hooks/answers.ts`](hooks/answers.ts)     | the pure core: how a click changes the draft and how the band moves                              |
-| [`types/index.d.ts`](types/index.d.ts)     | the item shape and the `$.state` contract                                                        |
-| [`tests/`](tests/)                         | the core's tests, and the band and tool row driven through the engine                            |
+| File                                                         | Holds                                                                                                   |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| [`mod/hooks/register.tsx`](mod/hooks/register.tsx)           | the hooks: the band and its `🧠`, the tool and its row, `/answers`, `/answers-config`, the refreshes    |
+| [`mod/hooks/settings.ts`](mod/hooks/settings.ts)             | reads the defaults file and the user's                                                                  |
+| [`mod/src/`](mod/src/)                                       | the pure core: the draft's answers, the band's moves, the items, their layout and links, the settings |
+| [`mod/defaults/config.jsonc`](mod/defaults/config.jsonc)     | every setting, with its default and what it does                                                       |
+| [`mod/types/index.d.ts`](mod/types/index.d.ts)               | the item, band and settings shapes, and the `$.state` contract                                          |
+| [`mod/test/`](mod/test/)                                     | the core's tests, run by `node --test`                                                                  |
+| [`mod/mod-tests/`](mod/mod-tests/)                           | the band and tool row driven through the engine, run by `claude plugin test`                            |
