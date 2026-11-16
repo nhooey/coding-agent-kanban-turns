@@ -1,10 +1,11 @@
 ---
 title: The mod tells the agent to call its tool before a reply with Decide items
-state: approved
+state: implemented
 kind: implementation
 part-of: kanban-mod-own-repository
 needs: [kanban-mod-split]
 touches: [mod/hooks/register.tsx, mod/src/instructions.ts]
+implemented-by: "Close the plan node for the mod's own tool instructions"
 ---
 
 # The mod tells the agent to call its tool before a reply with Decide items
