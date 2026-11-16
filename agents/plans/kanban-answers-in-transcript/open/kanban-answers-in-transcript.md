@@ -7,7 +7,7 @@ part-of: kanban-mod-own-repository
 
 # Kanban items stay in the reply; the band holds the status, Submit and the answers waiting to be sent
 
-With the coding-agent-kanban-answers mod loaded:
+With the coding-agent-kanban-turns mod loaded:
 
 - **The reply keeps its items.** The agent writes its turn response as the `coding-agent-kanban-turn-responses` skill says, every list in the reply's text, and `reassess` restates every open item in the latest reply. The mod never rewrites the reply and never prints an item a second time.
 - **Decide items get buttons.** Before a reply with Decide items, the agent calls the mod's `kanban_options` tool; the tool row just above the reply draws each Decide item's options as buttons, with a notes field.

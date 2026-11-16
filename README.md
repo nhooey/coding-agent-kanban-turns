@@ -1,6 +1,6 @@
 # coding-agent-kanban-turns
 
-The `coding-agent-kanban-answers` Claude Code mod, which makes the Decide items of the `coding-agent-kanban-turn-responses` skill clickable. A click writes the answer's reference, such as `9efb08a1.Decide.2.B`, into the prompt draft and never sends it, so you can pick several answers, add words of your own and press Enter when you're ready.
+The `coding-agent-kanban-turns` Claude Code mod, which makes the Decide items of the `coding-agent-kanban-turn-responses` skill clickable. A click writes the answer's reference, such as `9efb08a1.Decide.2.B`, into the prompt draft and never sends it, so you can pick several answers, add words of your own and press Enter when you're ready.
 
 The mod began in [nhooey/coding-agent-skills](https://github.com/nhooey/coding-agent-skills), beside the skill, and moved here with its history by `git subtree split`.
 
@@ -9,20 +9,20 @@ The mod began in [nhooey/coding-agent-skills](https://github.com/nhooey/coding-a
 At the prompt of a terminal session:
 
 ```text
-/plugin install coding-agent-kanban-answers --marketplace nhooey/coding-agent-kanban-turns
+/plugin install coding-agent-kanban-turns --marketplace nhooey/coding-agent-kanban-turns
 ```
 
 Answer `y` to add the marketplace, then choose a scope. From a shell:
 
 ```bash
-claude plugin install coding-agent-kanban-answers --marketplace nhooey/coding-agent-kanban-turns
+claude plugin install coding-agent-kanban-turns --marketplace nhooey/coding-agent-kanban-turns
 ```
 
 The mod reads the open items with the kanban skill's `scripts/outstanding.py`, by default the copy Claude Code installs with the skill, `~/.claude/skills/coding-agent-kanban-turn-responses/scripts/outstanding.py`, run with `python3` from your `PATH`. Where the script isn't there, the band stays empty and `/answers` says why; set `outstanding.script` (see [Settings](#settings)) to use another copy, such as a checkout's.
 
 ## Settings
 
-Every setting, with its default and what it does, is in [`mod/defaults/config.jsonc`](mod/defaults/config.jsonc): how `outstanding.py` is run, the band's hotkeys and the colours it draws in. To change one, write only that key in your own file, `$XDG_CONFIG_HOME/coding-agent-kanban-answers/config.jsonc` (`~/.config/coding-agent-kanban-answers/config.jsonc` when `XDG_CONFIG_HOME` is unset):
+Every setting, with its default and what it does, is in [`mod/defaults/config.jsonc`](mod/defaults/config.jsonc): how `outstanding.py` is run, the band's hotkeys and the colours it draws in. To change one, write only that key in your own file, `$XDG_CONFIG_HOME/coding-agent-kanban-turns/config.jsonc` (`~/.config/coding-agent-kanban-turns/config.jsonc` when `XDG_CONFIG_HOME` is unset):
 
 ```jsonc
 { "keys": { "dismiss": "x" } }
@@ -75,13 +75,13 @@ Submitting a prompt folds the band to its `🧠` and closes the pane while the r
 
 ### Buttons in the transcript
 
-The mod registers the tool `kanban_options`, listed as `mcp__coding-agent-kanban-answers__kanban_options`. The agent calls it with the turn's Decide items right before writing its final response, so the tool's row, with each item drawn in its own border as the band draws it, sits just above the reply. The row draws only the items, with each option's consequence, ➕ and ➖ lines when the call passes them; the call's input and result show in ctrl+o, or when the call failed, and so does the result line where it's drawn apart from the row, as after a compaction. Its buttons write the draft as the band's do. Once a refresh finds an item no longer open, its row is dimmed, marked `(settled)`, and its buttons do nothing.
+The mod registers the tool `kanban_options`, listed as `mcp__coding-agent-kanban-turns__kanban_options`. The agent calls it with the turn's Decide items right before writing its final response, so the tool's row, with each item drawn in its own border as the band draws it, sits just above the reply. The row draws only the items, with each option's consequence, ➕ and ➖ lines when the call passes them; the call's input and result show in ctrl+o, or when the call failed, and so does the result line where it's drawn apart from the row, as after a compaction. Its buttons write the draft as the band's do. Once a refresh finds an item no longer open, its row is dimmed, marked `(settled)`, and its buttons do nothing.
 
-The mod tells the agent about its tool itself, so the kanban skill needn't: a `prompt.context` hook adds a `kanbanAnswers` block to the conversation's context, saying when to call the tool, what its input holds, that a click writes into the draft and sends nothing, and that the reply is written as it would be without the tool. The text, in [`mod/src/instructions.ts`](mod/src/instructions.ts), is built from the tool's registered name.
+The mod tells the agent about its tool itself, so the kanban skill needn't: a `prompt.context` hook adds a `kanbanTurns` block to the conversation's context, saying when to call the tool, what its input holds, that a click writes into the draft and sends nothing, and that the reply is written as it would be without the tool. The text, in [`mod/src/instructions.ts`](mod/src/instructions.ts), is built from the tool's registered name.
 
 ### Questions in a reply
 
-Each open item's summary line in a reply, such as `1. **Which cache to keep**`, is drawn as a link. Clicking it shows the band at that item. The link points at `https://kanban-answers.invalid/<ref>`, a name that never resolves, and the stored reply is unchanged, so ctrl+o shows it as written.
+Each open item's summary line in a reply, such as `1. **Which cache to keep**`, is drawn as a link. Clicking it shows the band at that item. The link points at `https://kanban-turns.invalid/<ref>`, a name that never resolves, and the stored reply is unchanged, so ctrl+o shows it as written.
 
 ## Where the items come from
 

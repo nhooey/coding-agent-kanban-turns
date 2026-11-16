@@ -162,10 +162,10 @@ describe("questions in a reply", () => {
     const linked = linkedQuestions(reply, items);
 
     expect(linked.hrefs).toEqual([
-      "https://kanban-answers.invalid/9efb08a1.Decide.1",
+      "https://kanban-turns.invalid/9efb08a1.Decide.1",
     ]);
     expect(linked.text.split("\n")[0]).toBe(
-      "1. **[Which cache to keep](https://kanban-answers.invalid/9efb08a1.Decide.1)**  ",
+      "1. **[Which cache to keep](https://kanban-turns.invalid/9efb08a1.Decide.1)**  ",
     );
     expect(linked.text.split("\n").slice(1)).toEqual(
       reply.split("\n").slice(1),

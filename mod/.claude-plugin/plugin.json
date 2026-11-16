@@ -1,5 +1,5 @@
 {
-  "name": "coding-agent-kanban-answers",
+  "name": "coding-agent-kanban-turns",
   "version": "0.1.0",
   "description": "Clickable answers to the kanban turn responses skill's Decide items: a band above the prompt and buttons in the transcript that write references into the draft",
   "author": { "name": "Neil Hooey" },

@@ -1,10 +1,10 @@
 ---
-title: The kanban answers mod lives in its own repository, in TypeScript only, beside the kanban skill
+title: The kanban turns mod lives in its own repository, in TypeScript only, beside the kanban skill
 state: approved
 kind: end-state
 ---
 
-# The kanban answers mod lives in its own repository, in TypeScript only, beside the kanban skill
+# The kanban turns mod lives in its own repository, in TypeScript only, beside the kanban skill
 
 - **Two repositories.** The mod is the public repository `nhooey/coding-agent-kanban-turns` holding only the TypeScript mod, its tests and its README. `coding-agent-skills` keeps the `coding-agent-kanban-turn-responses` skill, its Python scripts and its tests, and holds no mod and no mention of one.
 - **Pure functional TypeScript.** Small pure functions over immutable data, no mutation or classes, pipelines over loops, a single exit per function, effects kept at the hook edges, and well-known libraries over hand-rolled code, enforced by a linter where one fits; the same style `opsofteng-functional-programmer` and dendrometer's plan instructions ask of its Rust and Swift.

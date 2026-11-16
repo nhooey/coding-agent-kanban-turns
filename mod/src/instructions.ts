@@ -3,18 +3,18 @@
 // kanban skill's to teach.
 
 /** The plugin's name, which the engine puts in its tools' names. */
-export const PLUGIN = "coding-agent-kanban-answers";
+export const PLUGIN = "coding-agent-kanban-turns";
 /** The tool's name as the mod registers it. */
 export const TOOL = "kanban_options";
 /** The tool's name as the agent sees and calls it. */
 export const TOOL_CALLED = `mcp__${PLUGIN}__${TOOL}`;
 /** The context block the instructions go in, keyed by the mod's own name. */
-export const BLOCK = "kanbanAnswers";
+export const BLOCK = "kanbanTurns";
 
 /** The instructions for the tool the agent calls as `tool`. */
 export const instructionsFor = (tool: string): string =>
   [
-    `The coding-agent-kanban-answers mod draws clickable buttons for a final response's Decide items, through the tool \`${tool}\`.`,
+    `The coding-agent-kanban-turns mod draws clickable buttons for a final response's Decide items, through the tool \`${tool}\`.`,
     "",
     `- When: call \`${tool}\` once, right before writing a final response that holds Decide items, so their buttons sit just above the reply. Don't call it for a response without Decide items.`,
     '- Input: `{"items": [...]}`, one entry per Decide item of that response, in its order, each with:',

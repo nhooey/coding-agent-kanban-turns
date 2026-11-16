@@ -116,10 +116,10 @@ describe("the pieces", () => {
 
   test("the user's file is under XDG_CONFIG_HOME, else ~/.config", () => {
     expect(userConfigPath({ xdgConfigHome: "/x", home: "/h" })).toBe(
-      "/x/coding-agent-kanban-answers/config.jsonc",
+      "/x/coding-agent-kanban-turns/config.jsonc",
     );
     expect(userConfigPath({ home: "/h" })).toBe(
-      "/h/.config/coding-agent-kanban-answers/config.jsonc",
+      "/h/.config/coding-agent-kanban-turns/config.jsonc",
     );
     expect(userConfigPath({})).toBeUndefined();
   });
