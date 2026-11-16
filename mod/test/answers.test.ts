@@ -1,31 +1,31 @@
-import { describe, expect, test } from "claude-code/testing";
+import { describe, test } from "node:test";
+import { expect } from "expect";
 
 import {
-  afterAnswer,
   choose,
+  isAnswered,
+  lettersFor,
+  noteFor,
+  withNote,
+} from "../src/answers.ts";
+import {
+  afterAnswer,
   dismissed,
   drawnByTool,
   emptyBand,
   firstUnanswered,
   header,
-  itemsOf,
-  isAnswered,
-  itemOfLink,
-  linkedQuestions,
-  lettersFor,
   nextPosition,
-  noteFor,
-  withNote,
   prevPosition,
-  codeSpans,
-  fitsBand,
-  rowsNeeded,
   progress,
   refreshed,
   reopened,
   skipped,
-} from "../src/answers.ts";
-import type { Band, DecideItem } from "../types";
+} from "../src/band.ts";
+import { itemsOf } from "../src/items.ts";
+import { codeSpans, fitsBand, rowsNeeded } from "../src/layout.ts";
+import { itemOfLink, linkedQuestions } from "../src/links.ts";
+import type { Band, DecideItem } from "../types/index.d.ts";
 
 const radio: DecideItem = {
   turn: "9efb08a1",

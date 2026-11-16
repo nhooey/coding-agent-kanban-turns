@@ -14,34 +14,30 @@
 import { atom, read, update } from "claude-code";
 import type { EngineInterface, Register } from "claude-code";
 
-import type { Band, DecideItem } from "../types";
+import { choose, lettersFor, noteFor, withNote } from "../src/answers.ts";
 import {
-  afterAnswer,
+  afterChoice,
   away,
   back,
-  choose,
-  codeSpans,
   dismissed,
-  fitsBand,
-  glyphOf,
   drawnByTool,
+  drawnMark,
   emptyBand,
   header,
-  itemsOf,
-  itemOfLink,
-  lettersFor,
-  linkedQuestions,
+  movedOn,
   nextPosition,
-  noteFor,
-  withNote,
-  positionIn,
   prevPosition,
   progressMarks,
-  refOf,
   refreshed,
   reopened,
+  shownAt,
+  shownItem,
   skipped,
-} from "../src/answers.ts";
+} from "../src/band.ts";
+import { glyphOf, itemsOf, refOf } from "../src/items.ts";
+import { codeSpans, fitsBand } from "../src/layout.ts";
+import { itemOfLink, linkedQuestions } from "../src/links.ts";
+import type { Band, DecideItem } from "../types/index.d.ts";
 
 const TOOL = "kanban_options";
 const TOOL_CALLED = "mcp__coding-agent-kanban-answers__kanban_options";
@@ -149,7 +145,7 @@ const scriptPath = async ($: EngineInterface): Promise<string | undefined> => {
 /** Runs `outstanding.py decide --json` over this session's transcript: the open items, or why there are none. */
 const openItems = async (
   $: EngineInterface,
-): Promise<{ items: DecideItem[]; problem: string }> => {
+): Promise<{ items: readonly DecideItem[]; problem: string }> => {
   const cwd = await $.session.cwd();
   const session = await $.session.id();
   const script = await scriptPath($);
@@ -177,7 +173,7 @@ const openItems = async (
 
 const refresh = async ($: EngineInterface): Promise<void> => {
   const found = await openItems($).catch((error: unknown) => ({
-    items: [] as DecideItem[],
+    items: [] as readonly DecideItem[],
     problem: String(error),
   }));
   const text = await read($, draft);
@@ -187,42 +183,38 @@ const refresh = async ($: EngineInterface): Promise<void> => {
   }));
 };
 
-/** Writes the draft with the item's answer for `letter`, and moves the band on when it shows that item. */
-const answer = async (
+/**
+ * Rewrites the prompt draft with `edit`, and moves the band with `move`
+ * once the draft holds the edit: the one way a click or a note reaches the
+ * draft.
+ */
+const rewriteDraft = async (
   $: EngineInterface,
-  item: DecideItem,
-  letter: string,
+  edit: (text: string) => string,
+  move: (b: Band, text: string) => Band,
 ): Promise<void> => {
   const box = await $.prompt.read();
-  const text = choose(box.text, item, letter);
+  const text = edit(box.text);
   await $.prompt.fill({ text, mode: "replace" });
   await update($, draft, () => text);
-  await update($, band, (b) => {
-    const shown = b.items[positionIn(b)];
-    const isShown = shown !== undefined && refOf(shown) === refOf(item);
-    const stays = item.kind === "checkbox";
-
-    return isShown && !stays ? { ...b, position: afterAnswer(b, text) } : b;
-  });
+  await update($, band, (b) => move(b, text));
 };
+
+/** Writes the draft with the item's answer for `letter`, and moves the band on when it shows that item. */
+const answer = ($: EngineInterface, item: DecideItem, letter: string) =>
+  rewriteDraft(
+    $,
+    (text) => choose(text, item, letter),
+    (b, text) => afterChoice(b, item, text),
+  );
 
 /** Writes the item's note into the draft, on a line of its own, and moves the band on as an answer does. */
-const note = async (
-  $: EngineInterface,
-  item: DecideItem,
-  text: string,
-): Promise<void> => {
-  const box = await $.prompt.read();
-  const written = withNote(box.text, item, text);
-  await $.prompt.fill({ text: written, mode: "replace" });
-  await update($, draft, () => written);
-  await update($, band, (b) => {
-    const shown = b.items[positionIn(b)];
-    const isShown = shown !== undefined && refOf(shown) === refOf(item);
-
-    return isShown ? { ...b, position: afterAnswer(b, written) } : b;
-  });
-};
+const note = ($: EngineInterface, item: DecideItem, said: string) =>
+  rewriteDraft(
+    $,
+    (text) => withNote(text, item, said),
+    (b, text) => movedOn(b, item, text),
+  );
 
 /** /answers and the 🧠 above the prompt: re-reads the open items and shows them at the first unanswered one. */
 const reopen = async ($: EngineInterface): Promise<void> => {
@@ -234,11 +226,7 @@ const reopen = async ($: EngineInterface): Promise<void> => {
 /** A question's link pressed: the band, shown again, at its item. */
 const showItem = async ($: EngineInterface, href: string): Promise<void> => {
   const text = await read($, draft);
-  await update($, band, (b) => {
-    const n = itemOfLink(b.items, href);
-
-    return n < 0 ? b : { ...reopened(b, text), position: n };
-  });
+  await update($, band, (b) => shownAt(b, itemOfLink(b.items, href), text));
 };
 
 /** Opens the pane with the keyboard in it, so its hotkeys work at once. */
@@ -344,9 +332,10 @@ export const register: Register = (on) => {
   // so the band can't open the pane by itself.
   on("ui.render", { component: "AbovePrompt" }, async ($, e, next) => {
     const b = await read($, band);
+    const item = shownItem(b);
     const seen = { rows: e.props.maxRows, columns: e.props.bodyColumns };
 
-    if (e.props.hasSurvey || b.items.length === 0) {
+    if (e.props.hasSurvey || item === undefined) {
       return next(e);
     }
 
@@ -355,7 +344,7 @@ export const register: Register = (on) => {
     const fits = fitsBand(b.items, seen);
 
     if (!b.isDismissed && !b.isAway && fits && !(await isPaneShown($))) {
-      return fullView($, elements, b, await read($, draft));
+      return fullView($, elements, b, item, await read($, draft));
     }
 
     return (
@@ -408,13 +397,14 @@ export const register: Register = (on) => {
   on("ui.render", { component: "Pane", requestId: PANE.id }, async ($, e) => {
     const b = await read($, band);
     const elements = $.ui.resolve(e);
+    const item = shownItem(b);
 
-    return b.items[positionIn(b)] === undefined ? (
+    return item === undefined ? (
       <elements.Text dimColor>
         No open Decide items{b.problem ? `: ${b.problem}` : ""}.
       </elements.Text>
     ) : (
-      fullView($, elements, b, await read($, draft))
+      fullView($, elements, b, item, await read($, draft))
     );
   });
 
@@ -492,10 +482,10 @@ const fullView = (
   $: EngineInterface,
   elements: Elements,
   b: Band,
+  item: DecideItem,
   text: string,
 ) => {
   const { Box, Button, Text, Input } = elements;
-  const item = b.items[positionIn(b)] as DecideItem;
   const move = (position: (b: Band) => number) => () =>
     update($, band, (current) => ({
       ...current,
@@ -561,7 +551,7 @@ const fullView = (
               onPress={move(() => n)}
             >
               <Text color={isShown ? COLOR.title : undefined} bold={isShown}>
-                {isShown ? (mark === "●" ? "◉" : "◎") : mark}
+                {drawnMark(mark, isShown)}
               </Text>
             </Button>
           ))}
@@ -595,7 +585,7 @@ const itemView = (
   item: DecideItem,
   view: {
     title: string;
-    chosen: string[];
+    chosen: readonly string[];
     note: string;
     isSettled?: boolean;
     keyOf: (letter: string) => string;
@@ -621,7 +611,7 @@ const itemView = (
     ));
   const lines = (
     prefix: string,
-    texts: string[] | undefined,
+    texts: readonly string[] | undefined,
     background: string | undefined,
     key: string,
   ) =>
@@ -663,7 +653,7 @@ const itemView = (
         } as const;
         const under = (
           prefix: string,
-          texts: string[] | undefined,
+          texts: readonly string[] | undefined,
           part: string,
         ) =>
           (texts ?? []).map((line, n) => (

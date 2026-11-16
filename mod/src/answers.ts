@@ -1,22 +1,23 @@
-// The mod's pure core: how a click changes the prompt draft, and how the band
-// moves among the open Decide items. No `$`, no I/O: register.tsx reads the
-// draft and the state, calls these, and writes what they return.
+// The answers written in the prompt draft: reading them, and the draft once
+// an option is clicked or a note written. No `$`, no I/O: register.tsx reads
+// the draft, calls these, and writes what they return.
 
-import type { Band, DecideItem } from "../types";
+import { refOf } from "./items.ts";
+import type { DecideItem } from "../types/index.d.ts";
 
 /**
  * One answer written in the draft, and where it sits: `<turn>.Decide.<n>.<letters>`,
  * a note after it to the end of its line, `…Decide.<n>.B: <note>`, or a note
  * alone, `…Decide.<n>: <text>`, which answers the item in words.
  */
-export type Answer = {
+export type Answer = Readonly<{
   start: number;
   end: number;
   turn: string;
   number: number;
-  letters: string[];
+  letters: readonly string[];
   note: string;
-};
+}>;
 
 // A turn id of 6 to 8 hex characters (a prefix of the 8 is as good), the item
 // number, then one capital or several joined by commas, a note after `: ` to
@@ -26,47 +27,29 @@ const ANSWER =
 // A note that is only letters, `…Decide.2: B`, is the letters written the other way.
 const LETTERS_ONLY = /^([A-Z](?:\s*,\s*[A-Z])*)\s*$/;
 
-export const emptyBand: Band = {
-  items: [],
-  position: 0,
-  isDismissed: false,
-  isAway: false,
-  dismissedRefs: [],
-  knownRefs: [],
-  settledRefs: [],
-  problem: "",
+const lettersIn = (joined: string): readonly string[] =>
+  joined === "" ? [] : joined.split(",");
+
+const answerOf = (m: RegExpMatchArray): Answer => {
+  const said = (m[4] ?? "").trim();
+  const asLetters = m[3] === undefined ? LETTERS_ONLY.exec(said) : null;
+  const start = m.index ?? 0;
+
+  return {
+    start,
+    end: start + m[0].length,
+    turn: m[1] ?? "",
+    number: Number(m[2]),
+    letters: lettersIn(m[3] ?? asLetters?.[1]?.replace(/\s/g, "") ?? ""),
+    note: asLetters ? "" : said,
+  };
 };
 
-/** The reference an answer names the item by, without its letters. */
-export const refOf = (item: DecideItem): string =>
-  item.ref || `${item.turn}.Decide.${item.number}`;
-
 /** Every answer written in the draft, in order. */
-export const answersIn = (draft: string): Answer[] =>
+export const answersIn = (draft: string): readonly Answer[] =>
   [...draft.matchAll(ANSWER)]
     .filter((m) => m[3] !== undefined || m[4] !== undefined)
-    .map((m) => {
-      const said = (m[4] ?? "").trim();
-      const asLetters = m[3] === undefined ? LETTERS_ONLY.exec(said) : null;
-      const letters = m[3] ?? asLetters?.[1]?.replace(/\s/g, "") ?? "";
-
-      return {
-        start: m.index ?? 0,
-        end: (m.index ?? 0) + m[0].length,
-        turn: m[1] ?? "",
-        number: Number(m[2]),
-        letters: letters === "" ? [] : letters.split(","),
-        note: asLetters ? "" : said,
-      };
-    });
-
-/** The note the draft gives the item; empty when it gives none. */
-export const noteFor = (draft: string, item: DecideItem): string =>
-  answerTo(draft, item)?.note ?? "";
-
-/** An answer as the draft holds it: the letters, then the note. */
-const written = (item: DecideItem, letters: string[], note: string): string =>
-  `${refOf(item)}${letters.length > 0 ? `.${letters.join(",")}` : ""}${note ? `: ${note}` : ""}`;
+    .map(answerOf);
 
 const isFor = (answer: Answer, item: DecideItem): boolean =>
   answer.number === item.number &&
@@ -77,40 +60,67 @@ export const answerTo = (draft: string, item: DecideItem): Answer | undefined =>
   answersIn(draft).find((answer) => isFor(answer, item));
 
 /** The letters the draft picks for the item; none when it does not answer it. */
-export const lettersFor = (draft: string, item: DecideItem): string[] =>
-  answerTo(draft, item)?.letters ?? [];
+export const lettersFor = (
+  draft: string,
+  item: DecideItem,
+): readonly string[] => answerTo(draft, item)?.letters ?? [];
+
+/** The note the draft gives the item; empty when it gives none. */
+export const noteFor = (draft: string, item: DecideItem): string =>
+  answerTo(draft, item)?.note ?? "";
 
 export const isAnswered = (draft: string, item: DecideItem): boolean =>
   answerTo(draft, item) !== undefined;
 
-const inOptionOrder = (item: DecideItem, letters: string[]): string[] =>
+/** An answer as the draft holds it: the letters, then the note. */
+const written = (
+  item: DecideItem,
+  letters: readonly string[],
+  note: string,
+): string =>
+  `${refOf(item)}${letters.length > 0 ? `.${letters.join(",")}` : ""}${note ? `: ${note}` : ""}`;
+
+const inOptionOrder = (
+  item: DecideItem,
+  letters: readonly string[],
+): readonly string[] =>
   item.options
     .map((o) => o.letter)
     .filter((letter) => letters.includes(letter));
 
+const toggled = (
+  held: readonly string[],
+  letter: string,
+): readonly string[] =>
+  held.includes(letter) ? held.filter((l) => l !== letter) : [...held, letter];
+
 /** The letters an item holds once `letter` is clicked: a checkbox toggles it, the others take it alone. */
 export const lettersAfter = (
   item: DecideItem,
-  held: string[],
+  held: readonly string[],
   letter: string,
-): string[] =>
+): readonly string[] =>
   item.kind === "checkbox"
-    ? inOptionOrder(
-        item,
-        held.includes(letter)
-          ? held.filter((l) => l !== letter)
-          : [...held, letter],
-      )
+    ? inOptionOrder(item, toggled(held, letter))
     : [letter];
 
+/** The draft with `text` in place of the answer. */
+const replaced = (draft: string, answer: Answer, text: string): string =>
+  draft.slice(0, answer.start) + text + draft.slice(answer.end);
+
+/** The draft with the answer taken out, and the gap it leaves closed. */
 const withoutAnswer = (draft: string, answer: Answer): string => {
   const before = draft.slice(0, answer.start);
   const after = draft.slice(answer.end);
+  const isBetweenWords =
+    before.endsWith(" ") && (after.startsWith(" ") || after === "");
+  const isOnOwnLine =
+    (before.endsWith("\n") || before === "") &&
+    (after.startsWith("\n") || after === "");
 
-  return before.endsWith(" ") && (after.startsWith(" ") || after === "")
+  return isBetweenWords
     ? before.slice(0, -1) + after
-    : (before.endsWith("\n") || before === "") &&
-        (after.startsWith("\n") || after === "")
+    : isOnOwnLine
       ? before.replace(/\n$/, "") +
         (before === "" ? after.replace(/^\n/, "") : after)
       : before + after.replace(/^ /, "");
@@ -134,6 +144,10 @@ const appended = (draft: string, text: string): string =>
       ? `${draft}\n${text}`
       : `${draft} ${text}`;
 
+/** `text` on a line of its own after `base`, or alone when `base` is empty. */
+const onNewLine = (base: string, text: string): string =>
+  base === "" ? text : `${base}\n${text}`;
+
 /**
  * The draft once a note is written for the item: its answer, letters kept,
  * moved to a line of its own at the end, since a note runs to its line's end;
@@ -148,20 +162,13 @@ export const withNote = (
   const letters = held?.letters ?? [];
   const said = note.replace(/\s+/g, " ").trim();
   const rest = held === undefined ? draft : withoutAnswer(draft, held);
+  const text = written(item, letters, said);
 
-  if (said === "") {
-    return letters.length === 0 || held === undefined
+  return said !== ""
+    ? onNewLine(rest.replace(/\s+$/, ""), text)
+    : held === undefined || letters.length === 0
       ? rest
-      : draft.slice(0, held.start) +
-          written(item, letters, "") +
-          draft.slice(held.end);
-  }
-
-  const base = rest.replace(/\s+$/, "");
-
-  return base === ""
-    ? written(item, letters, said)
-    : `${base}\n${written(item, letters, said)}`;
+      : replaced(draft, held, text);
 };
 
 /**
@@ -183,280 +190,5 @@ export const choose = (
     ? appended(draft, text)
     : letters.length === 0 && note === ""
       ? withoutAnswer(draft, held)
-      : draft.slice(0, held.start) + text + draft.slice(held.end);
+      : replaced(draft, held, text);
 };
-
-const clamp = (position: number, length: number): number =>
-  length === 0 ? 0 : Math.min(Math.max(position, 0), length - 1);
-
-/** The first item the draft does not answer; the first item when it answers all. */
-export const firstUnanswered = (items: DecideItem[], draft: string): number =>
-  Math.max(
-    items.findIndex((item) => !isAnswered(draft, item)),
-    0,
-  );
-
-/** The next item after `position` the draft does not answer, wrapping; `fallback` when there is none. */
-const nextUnanswered = (
-  items: DecideItem[],
-  draft: string,
-  position: number,
-  fallback: number,
-): number => {
-  const order = items
-    .map((_, n) => (position + 1 + n) % items.length)
-    .slice(0, -1);
-  const found = order.find((n) => {
-    const item = items[n];
-
-    return item !== undefined && !isAnswered(draft, item);
-  });
-
-  return found ?? fallback;
-};
-
-/** Where the band goes after an option is clicked: on to the next unanswered item, or it stays when all are answered. */
-export const afterAnswer = (band: Band, draft: string): number =>
-  nextUnanswered(band.items, draft, band.position, band.position);
-
-/** Skip: on to the next unanswered item, else simply the next one. */
-export const skipped = (band: Band, draft: string): number =>
-  nextUnanswered(band.items, draft, band.position, nextPosition(band));
-
-export const nextPosition = (band: Band): number =>
-  band.items.length === 0 ? 0 : (band.position + 1) % band.items.length;
-
-export const prevPosition = (band: Band): number =>
-  band.items.length === 0
-    ? 0
-    : (band.position - 1 + band.items.length) % band.items.length;
-
-/** A submitted prompt: folded while the turn runs. */
-export const away = (band: Band): Band => ({ ...band, isAway: true });
-
-/** The main loop's reply ended: shown again, unless ❌ folded it. */
-export const back = (band: Band): Band => ({ ...band, isAway: false });
-
-/** ❌: hidden until a refresh raises an item not open now. */
-export const dismissed = (band: Band): Band => ({
-  ...band,
-  isDismissed: true,
-  dismissedRefs: band.items.map(refOf),
-});
-
-/** /answers: shown again, at the first item the draft does not answer. */
-export const reopened = (band: Band, draft: string): Band => ({
-  ...band,
-  isDismissed: false,
-  isAway: false,
-  position: firstUnanswered(band.items, draft),
-});
-
-const union = (a: string[], b: string[]): string[] => [
-  ...new Set([...a, ...b]),
-];
-
-/**
- * The band once a refresh found `items` open: an item no longer open is
- * settled, a new one lifts a dismissal, and the band stays on the item it
- * showed if that is still open, else goes to the first unanswered one.
- */
-export const refreshed = (
-  band: Band,
-  items: DecideItem[],
-  draft: string,
-): Band => {
-  const open = items.map(refOf);
-  const known = union(band.knownRefs, open);
-  const shown = band.items[band.position];
-  const kept = shown === undefined ? -1 : open.indexOf(refOf(shown));
-  const isNew = open.some((ref) => !band.dismissedRefs.includes(ref));
-
-  return {
-    ...band,
-    items,
-    position: kept >= 0 ? kept : firstUnanswered(items, draft),
-    isDismissed: band.isDismissed && !isNew,
-    knownRefs: known,
-    settledRefs: known.filter((ref) => !open.includes(ref)),
-    problem: "",
-  };
-};
-
-/** The band once a tool row drew `items`: their refs are known, so a later refresh can settle them. */
-export const drawnByTool = (band: Band, items: DecideItem[]): Band => ({
-  ...band,
-  knownRefs: union(band.knownRefs, items.map(refOf)),
-});
-
-/** The band's position, held inside its items. */
-export const positionIn = (band: Band): number =>
-  clamp(band.position, band.items.length);
-
-/** The header line: `🧠 2/5 · <summary>`. */
-export const header = (band: Band): string => {
-  const position = positionIn(band);
-  const item = band.items[position];
-
-  return item === undefined
-    ? ""
-    : `🧠 ${position + 1}/${band.items.length} · ${item.summary}`;
-};
-
-/** One mark per item, `●` answered in the draft and `○` not, with which one the band shows. */
-export const progressMarks = (
-  band: Band,
-  draft: string,
-): { mark: string; isShown: boolean }[] =>
-  band.items.map((item, n) => ({
-    mark: isAnswered(draft, item) ? "●" : "○",
-    isShown: n === positionIn(band),
-  }));
-
-/** The marks as one line, the shown one drawn as `◉` answered or `◎` not. */
-export const progress = (band: Band, draft: string): string =>
-  progressMarks(band, draft)
-    .map(({ mark, isShown }) => (isShown ? (mark === "●" ? "◉" : "◎") : mark))
-    .join(" ");
-
-/** The glyph an option is drawn with: its own, else its item kind's. */
-export const glyphOf = (item: DecideItem, letter: string): string =>
-  item.options.find((o) => o.letter === letter)?.glyph ||
-  (item.kind === "checkbox"
-    ? "🔲"
-    : item.kind === "binary"
-      ? letter === "N"
-        ? "👎"
-        : "👍"
-      : "🔘");
-
-/** A line split at its backticks: even parts are prose, odd parts code. */
-export const codeSpans = (line: string): { text: string; isCode: boolean }[] =>
-  line
-    .split("`")
-    .map((text, n) => ({
-      text: text.replaceAll("**", ""),
-      isCode: n % 2 === 1,
-    }))
-    .filter((part) => part.text !== "");
-
-/** Rows a line takes wrapped into `width` columns, at least one. */
-const wrappedRows = (line: string, width: number): number =>
-  Math.max(1, Math.ceil([...line].length / Math.max(10, width)));
-
-/**
- * Rows an item takes drawn in full in a bordered box `columns` wide: the
- * border, the controls and the gap under them, the title, the note, and each
- * option with its ➕, ➖ and note lines, every line wrapped at its indent.
- */
-export const rowsNeeded = (item: DecideItem, columns: number): number => {
-  const inner = columns - 4;
-  const optionRows = item.options.map(
-    (o) =>
-      wrappedRows(
-        `🔘 ${o.letter}. ${o.name}: ${o.consequence ?? ""}`,
-        inner - 3,
-      ) +
-      [...(o.pros ?? []), ...(o.cons ?? []), ...(o.notes ?? [])].reduce(
-        (sum, line) => sum + wrappedRows(`➕ ${line}`, inner - 6),
-        0,
-      ),
-  );
-
-  return (
-    4 +
-    wrappedRows(`🧠 99/99 · ${item.summary}`, inner) +
-    (item.note ?? []).reduce(
-      (sum, line) => sum + wrappedRows(line, inner - 3),
-      0,
-    ) +
-    optionRows.reduce((sum, rows) => sum + rows, 0)
-  );
-};
-
-/** Whether every open item fits the band, so paging through them never moves between band and pane. */
-export const fitsBand = (
-  items: DecideItem[],
-  layout: { rows: number; columns: number },
-): boolean =>
-  layout.rows > 0 &&
-  items.every((item) => rowsNeeded(item, layout.columns) <= layout.rows);
-
-/** The items a tool call or the script handed over, whatever else the JSON held. */
-export const itemsOf = (value: unknown): DecideItem[] => {
-  const items =
-    typeof value === "object" && value !== null && "items" in value
-      ? (value as { items: unknown }).items
-      : [];
-
-  return Array.isArray(items) ? items.filter(isItem).map(withRef) : [];
-};
-
-const isItem = (value: unknown): value is DecideItem => {
-  const v = value as Partial<DecideItem> | null;
-
-  return (
-    typeof v === "object" &&
-    v !== null &&
-    typeof v.turn === "string" &&
-    typeof v.number === "number" &&
-    typeof v.summary === "string" &&
-    Array.isArray(v.options) &&
-    v.options.every(
-      (o) => typeof o?.letter === "string" && typeof o?.name === "string",
-    )
-  );
-};
-
-const withRef = (item: DecideItem): DecideItem => ({
-  ...item,
-  list: "Decide",
-  kind:
-    item.kind === "checkbox" || item.kind === "binary" ? item.kind : "radio",
-  ref: refOf(item),
-});
-
-/** Where a question's link points: a name that never resolves, so a click the mod misses opens nothing real. */
-export const QUESTION_LINK = "https://kanban-answers.invalid/";
-
-const plainSummary = (summary: string): string =>
-  summary.replaceAll("**", "").replaceAll("`", "").trim();
-
-/**
- * A reply's text with each open item's summary line, `1. **<summary>**`,
- * made a link to the item, `1. **[<summary>](…/<ref>)**`; the hrefs it made.
- */
-export const linkedQuestions = (
-  text: string,
-  items: DecideItem[],
-): { text: string; hrefs: string[] } => {
-  const bySummary = new Map(
-    items.map((item) => [plainSummary(item.summary), item]),
-  );
-  const hrefs: string[] = [];
-  const linked = text.replace(
-    /^(\s*\d+\.\s+)\*\*(.+?)\*\*([ \t]*)$/gm,
-    (line, lead: string, summary: string, tail: string) => {
-      const item = bySummary.get(plainSummary(summary));
-
-      if (item === undefined) {
-        return line;
-      }
-
-      const href = `${QUESTION_LINK}${refOf(item)}`;
-      hrefs.push(href);
-
-      return `${lead}**[${summary}](${href})**${tail}`;
-    },
-  );
-
-  return { text: linked, hrefs };
-};
-
-/** The item a question's link names, by its href. */
-export const itemOfLink = (items: DecideItem[], href: string): number =>
-  href.startsWith(QUESTION_LINK)
-    ? items.findIndex(
-        (item) => refOf(item) === href.slice(QUESTION_LINK.length),
-      )
-    : -1;
