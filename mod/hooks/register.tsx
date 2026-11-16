@@ -41,7 +41,7 @@ import {
   refreshed,
   reopened,
   skipped,
-} from "./answers";
+} from "../src/answers.ts";
 
 const TOOL = "kanban_options";
 const TOOL_CALLED = "mcp__coding-agent-kanban-answers__kanban_options";

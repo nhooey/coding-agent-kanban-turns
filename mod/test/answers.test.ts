@@ -24,7 +24,7 @@ import {
   refreshed,
   reopened,
   skipped,
-} from "../hooks/answers";
+} from "../src/answers.ts";
 import type { Band, DecideItem } from "../types";
 
 const radio: DecideItem = {
