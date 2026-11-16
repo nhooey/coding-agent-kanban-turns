@@ -444,22 +444,6 @@
         "type": "github"
       }
     },
-    "opinionated-claude-skills-src": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1791864724,
-        "narHash": "sha256-BvcB6z7bQEfwfmdNw08b7g3y9VEUnvahi8K4blfpKyc=",
-        "owner": "Pyroxin",
-        "repo": "opinionated-claude-skills",
-        "rev": "271bbad0fb69b592894132e7f36b37048d5f6c83",
-        "type": "github"
-      },
-      "original": {
-        "owner": "Pyroxin",
-        "repo": "opinionated-claude-skills",
-        "type": "github"
-      }
-    },
     "root": {
       "inputs": {
         "agent-skill-flake": "agent-skill-flake",
@@ -469,7 +453,6 @@
         "nix-skills": "nix-skills",
         "nixpkgs": "nixpkgs",
         "shell-skills": "shell-skills",
-        "skillspkgs-opinionated-software-engineering": "skillspkgs-opinionated-software-engineering",
         "software-design-skills": "software-design-skills",
         "systems": "systems_10",
         "writing-skills": "writing-skills"
@@ -525,32 +508,6 @@
       "original": {
         "owner": "nhooey",
         "repo": "skill-authoring-skills",
-        "type": "github"
-      }
-    },
-    "skillspkgs-opinionated-software-engineering": {
-      "inputs": {
-        "agent-skill-flake": [
-          "agent-skill-flake"
-        ],
-        "nixpkgs": [
-          "nixpkgs"
-        ],
-        "opinionated-claude-skills-src": "opinionated-claude-skills-src"
-      },
-      "locked": {
-        "dir": "pkgs/opinionated-software-engineering",
-        "lastModified": 1794855416,
-        "narHash": "sha256-alHEuWX6AHXI0qiGyMLVV3uTpv2m5WggwaLx2kO4jhQ=",
-        "owner": "nhooey",
-        "repo": "skillspkgs",
-        "rev": "b4abd4790fa203f1be7a6d94692c81537b9eebf5",
-        "type": "github"
-      },
-      "original": {
-        "dir": "pkgs/opinionated-software-engineering",
-        "owner": "nhooey",
-        "repo": "skillspkgs",
         "type": "github"
       }
     },
