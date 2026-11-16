@@ -1,14 +1,15 @@
 ---
-title: The mod tells the agent the turn-response format and where the items go
+title: The mod tells the agent to call its tool before a reply with Decide items
 state: approved
 kind: implementation
 part-of: kanban-mod-own-repository
 needs: [kanban-mod-split]
-touches: [hooks/register.tsx, hooks/instructions.ts]
+touches: [mod/hooks/register.tsx, mod/src/instructions.ts]
 ---
 
-# The mod tells the agent the turn-response format and where the items go
+# The mod tells the agent to call its tool before a reply with Decide items
 
-- A `prompt.context` hook adds the mod's instructions to each turn: the progress-update line, the 8 lists and what each holds, the shape of a Decide item, and the rule that every item goes in one `kanban_items` call before the final response, whose text keeps only what isn't an item.
-- The instructions are a TypeScript string in `hooks/instructions.ts`, written from the skill's SKILL.md and trimmed to what the agent writes; what the mod draws itself, such as the 📌 roll-up, the 🔖 tags and the header underlines, is left out.
-- If the kanban skill is loaded anyway, a `skill.prompt` hook for `coding-agent-kanban-turn-responses` replaces its text with one line saying the mod handles turn responses, so the two never both apply.
+- A `prompt.context` hook adds the mod's instructions to each turn: before writing a final response that holds Decide items, call `kanban_options` once, so their buttons sit just above the reply; its input is `{"items": [...]}`, one entry per Decide item of that response, with the turn id, the item's number and summary, its kind (`radio`, `checkbox` or `binary`, from its glyphs) and each option's letter, name, consequence and ➕ and ➖ lines as `pros` and `cons`. The final response is written exactly as it would be without the tool.
+- This is the paragraph the kanban skill's "Buttons for the options" section held; the skill no longer carries it, so the mod is where an agent learns of the tool.
+- The instructions are a TypeScript string in `src/instructions.ts`, with a test that the hook adds them, and that they name the tool the mod registers.
+- The turn-response format itself stays in the skill; the mod adds only what concerns its own tool.
