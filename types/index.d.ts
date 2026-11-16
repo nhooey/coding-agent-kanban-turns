@@ -38,8 +38,10 @@ export type Band = {
   items: DecideItem[];
   /** Which item the band shows, an index into `items`. */
   position: number;
-  /** True after ✕, until a refresh raises an item not in `dismissedRefs`, or /answers. */
+  /** True after ❌, until a refresh raises an item not in `dismissedRefs`, or /answers. */
   isDismissed: boolean;
+  /** True from a submitted prompt until the main loop's reply ends: folded meanwhile, then shown again. */
+  isAway: boolean;
   /** The items' refs when ✕ was pressed. */
   dismissedRefs: string[];
   /** Every ref a tool row drew or a refresh found open, so a ref gone from the open list reads as settled. */

@@ -16,13 +16,7 @@ Answer `y` to add the marketplace, then choose a scope. From a shell:
 claude plugin install coding-agent-kanban-answers --marketplace nhooey/coding-agent-skills
 ```
 
-The mod reads the open items with the skill's `scripts/outstanding.py`, so the skill has to be installed too. It looks for the script in this order:
-
-1. beside the mod in this repository, `skills/coding-agent-kanban-turn-responses/scripts/outstanding.py`, when the mod runs from a checkout (`claude --plugin-dir plugins/coding-agent-kanban-answers`, or a folder marketplace);
-2. the project's `.claude/skills/coding-agent-kanban-turn-responses/`;
-3. `~/.claude/skills/coding-agent-kanban-turn-responses/`.
-
-It runs `python3` from your `PATH`.
+The mod reads the open items with the skill's `scripts/outstanding.py`, and only the copy beside it in this repository, `skills/coding-agent-kanban-turn-responses/scripts/outstanding.py`, so the mod and the script always come from the same commit. That copy is there when the mod runs from a checkout (`skills-dev mods try`, or `claude --plugin-dir plugins/coding-agent-kanban-answers`) or from the marketplace's clone. Anywhere else the band stays empty and `/answers` says why. It runs `python3` from your `PATH`.
 
 ## What it draws
 
@@ -32,7 +26,7 @@ The band shows one open Decide item at a time, inside a rounded border, laid out
 
 ```text
 ╭──────────────────────────────────────────────────────────────────╮
-│ h: ⏪ Prev  j: ⏭️ Skip  l: ⏩ Next  🔄 Reassess  q: ❎  ● ◎ ○ ○ ○  │
+│ h: ⏪ Prev  j: ⏭️ Skip  l: ⏩ Next  🔄 Reassess  q: ❌  ● ◎ ○ ○ ○  │
 │                                                                  │
 │ 🧠 2/5 · Which cache to keep for the loader                      │
 │    Both are already built; this only picks the default.          │
@@ -42,32 +36,38 @@ The band shows one open Decide item at a time, inside a rounded border, laid out
 │    🔘 B. Keep the memory cache: simpler.                         │
 │       ➕ Less code.                                              │
 │       ➖ Slow cold starts.                                       │
+│    ✏️ Notes, or an answer in your own words                      │
 ╰──────────────────────────────────────────────────────────────────╯
 ```
 
-Each part has its own colour from the theme, so it reads in light and dark themes alike: the title in the accent colour, code spans in another and the option the draft picks on a highlighted background. The ➕ and ➖ lines are plain text, as in a reply. The controls sit on top, so they stay put whatever the item's length, and the controls' words are underlined. Every item is drawn in full, its note and every ➕ and ➖ line, however many rows that takes.
+Each part has its own colour from the theme, so it reads in light and dark themes alike: the title in the accent colour, code spans in another and the option the draft picks on a highlighted background. The ➕ and ➖ lines are plain text, as in a reply, and part of their option: a click on any of an option's lines picks it, and they light up together under the pointer. The controls sit on top, so they stay put whatever the item's length, and the controls' words are underlined. Every item is drawn in full, its note and every ➕ and ➖ line, however many rows that takes.
 
-| Control         | What it does                                                                                                                              |
-| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| an option       | writes `<turn>.Decide.<n>.<letter>` into the draft, replacing the item's earlier answer there, and moves to the next unanswered item      |
-| a checkbox item | toggles its letter in one reference, `…Decide.3.A,C`, and stays on the item so you can pick more; `⏩ Next` or `⏭️ Skip` moves on         |
-| `⏭️ Skip`       | goes to the next item the draft doesn't answer                                                                                            |
-| `⏪ Prev`       | goes to the previous item, wrapping round                                                                                                 |
-| `⏩ Next`       | goes to the next item, wrapping round                                                                                                     |
-| `🔄 Reassess`   | submits the skill's `reassess` command, which works the open items out afresh; the one button that sends a prompt                         |
-| `❎`            | folds the band to a single `🧠` until a reply raises a Decide item it hasn't shown, until you click the `🧠`, or until you run `/answers` |
+| Control         | What it does                                                                                                                                                                                        |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| an option       | writes `<turn>.Decide.<n>.<letter>` into the draft, replacing the item's earlier answer there, and moves to the next unanswered item                                                                |
+| `✏️` notes      | on Enter, writes what you typed after the item's reference, on a line of its own: `<turn>.Decide.<n>.B: <note>` with a letter picked, or `<turn>.Decide.<n>: <text>`, an answer in words, with none |
+| a checkbox item | toggles its letter in one reference, `…Decide.3.A,C`, and stays on the item so you can pick more; `⏩ Next` or `⏭️ Skip` moves on                                                                   |
+| `⏭️ Skip`       | goes to the next item the draft doesn't answer                                                                                                                                                      |
+| `⏪ Prev`       | goes to the previous item, wrapping round                                                                                                                                                           |
+| `⏩ Next`       | goes to the next item, wrapping round                                                                                                                                                               |
+| `🔄 Reassess`   | submits the skill's `reassess` command, which works the open items out afresh; the one button that sends a prompt                                                                                   |
+| `❌`            | folds the band to a single `🧠` until a reply raises a Decide item it hasn't shown, until you click the `🧠`, or until you run `/answers`                                                           |
 
 The circles after the controls show which items the draft answers, `●` answered and `○` not, the shown item ringed, `◉` or `◎`, in the accent colour. Click a circle to go to its item. The band refreshes when a reply finishes.
 
-The hotkeys work only where the keyboard is. The prompt holds it by default, so letters typed there stay in the prompt. The pane takes the keyboard as it opens, from `🪟 Open in a pane` or `/answers`; for the band, press ctrl+x then tab, or click it. Then `h`, `j`, `l` and `q` press `⏪ Prev`, `⏭️ Skip`, `⏩ Next` and `❎`, as their labels show, and Escape gives the keyboard back to the prompt. Options have no hotkey, so they read exactly as the skill writes them; click them, or move the focus to one and press Enter.
+The hotkeys work only where the keyboard is. The prompt holds it by default, so letters typed there stay in the prompt. The pane takes the keyboard as it opens, from `🪟 Open in a pane` or `/answers`; for the band, press ctrl+x then tab, or click it. Then `h`, `j`, `l` and `q` press `⏪ Prev`, `⏭️ Skip`, `⏩ Next` and `❌`, as their labels show, and Escape gives the keyboard back to the prompt. Options have no hotkey, so they read exactly as the skill writes them; click them, or move the focus to one and press Enter.
 
 ### Bringing the band back
 
-After `❎`, which also closes the pane, while any Decide item is open, the band leaves a single clickable `🧠` where it stood. Clicking it shows the band again, and `/answers` opens the pane, at the first item the draft doesn't answer, and re-reads the open items. With no item open, the `🧠` goes too, and `/answers` says there is nothing to answer.
+Submitting a prompt folds the band to its `🧠` and closes the pane while the reply runs, and the reply's end shows the band again if any item is still open. After `❌`, which also closes the pane, while any Decide item is open, the band leaves a single clickable `🧠` where it stood. Clicking it shows the band again, and `/answers` opens the pane, at the first item the draft doesn't answer, and re-reads the open items. With no item open, the `🧠` goes too, and `/answers` says there is nothing to answer.
 
 ### Buttons in the transcript
 
-The mod registers the tool `kanban_options`, listed as `mcp__coding-agent-kanban-answers__kanban_options`. The skill tells the agent to call it with the turn's Decide items right before writing its final response, so the tool's row, with each item drawn in its own border as the band draws it, sits just above the reply. Its buttons write the draft as the band's do. Once a refresh finds an item no longer open, its row is dimmed, marked `(settled)`, and its buttons do nothing.
+The mod registers the tool `kanban_options`, listed as `mcp__coding-agent-kanban-answers__kanban_options`. The skill tells the agent to call it with the turn's Decide items right before writing its final response, so the tool's row, with each item drawn in its own border as the band draws it, sits just above the reply. The row draws only the items, with each option's consequence, ➕ and ➖ lines when the call passes them; the call's input and result show in ctrl+o, or when the call failed, and so does the result line where it's drawn apart from the row, as after a compaction. Its buttons write the draft as the band's do. Once a refresh finds an item no longer open, its row is dimmed, marked `(settled)`, and its buttons do nothing.
+
+### Questions in a reply
+
+Each open item's summary line in a reply, such as `1. **Which cache to keep**`, is drawn as a link. Clicking it shows the band at that item. The link points at `https://kanban-answers.invalid/<ref>`, a name that never resolves, and the stored reply is unchanged, so ctrl+o shows it as written.
 
 ## Where the items come from
 

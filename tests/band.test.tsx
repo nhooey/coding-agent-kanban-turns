@@ -285,6 +285,73 @@ test("a dismissed band stays folded until a reply raises a new item", async ($, 
   await band.unmount();
 });
 
+test("an option's pros and cons pick it too", async ($, on) => {
+  const state = engine(on, () => [
+    {
+      ...ITEMS[0],
+      options: [
+        {
+          letter: "A",
+          name: "Disk",
+          pros: ["Survives restarts."],
+          cons: ["Disk use."],
+        },
+        {
+          letter: "B",
+          name: "Memory",
+          pros: ["Less code."],
+          cons: ["Slow cold starts."],
+        },
+      ],
+    },
+  ]);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+
+  await ui.press({ key: "option-B-con-0" });
+  expect(state.box).toBe("9efb08a1.Decide.1.B");
+  await ui.press({ key: "option-A-pro-0" });
+  expect(state.box).toBe("9efb08a1.Decide.1.A");
+  await ui.unmount();
+});
+
+test("the notes field writes a note into the draft", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+
+  await ui.press({ key: "option-B" });
+  await ui.press({ key: "prev" });
+  await ui.input({ key: "option-notes", text: "only for the loader" });
+  expect(state.box).toBe("9efb08a1.Decide.1.B: only for the loader");
+  expect(await headerText(ui)).toBe("🧠 2/3 · Cleanups to start");
+  expect(state.sent).toEqual([]);
+  await ui.unmount();
+});
+
+test("a question in a reply opens the band at its item", async ($, on) => {
+  engine(on, () => ITEMS);
+  const band = await $.ui.mount({ ...BAND, surface: "terminal" });
+  await $.turn.complete(replyDone("t1"));
+  const reply = await $.ui.mount({
+    plugin: PLUGIN,
+    component: "AssistantMessage",
+    surface: "terminal",
+    props: {
+      text: "3. **Ship tonight?**  \n   Or wait.",
+      isFirstOfReply: true,
+    },
+  });
+
+  await reply.press({
+    key: "kanban-questions",
+    link: { href: "https://kanban-answers.invalid/9efb08a1.Decide.3" },
+  });
+  expect(await headerText(band)).toBe("🧠 3/3 · Ship tonight?");
+  await reply.unmount();
+  await band.unmount();
+});
+
 test("a progress circle jumps to its item", async ($, on) => {
   engine(on, () => ITEMS);
   await $.command.run(ANSWERS);
@@ -305,7 +372,76 @@ test("Reassess submits the reassess command", async ($, on) => {
 
   expect(state.sent).toEqual(["reassess"]);
   expect(state.box).toBe("");
+  expect(state.isPaneOpen).toBe(false);
   await ui.unmount();
+});
+
+test("a submitted prompt folds the band and closes the pane until the reply ends", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  const band = await $.ui.mount({ ...BAND, surface: "terminal" });
+  await $.turn.complete(replyDone("t1"));
+  await band.press({ key: "option-A" });
+  expect(await headerText(band)).toBe("🧠 2/3 · Cleanups to start");
+
+  await $.command.run(ANSWERS);
+  expect(state.isPaneOpen).toBe(true);
+  await $.prompt.submit({
+    text: state.box,
+    wait: false,
+    origin: { kind: "composer" },
+  });
+
+  expect(state.isPaneOpen).toBe(false);
+  expect(await headerText(band)).toBeUndefined();
+  expect((await band.find({ type: "Button", key: "reopen" }))?.text).toBe("🧠");
+
+  await $.turn.complete(replyDone("t2"));
+  expect(await headerText(band)).toBe("🧠 2/3 · Cleanups to start");
+  await band.unmount();
+});
+
+const TOOL_ROW = {
+  tool_use_id: "toolu_1",
+  tool: TOOL,
+  input: { items: ITEMS },
+  isRunning: false,
+  isErrored: false,
+  isInterrupted: false,
+};
+
+const TOOL_RESULT = {
+  tool_use_id: "toolu_1",
+  tool: TOOL,
+  output: "Drew buttons for 3 Decide items above the final response",
+  isErrored: false,
+};
+
+test("the tool's result line shows only in ctrl+o or on an error", async ($, on) => {
+  on("ui.render", ($, e) => {
+    const { Text } = $.ui.resolve(e);
+
+    return <Text>result line</Text>;
+  });
+  const result = await $.ui.mount({
+    plugin: PLUGIN,
+    surface: "terminal",
+    component: "ToolResult",
+    requestId: "toolu_1",
+    props: TOOL_RESULT,
+  });
+
+  expect(
+    await result.find({ type: "Text", text: /result line/ }),
+  ).toBeUndefined();
+  await result.redraw({ ...TOOL_RESULT, isExpanded: true });
+  expect(
+    await result.find({ type: "Text", text: /result line/ }),
+  ).toBeDefined();
+  await result.redraw({ ...TOOL_RESULT, isErrored: true });
+  expect(
+    await result.find({ type: "Text", text: /result line/ }),
+  ).toBeDefined();
+  await result.unmount();
 });
 
 test("the tool row draws buttons that build the draft, and dims a settled item", async ($, on) => {
@@ -323,17 +459,14 @@ test("the tool row draws buttons that build the draft, and dims a settled item",
     surface: "terminal",
     component: "ToolUse",
     requestId: "toolu_1",
-    props: {
-      tool_use_id: "toolu_1",
-      tool: TOOL,
-      input: { items: ITEMS },
-      isRunning: false,
-      isErrored: false,
-      isInterrupted: false,
-    },
+    props: TOOL_ROW,
   });
 
+  // The buttons repeat the call, so the engine's row shows only in ctrl+o.
+  expect(await row.find({ type: "Text", text: /engine row/ })).toBeUndefined();
+  await row.redraw({ ...TOOL_ROW, isExpanded: true });
   expect(await row.find({ type: "Text", text: /engine row/ })).toBeDefined();
+  await row.redraw(TOOL_ROW);
   await row.press({ key: "9efb08a1.Decide.3.N" });
   expect(state.box).toBe("9efb08a1.Decide.3.N");
 

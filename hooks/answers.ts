@@ -4,24 +4,33 @@
 
 import type { Band, DecideItem } from "../types";
 
-/** One answer written in the draft, `<turn>.Decide.<n>.<letters>`, and where it sits. */
+/**
+ * One answer written in the draft, and where it sits: `<turn>.Decide.<n>.<letters>`,
+ * a note after it to the end of its line, `…Decide.<n>.B: <note>`, or a note
+ * alone, `…Decide.<n>: <text>`, which answers the item in words.
+ */
 export type Answer = {
   start: number;
   end: number;
   turn: string;
   number: number;
   letters: string[];
+  note: string;
 };
 
 // A turn id of 6 to 8 hex characters (a prefix of the 8 is as good), the item
-// number, and one capital or several joined by commas. Not part of a longer word.
+// number, then one capital or several joined by commas, a note after `: ` to
+// the end of the line, or both. Not part of a longer word.
 const ANSWER =
-  /(?<![\w.])([0-9a-f]{6,8})\.Decide\.(\d+)\.([A-Z](?:,[A-Z])*)(?!\w)/g;
+  /(?<![\w.])([0-9a-f]{6,8})\.Decide\.(\d+)(?:\.([A-Z](?:,[A-Z])*)(?!\w))?(?:: ([^\n]*))?/g;
+// A note that is only letters, `…Decide.2: B`, is the letters written the other way.
+const LETTERS_ONLY = /^([A-Z](?:\s*,\s*[A-Z])*)\s*$/;
 
 export const emptyBand: Band = {
   items: [],
   position: 0,
   isDismissed: false,
+  isAway: false,
   dismissedRefs: [],
   knownRefs: [],
   settledRefs: [],
@@ -34,13 +43,30 @@ export const refOf = (item: DecideItem): string =>
 
 /** Every answer written in the draft, in order. */
 export const answersIn = (draft: string): Answer[] =>
-  [...draft.matchAll(ANSWER)].map((m) => ({
-    start: m.index ?? 0,
-    end: (m.index ?? 0) + m[0].length,
-    turn: m[1] ?? "",
-    number: Number(m[2]),
-    letters: (m[3] ?? "").split(","),
-  }));
+  [...draft.matchAll(ANSWER)]
+    .filter((m) => m[3] !== undefined || m[4] !== undefined)
+    .map((m) => {
+      const said = (m[4] ?? "").trim();
+      const asLetters = m[3] === undefined ? LETTERS_ONLY.exec(said) : null;
+      const letters = m[3] ?? asLetters?.[1]?.replace(/\s/g, "") ?? "";
+
+      return {
+        start: m.index ?? 0,
+        end: (m.index ?? 0) + m[0].length,
+        turn: m[1] ?? "",
+        number: Number(m[2]),
+        letters: letters === "" ? [] : letters.split(","),
+        note: asLetters ? "" : said,
+      };
+    });
+
+/** The note the draft gives the item; empty when it gives none. */
+export const noteFor = (draft: string, item: DecideItem): string =>
+  answerTo(draft, item)?.note ?? "";
+
+/** An answer as the draft holds it: the letters, then the note. */
+const written = (item: DecideItem, letters: string[], note: string): string =>
+  `${refOf(item)}${letters.length > 0 ? `.${letters.join(",")}` : ""}${note ? `: ${note}` : ""}`;
 
 const isFor = (answer: Answer, item: DecideItem): boolean =>
   answer.number === item.number &&
@@ -83,11 +109,60 @@ const withoutAnswer = (draft: string, answer: Answer): string => {
 
   return before.endsWith(" ") && (after.startsWith(" ") || after === "")
     ? before.slice(0, -1) + after
-    : before + after.replace(/^ /, "");
+    : (before.endsWith("\n") || before === "") &&
+        (after.startsWith("\n") || after === "")
+      ? before.replace(/\n$/, "") +
+        (before === "" ? after.replace(/^\n/, "") : after)
+      : before + after.replace(/^ /, "");
+};
+
+// A note runs to the end of its line, so what follows one starts a new line.
+const endsInNote = (draft: string): boolean => {
+  const last = answersIn(draft).at(-1);
+
+  return (
+    last !== undefined &&
+    last.note !== "" &&
+    !draft.slice(last.end).includes("\n")
+  );
 };
 
 const appended = (draft: string, text: string): string =>
-  draft === "" || /\s$/.test(draft) ? draft + text : `${draft} ${text}`;
+  draft === "" || /\s$/.test(draft)
+    ? draft + text
+    : endsInNote(draft)
+      ? `${draft}\n${text}`
+      : `${draft} ${text}`;
+
+/**
+ * The draft once a note is written for the item: its answer, letters kept,
+ * moved to a line of its own at the end, since a note runs to its line's end;
+ * an empty note leaves the letters alone, or drops a letterless answer.
+ */
+export const withNote = (
+  draft: string,
+  item: DecideItem,
+  note: string,
+): string => {
+  const held = answerTo(draft, item);
+  const letters = held?.letters ?? [];
+  const said = note.replace(/\s+/g, " ").trim();
+  const rest = held === undefined ? draft : withoutAnswer(draft, held);
+
+  if (said === "") {
+    return letters.length === 0 || held === undefined
+      ? rest
+      : draft.slice(0, held.start) +
+          written(item, letters, "") +
+          draft.slice(held.end);
+  }
+
+  const base = rest.replace(/\s+$/, "");
+
+  return base === ""
+    ? written(item, letters, said)
+    : `${base}\n${written(item, letters, said)}`;
+};
 
 /**
  * The draft once an option is clicked: the item's answer written in place of
@@ -101,11 +176,12 @@ export const choose = (
 ): string => {
   const held = answerTo(draft, item);
   const letters = lettersAfter(item, held?.letters ?? [], letter);
-  const text = `${refOf(item)}.${letters.join(",")}`;
+  const note = held?.note ?? "";
+  const text = written(item, letters, note);
 
   return held === undefined
     ? appended(draft, text)
-    : letters.length === 0
+    : letters.length === 0 && note === ""
       ? withoutAnswer(draft, held)
       : draft.slice(0, held.start) + text + draft.slice(held.end);
 };
@@ -155,7 +231,13 @@ export const prevPosition = (band: Band): number =>
     ? 0
     : (band.position - 1 + band.items.length) % band.items.length;
 
-/** ✕: hidden until a refresh raises an item not open now. */
+/** A submitted prompt: folded while the turn runs. */
+export const away = (band: Band): Band => ({ ...band, isAway: true });
+
+/** The main loop's reply ended: shown again, unless ❌ folded it. */
+export const back = (band: Band): Band => ({ ...band, isAway: false });
+
+/** ❌: hidden until a refresh raises an item not open now. */
 export const dismissed = (band: Band): Band => ({
   ...band,
   isDismissed: true,
@@ -166,6 +248,7 @@ export const dismissed = (band: Band): Band => ({
 export const reopened = (band: Band, draft: string): Band => ({
   ...band,
   isDismissed: false,
+  isAway: false,
   position: firstUnanswered(band.items, draft),
 });
 
@@ -332,3 +415,48 @@ const withRef = (item: DecideItem): DecideItem => ({
     item.kind === "checkbox" || item.kind === "binary" ? item.kind : "radio",
   ref: refOf(item),
 });
+
+/** Where a question's link points: a name that never resolves, so a click the mod misses opens nothing real. */
+export const QUESTION_LINK = "https://kanban-answers.invalid/";
+
+const plainSummary = (summary: string): string =>
+  summary.replaceAll("**", "").replaceAll("`", "").trim();
+
+/**
+ * A reply's text with each open item's summary line, `1. **<summary>**`,
+ * made a link to the item, `1. **[<summary>](…/<ref>)**`; the hrefs it made.
+ */
+export const linkedQuestions = (
+  text: string,
+  items: DecideItem[],
+): { text: string; hrefs: string[] } => {
+  const bySummary = new Map(
+    items.map((item) => [plainSummary(item.summary), item]),
+  );
+  const hrefs: string[] = [];
+  const linked = text.replace(
+    /^(\s*\d+\.\s+)\*\*(.+?)\*\*([ \t]*)$/gm,
+    (line, lead: string, summary: string, tail: string) => {
+      const item = bySummary.get(plainSummary(summary));
+
+      if (item === undefined) {
+        return line;
+      }
+
+      const href = `${QUESTION_LINK}${refOf(item)}`;
+      hrefs.push(href);
+
+      return `${lead}**[${summary}](${href})**${tail}`;
+    },
+  );
+
+  return { text: linked, hrefs };
+};
+
+/** The item a question's link names, by its href. */
+export const itemOfLink = (items: DecideItem[], href: string): number =>
+  href.startsWith(QUESTION_LINK)
+    ? items.findIndex(
+        (item) => refOf(item) === href.slice(QUESTION_LINK.length),
+      )
+    : -1;

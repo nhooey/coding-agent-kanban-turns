@@ -17,6 +17,8 @@ import type { EngineInterface, Register } from "claude-code";
 import type { Band, DecideItem } from "../types";
 import {
   afterAnswer,
+  away,
+  back,
   choose,
   codeSpans,
   dismissed,
@@ -26,8 +28,12 @@ import {
   emptyBand,
   header,
   itemsOf,
+  itemOfLink,
   lettersFor,
+  linkedQuestions,
   nextPosition,
+  noteFor,
+  withNote,
   positionIn,
   prevPosition,
   progressMarks,
@@ -64,7 +70,7 @@ const band = atom(
   { plugin: "coding-agent-kanban-answers", key: "band" } as const,
   emptyBand,
   {
-    shape: "band-1",
+    shape: "band-2",
   },
 );
 const draft = atom(
@@ -103,6 +109,20 @@ const ITEM_SCHEMA = {
             description: "The capital letter, A, B, C, or Y and N.",
           },
           name: { type: "string", description: "The option's bold name." },
+          consequence: {
+            type: "string",
+            description: "What follows the name after its colon.",
+          },
+          pros: {
+            type: "array",
+            items: { type: "string" },
+            description: "The option's ➕ lines, without the ➕.",
+          },
+          cons: {
+            type: "array",
+            items: { type: "string" },
+            description: "The option's ➖ lines, without the ➖.",
+          },
         },
       },
     },
@@ -115,25 +135,15 @@ const TOOL_DESCRIPTION = [
   "A click writes the item's reference into the user's prompt draft; nothing is sent.",
 ].join(" ");
 
-/** Where the skill's `outstanding.py` is: beside this plugin in its repository, else where the skill is installed. */
-const scriptPath = async (
-  $: EngineInterface,
-  cwd: string,
-): Promise<string | undefined> => {
-  const home = await $.env.get("HOME");
+/**
+ * The skill's `outstanding.py` in the repository this plugin was loaded from,
+ * never an installed copy, which can lag behind the plugin.
+ */
+const scriptPath = async ($: EngineInterface): Promise<string | undefined> => {
   const repository = $.plugin.root.split("/").slice(0, -2).join("/");
-  const candidates = [
-    `${repository}/${SCRIPT}`,
-    `${cwd}/.claude/skills/coding-agent-kanban-turn-responses/scripts/outstanding.py`,
-    ...(home
-      ? [
-          `${home}/.claude/skills/coding-agent-kanban-turn-responses/scripts/outstanding.py`,
-        ]
-      : []),
-  ];
-  const found = await Promise.all(candidates.map((path) => $.fs.exists(path)));
+  const path = `${repository}/${SCRIPT}`;
 
-  return candidates.find((_, n) => found[n]);
+  return (await $.fs.exists(path)) ? path : undefined;
 };
 
 /** Runs `outstanding.py decide --json` over this session's transcript: the open items, or why there are none. */
@@ -142,10 +152,13 @@ const openItems = async (
 ): Promise<{ items: DecideItem[]; problem: string }> => {
   const cwd = await $.session.cwd();
   const session = await $.session.id();
-  const script = await scriptPath($, cwd);
+  const script = await scriptPath($);
 
   if (script === undefined) {
-    return { items: [], problem: "outstanding.py not found" };
+    return {
+      items: [],
+      problem: `the plugin is not loaded from a coding-agent-skills checkout, so ${SCRIPT} is not beside it`,
+    };
   }
 
   const ran = await $.process.run(
@@ -193,11 +206,39 @@ const answer = async (
   });
 };
 
+/** Writes the item's note into the draft, on a line of its own, and moves the band on as an answer does. */
+const note = async (
+  $: EngineInterface,
+  item: DecideItem,
+  text: string,
+): Promise<void> => {
+  const box = await $.prompt.read();
+  const written = withNote(box.text, item, text);
+  await $.prompt.fill({ text: written, mode: "replace" });
+  await update($, draft, () => written);
+  await update($, band, (b) => {
+    const shown = b.items[positionIn(b)];
+    const isShown = shown !== undefined && refOf(shown) === refOf(item);
+
+    return isShown ? { ...b, position: afterAnswer(b, written) } : b;
+  });
+};
+
 /** /answers and the 🧠 above the prompt: re-reads the open items and shows them at the first unanswered one. */
 const reopen = async ($: EngineInterface): Promise<void> => {
   await refresh($);
   const text = await read($, draft);
   await update($, band, (b) => reopened(b, text));
+};
+
+/** A question's link pressed: the band, shown again, at its item. */
+const showItem = async ($: EngineInterface, href: string): Promise<void> => {
+  const text = await read($, draft);
+  await update($, band, (b) => {
+    const n = itemOfLink(b.items, href);
+
+    return n < 0 ? b : { ...reopened(b, text), position: n };
+  });
 };
 
 /** Opens the pane with the keyboard in it, so its hotkeys work at once. */
@@ -206,9 +247,15 @@ const openPane = ($: EngineInterface) => $.ui.open({ ...PANE, focus: true });
 const isPaneShown = async ($: EngineInterface): Promise<boolean> =>
   (await $.ui.panes()).some((pane) => pane.id === PANE.id && pane.isShown);
 
-/** ❎: puts the items away until a reply raises a new one, and closes the pane. */
+/** ❌: puts the items away until a reply raises a new one, and closes the pane. */
 const dismiss = async ($: EngineInterface): Promise<void> => {
   await update($, band, dismissed);
+  await $.ui.close({ id: PANE.id });
+};
+
+/** A submitted prompt: folds the band and closes the pane until the reply ends. */
+const stepAway = async ($: EngineInterface): Promise<void> => {
+  await update($, band, away);
   await $.ui.close({ id: PANE.id });
 };
 
@@ -266,9 +313,22 @@ export const register: Register = (on) => {
 
     if (e.agentId === undefined) {
       await refresh($);
+      await update($, band, back);
     }
 
     return done;
+  });
+
+  // While the reply to a prompt runs, the band folds to its 🧠 and the pane
+  // closes; the reply's end shows the band again if an item is still open.
+  on("prompt.submit", async ($, e, next) => {
+    const submitted = await next(e);
+
+    if (submitted.drop === undefined) {
+      await stepAway($);
+    }
+
+    return submitted;
   });
 
   on("prompt.change", async ($, e, next) => {
@@ -294,7 +354,7 @@ export const register: Register = (on) => {
     const { Box, Button, Text } = elements;
     const fits = fitsBand(b.items, seen);
 
-    if (!b.isDismissed && fits && !(await isPaneShown($))) {
+    if (!b.isDismissed && !b.isAway && fits && !(await isPaneShown($))) {
       return fullView($, elements, b, await read($, draft));
     }
 
@@ -322,6 +382,28 @@ export const register: Register = (on) => {
     );
   });
 
+  // A reply's Decide questions: each open item's summary line becomes a link
+  // that opens the band, or the pane when the band is folded, at that item.
+  on("ui.render", { component: "AssistantMessage" }, async ($, e, next) => {
+    const b = await read($, band);
+    const linked = linkedQuestions(e.props.text, b.items);
+
+    if (linked.hrefs.length === 0) {
+      return next(e);
+    }
+
+    const { Markdown } = $.ui.resolve(e);
+
+    return (
+      <Markdown
+        key="kanban-questions"
+        text={linked.text}
+        pressableLinks={linked.hrefs}
+        onLinkPress={(link) => showItem($, link.href)}
+      />
+    );
+  });
+
   // The pane: the controls on top, then the item, drawn in full.
   on("ui.render", { component: "Pane", requestId: PANE.id }, async ($, e) => {
     const b = await read($, band);
@@ -336,20 +418,45 @@ export const register: Register = (on) => {
     );
   });
 
+  // Where the engine draws the result apart from the call's row, such as the
+  // view after a compaction, the result line repeats the buttons: keep it for
+  // ctrl+o and for an error only.
+  on("ui.render", { component: "ToolResult" }, async ($, e, next) => {
+    if (
+      e.props.tool !== TOOL_CALLED ||
+      e.props.isExpanded ||
+      e.props.isErrored
+    ) {
+      return next(e);
+    }
+    const { Box } = $.ui.resolve(e);
+
+    return <Box />;
+  });
+
   on("ui.render", { component: "ToolUse" }, async ($, e, next) => {
     if (e.props.tool !== TOOL_CALLED) {
       return next(e);
     }
 
-    const row = await next(e);
+    // The engine's row prints the call's input JSON and its result line above
+    // the buttons, which repeat both. Keep it only where it says more: ctrl+o,
+    // an error, an interrupted call, or a call that drew no items.
     const items = itemsOf(e.props.input);
+    const isPlain =
+      !e.props.isExpanded &&
+      !e.props.isErrored &&
+      !e.props.isInterrupted &&
+      items.length > 0;
+    if (!isPlain) {
+      return next(e);
+    }
     const b = await read($, band);
     const text = await read($, draft);
-    const { Box, Button, Text } = $.ui.resolve(e);
+    const { Box, Button, Text, Input } = $.ui.resolve(e);
 
     return (
       <Box flexDirection="column">
-        {row}
         {items.map((item) => {
           const isSettled = b.settledRefs.includes(refOf(item));
 
@@ -362,13 +469,15 @@ export const register: Register = (on) => {
               borderDimColor={isSettled}
               paddingX={1}
             >
-              {itemView({ Box, Button, Text }, item, {
+              {itemView({ Box, Button, Text, Input }, item, {
                 title: `🧠 Decide.${item.number} · ${item.summary}${isSettled ? " (settled)" : ""}`,
                 chosen: isSettled ? [] : lettersFor(text, item),
+                note: isSettled ? "" : noteFor(text, item),
                 isSettled,
                 keyOf: (letter) => `${refOf(item)}.${letter}`,
                 onPick: (letter) =>
                   isSettled ? undefined : answer($, item, letter),
+                onNote: (said) => (isSettled ? undefined : note($, item, said)),
               })}
             </Box>
           );
@@ -385,7 +494,7 @@ const fullView = (
   b: Band,
   text: string,
 ) => {
-  const { Box, Button, Text } = elements;
+  const { Box, Button, Text, Input } = elements;
   const item = b.items[positionIn(b)] as DecideItem;
   const move = (position: (b: Band) => number) => () =>
     update($, band, (current) => ({
@@ -429,12 +538,14 @@ const fullView = (
           KEYS.skip,
         )}
         {control("next", "⏩", "Next", move(nextPosition), KEYS.next)}
-        {control("reassess", "🔄", "Reassess", () =>
-          $.prompt.submit({ text: REASSESS }),
-        )}
+        {control("reassess", "🔄", "Reassess", async () => {
+          // The plugin's own submit skips its `prompt.submit` hook.
+          await $.prompt.submit({ text: REASSESS });
+          await stepAway($);
+        })}
         <Button
           key="dismiss"
-          label="❎"
+          label="❌"
           plain
           dimColor
           role="dismiss"
@@ -456,11 +567,13 @@ const fullView = (
           ))}
         </Box>
       </Box>
-      {itemView({ Box, Button, Text }, item, {
+      {itemView({ Box, Button, Text, Input }, item, {
         title: header(b),
         chosen: lettersFor(text, item),
+        note: noteFor(text, item),
         keyOf: (letter) => `option-${letter}`,
         onPick: (letter) => answer($, item, letter),
+        onNote: (said) => note($, item, said),
       })}
     </Box>
   );
@@ -469,7 +582,7 @@ const fullView = (
 /** The elements an item is drawn with, from the surface's table. */
 type Elements = Pick<
   ReturnType<EngineInterface["ui"]["resolve"]>,
-  "Box" | "Button" | "Text"
+  "Box" | "Button" | "Text" | "Input"
 >;
 
 /**
@@ -483,12 +596,14 @@ const itemView = (
   view: {
     title: string;
     chosen: string[];
+    note: string;
     isSettled?: boolean;
     keyOf: (letter: string) => string;
     onPick: (letter: string) => unknown;
+    onNote: (note: string) => unknown;
   },
 ) => {
-  const { Box, Button, Text } = elements;
+  const { Box, Button, Input, Text } = elements;
   const dim = view.isSettled === true;
   const inline = (
     line: string,
@@ -537,19 +652,32 @@ const itemView = (
       {item.options.map((option) => {
         const isChosen = view.chosen.includes(option.letter);
         const pick = isChosen ? { backgroundColor: COLOR.chosen } : {};
+        const key = view.keyOf(option.letter);
+        // A Button holds only text, so each of the option's lines is a button
+        // of its own that picks it, and the lines light up together on hover.
+        const press = {
+          plain: true,
+          dimColor: dim,
+          hover: { scope: key, inverse: true },
+          onPress: () => view.onPick(option.letter),
+        } as const;
+        const under = (
+          prefix: string,
+          texts: string[] | undefined,
+          part: string,
+        ) =>
+          (texts ?? []).map((line, n) => (
+            <Box key={`${key}-${part}-${n}-box`} marginLeft={INDENT}>
+              <Button key={`${key}-${part}-${n}`} label={line} {...press}>
+                <Text {...pick}>{prefix ? `${prefix} ` : ""}</Text>
+                {inline(line, `${key}-${part}-${n}`, pick)}
+              </Button>
+            </Box>
+          ));
 
         return (
-          <Box
-            key={`${view.keyOf(option.letter)}-box`}
-            flexDirection="column"
-            marginLeft={INDENT}
-          >
-            <Button
-              key={view.keyOf(option.letter)}
-              plain
-              dimColor={dim}
-              onPress={() => view.onPick(option.letter)}
-            >
+          <Box key={`${key}-box`} flexDirection="column" marginLeft={INDENT}>
+            <Button key={key} label={option.name} {...press}>
               <Text {...pick}>
                 {glyphOf(item, option.letter)} {option.letter}.{" "}
               </Text>
@@ -562,12 +690,24 @@ const itemView = (
                 ? inline(option.consequence, `${option.letter}-then`, pick)
                 : null}
             </Button>
-            {lines("➕", option.pros, undefined, `${option.letter}-pro`)}
-            {lines("➖", option.cons, undefined, `${option.letter}-con`)}
-            {lines("", option.notes, undefined, `${option.letter}-note`)}
+            {under("➕", option.pros, "pro")}
+            {under("➖", option.cons, "con")}
+            {under("", option.notes, "note")}
           </Box>
         );
       })}
+      {dim ? null : (
+        <Box key={`${view.keyOf("notes")}-box`} marginLeft={INDENT}>
+          <Input
+            key={view.keyOf("notes")}
+            label="✏️ "
+            placeholder="Notes, or an answer in your own words"
+            submitLabel="add to the draft"
+            value={view.note}
+            onSubmit={(said) => view.onNote(said)}
+          />
+        </Box>
+      )}
     </Box>
   );
 };

@@ -9,8 +9,13 @@ import {
   firstUnanswered,
   header,
   itemsOf,
+  isAnswered,
+  itemOfLink,
+  linkedQuestions,
   lettersFor,
   nextPosition,
+  noteFor,
+  withNote,
   prevPosition,
   codeSpans,
   fitsBand,
@@ -102,6 +107,71 @@ describe("building and replacing references in the draft", () => {
   test("the letters a draft picks are read back", () => {
     expect(lettersFor("9efb08a1.Decide.2.A,C", checkbox)).toEqual(["A", "C"]);
     expect(lettersFor("nothing here", checkbox)).toEqual([]);
+  });
+});
+
+describe("notes and answers in words", () => {
+  test("a note follows the item's letters, on a line of its own", () => {
+    const draft = choose("9efb08a1.Decide.3.Y", radio, "B");
+    expect(withNote(draft, radio, "only for the loader")).toBe(
+      "9efb08a1.Decide.3.Y\n9efb08a1.Decide.1.B: only for the loader",
+    );
+  });
+
+  test("a note with no letter answers the item in words", () => {
+    const draft = withNote("", radio, "I'd rather wait");
+    expect(draft).toBe("9efb08a1.Decide.1: I'd rather wait");
+    expect(isAnswered(draft, radio)).toBe(true);
+    expect(lettersFor(draft, radio)).toEqual([]);
+    expect(noteFor(draft, radio)).toBe("I'd rather wait");
+  });
+
+  test("a note opening on a one-letter word is not read as that option", () => {
+    expect(lettersFor("9efb08a1.Decide.1: A red one", radio)).toEqual([]);
+    expect(noteFor("9efb08a1.Decide.1: A red one", radio)).toBe("A red one");
+  });
+
+  test("letters alone after the colon are the letters written the other way", () => {
+    expect(lettersFor("9efb08a1.Decide.2: A, C", checkbox)).toEqual(["A", "C"]);
+    expect(noteFor("9efb08a1.Decide.2: A, C", checkbox)).toBe("");
+  });
+
+  test("another letter keeps the note, and a click after a note starts a new line", () => {
+    const noted = withNote("", radio, "for now");
+    expect(choose(noted, radio, "A")).toBe("9efb08a1.Decide.1.A: for now");
+    expect(choose(noted, binary, "N")).toBe(
+      "9efb08a1.Decide.1: for now\n9efb08a1.Decide.3.N",
+    );
+  });
+
+  test("an empty note keeps the letters, and drops an answer that was only words", () => {
+    expect(withNote("9efb08a1.Decide.1.A: for now", radio, "")).toBe(
+      "9efb08a1.Decide.1.A",
+    );
+    expect(withNote("ok\n9efb08a1.Decide.1: for now", radio, " ")).toBe("ok");
+  });
+});
+
+describe("questions in a reply", () => {
+  test("an open item's summary line becomes a link to it, and nothing else does", () => {
+    const reply = [
+      "1. **Which cache to keep**  ",
+      "   Both are built.",
+      "2. **Some other question**  ",
+    ].join("\n");
+    const linked = linkedQuestions(reply, items);
+
+    expect(linked.hrefs).toEqual([
+      "https://kanban-answers.invalid/9efb08a1.Decide.1",
+    ]);
+    expect(linked.text.split("\n")[0]).toBe(
+      "1. **[Which cache to keep](https://kanban-answers.invalid/9efb08a1.Decide.1)**  ",
+    );
+    expect(linked.text.split("\n").slice(1)).toEqual(
+      reply.split("\n").slice(1),
+    );
+    expect(itemOfLink(items, linked.hrefs[0] ?? "")).toBe(0);
+    expect(itemOfLink(items, "https://example.com/")).toBe(-1);
   });
 });
 
