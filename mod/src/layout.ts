@@ -3,6 +3,13 @@
 
 import type { DecideItem, DecideOption } from "../types/index.d.ts";
 
+/**
+ * Columns an option sits in from its item's summary, and its ➕ and ➖ lines
+ * from the option: fixed, since the views draw at it and rowsNeeded counts
+ * with it.
+ */
+export const INDENT = 3;
+
 /** A line split at its backticks: even parts are prose, odd parts code. */
 export const codeSpans = (
   line: string,
@@ -26,14 +33,14 @@ const wrappedRows = (line: string, width: number): number =>
 const optionRows = (option: DecideOption, inner: number): number =>
   wrappedRows(
     `🔘 ${option.letter}. ${option.name}: ${option.consequence ?? ""}`,
-    inner - 3,
+    inner - INDENT,
   ) +
   sum(
     [
       ...(option.pros ?? []),
       ...(option.cons ?? []),
       ...(option.notes ?? []),
-    ].map((line) => wrappedRows(`➕ ${line}`, inner - 6)),
+    ].map((line) => wrappedRows(`➕ ${line}`, inner - 2 * INDENT)),
   );
 
 /**
@@ -47,7 +54,7 @@ export const rowsNeeded = (item: DecideItem, columns: number): number => {
   return (
     4 +
     wrappedRows(`🧠 99/99 · ${item.summary}`, inner) +
-    sum((item.note ?? []).map((line) => wrappedRows(line, inner - 3))) +
+    sum((item.note ?? []).map((line) => wrappedRows(line, inner - INDENT))) +
     sum(item.options.map((option) => optionRows(option, inner)))
   );
 };

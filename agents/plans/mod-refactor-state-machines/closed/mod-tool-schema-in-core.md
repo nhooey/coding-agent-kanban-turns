@@ -1,6 +1,6 @@
 ---
 title: The kanban_options schema and description live beside the instructions that name the tool
-state: approved
+state: implemented
 kind: implementation
 part-of: mod-refactor-state-machines
 touches: [mod/hooks/register.tsx, mod/src/instructions.ts, mod/src/layout.ts, mod/test/instructions.test.ts]
