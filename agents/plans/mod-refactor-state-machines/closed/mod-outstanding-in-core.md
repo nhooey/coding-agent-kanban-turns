@@ -1,6 +1,6 @@
 ---
 title: Running outstanding.py is an argv and a parse in the core around one effect
-state: approved
+state: implemented
 kind: implementation
 part-of: mod-refactor-state-machines
 touches: [mod/hooks/register.tsx, mod/src/outstanding.ts, mod/test/outstanding.test.ts]
