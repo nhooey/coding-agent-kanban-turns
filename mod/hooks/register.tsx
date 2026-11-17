@@ -48,6 +48,16 @@ import {
   withProblems,
 } from "../src/outstanding.ts";
 import type { Found } from "../src/outstanding.ts";
+import {
+  answersText,
+  bandView,
+  configText,
+  drewText,
+  foldedLabel,
+  isPlainToolRow,
+  noItemsText,
+  toolRowTitle,
+} from "../src/view.ts";
 import type {
   Band,
   DecideItem,
@@ -294,36 +304,21 @@ export const register: Register = (on) => {
   on("command.run", { command: "answers-config" }, async ($) => {
     const { effective, problems } = await reloadSettings($);
 
-    return {
-      text: [
-        ...effective,
-        ...problems.map((problem) => `Not used: ${problem}`),
-      ].join("\n"),
-    };
+    return { text: configText(effective, problems) };
   });
 
   on("command.run", { command: "answers" }, async ($) => {
     await reopen($);
     await openPane($);
-    const shown = await read($, band);
 
-    return {
-      text:
-        shown.items.length === 0
-          ? `No open Decide items${shown.problem ? `: ${shown.problem}` : ""}.`
-          : `Decide pane opened: ${shown.items.length} open Decide items.`,
-    };
+    return { text: answersText(await read($, band)) };
   });
 
   on("tool.call", { tool: TOOL_CALLED }, async ($, e) => {
     const items = itemsOf(e);
     await update($, band, (b) => drawnByTool(b, items));
 
-    return {
-      result: `Drew buttons for ${items.length} Decide items above the final response: ${items
-        .map(refOf)
-        .join(", ")}.`,
-    };
+    return { result: drewText(items) };
   }).catch(() => ({
     result: "The buttons could not be drawn; the reply reads as before.",
   }));
@@ -368,28 +363,30 @@ export const register: Register = (on) => {
     const s = await settingsNow($);
     const seen = { rows: e.props.maxRows, columns: e.props.bodyColumns };
 
-    if (e.props.hasSurvey || item === undefined || s === null) {
+    const fits = fitsBand(b.items, seen);
+    const view = bandView(b, {
+      fits,
+      paneShown: await isPaneShown($),
+      hasSurvey: e.props.hasSurvey,
+      hasSettings: s !== null,
+    });
+
+    if (view === "none" || item === undefined || s === null) {
       return next(e);
     }
 
     const elements = $.ui.resolve(e);
     const { Box, Button, Text } = elements;
-    const fits = fitsBand(b.items, seen);
 
-    if (!b.isDismissed && !b.isAway && fits && !(await isPaneShown($))) {
+    if (view === "full") {
       return fullView($, elements, s, b, item, await read($, draft));
     }
 
     return (
       <Box>
         <Button key="reopen" label="🧠" plain onPress={() => reopen($)} />
-        <Text dimColor>
-          {" "}
-          {b.items.length} open{" "}
-          {b.items.length === 1 ? "decision" : "decisions"}
-          {fits ? "" : ", too tall for here "}
-        </Text>
-        {fits ? null : (
+        <Text dimColor>{foldedLabel(b.items.length, fits)}</Text>
+        {view === "folded" ? null : (
           <Button
             key="open-pane"
             label="Open in a pane"
@@ -434,9 +431,7 @@ export const register: Register = (on) => {
     const s = await settingsNow($);
 
     return item === undefined || s === null ? (
-      <elements.Text dimColor>
-        No open Decide items{b.problem ? `: ${b.problem}` : ""}.
-      </elements.Text>
+      <elements.Text dimColor>{noItemsText(b.problem)}</elements.Text>
     ) : (
       fullView($, elements, s, b, item, await read($, draft))
     );
@@ -448,8 +443,10 @@ export const register: Register = (on) => {
   on("ui.render", { component: "ToolResult" }, async ($, e, next) => {
     if (
       e.props.tool !== TOOL_CALLED ||
-      e.props.isExpanded ||
-      e.props.isErrored
+      !isPlainToolRow({
+        isExpanded: e.props.isExpanded,
+        isErrored: e.props.isErrored,
+      })
     ) {
       return next(e);
     }
@@ -468,11 +465,12 @@ export const register: Register = (on) => {
     // an error, an interrupted call, or a call that drew no items.
     const items = itemsOf(e.props.input);
     const s = await settingsNow($);
-    const isPlain =
-      !e.props.isExpanded &&
-      !e.props.isErrored &&
-      !e.props.isInterrupted &&
-      items.length > 0;
+    const isPlain = isPlainToolRow({
+      isExpanded: e.props.isExpanded,
+      isErrored: e.props.isErrored,
+      isInterrupted: e.props.isInterrupted,
+      itemCount: items.length,
+    });
     if (!isPlain || s === null) {
       return next(e);
     }
@@ -495,7 +493,7 @@ export const register: Register = (on) => {
               paddingX={1}
             >
               {itemView({ Box, Button, Text, Input }, s.colors, item, {
-                title: `🧠 Decide.${item.number} · ${item.summary}${isSettled ? " (settled)" : ""}`,
+                title: toolRowTitle(item, isSettled),
                 chosen: isSettled ? [] : lettersFor(text, item),
                 note: isSettled ? "" : noteFor(text, item),
                 isSettled,

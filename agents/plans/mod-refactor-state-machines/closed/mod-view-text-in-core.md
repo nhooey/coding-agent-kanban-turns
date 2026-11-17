@@ -1,6 +1,6 @@
 ---
 title: The text and predicates the hooks build live in the core, with tests
-state: approved
+state: implemented
 kind: implementation
 part-of: mod-refactor-state-machines
 touches: [mod/hooks/register.tsx, mod/src/view.ts, mod/test/view.test.ts]
