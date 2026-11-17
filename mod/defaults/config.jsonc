@@ -38,7 +38,7 @@
     "skip": "j",
     // ⏩ Next: the next item, wrapping round.
     "next": "l",
-    // ❌: fold the band to its 🧠 and close the pane.
+    // ❌: fold the band to its count line and close the pane.
     "dismiss": "q"
   },
 
@@ -52,6 +52,9 @@
     // Code spans in a summary, note or option.
     "code": "permission",
     // The background of the option the draft picks.
-    "chosen": "diffAddedWord"
+    "chosen": "diffAddedWord",
+    // The bar in the column left of an option, lit down the option's
+    // full height while the pointer is over any of its lines.
+    "hover": "suggestion"
   }
 }

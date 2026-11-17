@@ -1,18 +1,18 @@
 // Clickable answers to the kanban turn responses' Decide items: a band above
 // the prompt that walks the open items one at a time, the same buttons on the
 // row of the `kanban_options` tool the agent calls before its reply, and two
-// ways to bring a dismissed band back: the 🧠 it leaves in its place, and the
-// /answers command. A click writes the
-// item's reference into the prompt draft and never sends it; Reassess alone
-// sends a prompt, the skill's `reassess` command.
+// ways to bring a dismissed band back: the skill's count line it folds to,
+// pressable, and the /answers command. A click writes the item's reference,
+// on a line of its own, into the prompt draft and never sends it; Reassess
+// alone sends a prompt, the skill's `reassess` command.
 //
 // An item is drawn as the skill writes it: its summary, its note, then each
 // option as `glyph letter. name: consequence` with its ➕ and ➖ lines indented
 // under it, inside a rounded border. Only the option the draft picks gets a
-// background.
+// background; a bar in the column left of an option lights under the pointer.
 
 import { atom, read, update } from "claude-code";
-import type { EngineInterface, Register } from "claude-code";
+import type { EngineInterface, Register, RenderNode } from "claude-code";
 
 import { choose, lettersFor, noteFor, withNote } from "../src/answers.ts";
 import {
@@ -42,6 +42,7 @@ import {
   withInstructions,
 } from "../src/instructions.ts";
 import { glyphOf, itemsOf, refOf } from "../src/items.ts";
+import { countsArgv, countsOf, foldedLine } from "../src/counts.ts";
 import { INDENT, codeSpans, fitsBand } from "../src/layout.ts";
 import { itemOfLink, linkedQuestions } from "../src/links.ts";
 import {
@@ -59,7 +60,6 @@ import {
   bandView,
   configText,
   drewText,
-  foldedLabel,
   isPlainToolRow,
   noItemsText,
   toolRowTitle,
@@ -76,6 +76,9 @@ const REASSESS = "reassess";
 // The pane that holds the item, and its title. The hotkeys and colours are
 // settings, in defaults/config.jsonc.
 const PANE = { id: "kanban-turns", title: "🧠 Decide" } as const;
+// The column left of an option's lines that lights while the pointer is over
+// the option: it comes out of the option's indent, so its text stays put.
+const GUTTER = 1;
 // Nothing read yet: no settings until session.start reads the files.
 const UNREAD: Loaded = { settings: null, effective: [], problems: [] };
 
@@ -90,6 +93,12 @@ const band = atom(
 );
 const draft = atom(
   { plugin: "coding-agent-kanban-turns", key: "draft" } as const,
+  "",
+);
+// The skill's count line, `📌 Outstanding: 🚧 2 · … · 🧠 3`, from the last
+// refresh; empty when the script gave none.
+const counts = atom(
+  { plugin: "coding-agent-kanban-turns", key: "counts" } as const,
   "",
 );
 const settings = atom(
@@ -120,6 +129,26 @@ const openItems = async (
     : missingScript(script);
 };
 
+/** Runs `outstanding.py render --counts` over this session's transcript: the skill's count line, or none. */
+const countLine = async (
+  $: EngineInterface,
+  outstanding: Settings["outstanding"],
+): Promise<string> => {
+  const script = scriptPath(outstanding, await $.env.get("HOME"));
+
+  return (await $.fs.exists(script))
+    ? countsOf(
+        await $.process.run(
+          countsArgv(outstanding.python, script, await $.session.id()),
+          {
+            cwd: await $.session.cwd(),
+            timeoutMs: outstanding["timeout-ms"],
+          },
+        ),
+      )
+    : "";
+};
+
 /** The open items, or why there are none: the settings' problems first, then the script's. */
 const found = async ($: EngineInterface): Promise<Found> => {
   const { settings: s, problems } = await read($, settings);
@@ -140,10 +169,14 @@ const reloadSettings = async ($: EngineInterface): Promise<Loaded> => {
   return now;
 };
 
-/** Reads the settings and the open items again, and moves the band to match. */
+/** Reads the settings, the open items and the count line again, and moves the band to match. */
 const refresh = async ($: EngineInterface): Promise<void> => {
-  await reloadSettings($);
-  const open = await found($);
+  const { settings: s } = await reloadSettings($);
+  const [open, line] = await Promise.all([
+    found($),
+    s === null ? "" : countLine($, s.outstanding).catch(() => ""),
+  ]);
+  await update($, counts, () => line);
   const text = await read($, draft);
   await update($, band, (b) => ({
     ...refreshed(b, open.items, text),
@@ -184,7 +217,7 @@ const note = ($: EngineInterface, item: DecideItem, said: string) =>
     (b, text) => movedOn(b, item, text),
   );
 
-/** /answers and the 🧠 above the prompt: re-reads the open items and shows them at the first unanswered one. */
+/** /answers and the folded line above the prompt: re-reads the open items and shows them at the first unanswered one. */
 const reopen = async ($: EngineInterface): Promise<void> => {
   await refresh($);
   const text = await read($, draft);
@@ -276,8 +309,9 @@ export const register: Register = (on) => {
     return done;
   });
 
-  // While the reply to a prompt runs, the band folds to its 🧠 and the pane
-  // closes; the reply's end shows the band again if an item is still open.
+  // While the reply to a prompt runs, the band folds to its count line and
+  // the pane closes; the reply's end shows the band again if an item is
+  // still open.
   on("prompt.submit", async ($, e, next) => {
     const submitted = await next(e);
 
@@ -296,39 +330,58 @@ export const register: Register = (on) => {
   });
 
   // Above the prompt: the item itself when every open item fits the band's
-  // rows and the pane isn't showing them; else a 🧠 that brings them back,
-  // and, for items too tall, a button that opens the pane. Drawing is pure,
-  // so the band can't open the pane by itself.
+  // rows and the pane isn't showing them; else the skill's count line, which
+  // brings them back, and, for items too tall, a button that opens the pane.
+  // Drawing is pure, so the band can't open the pane by itself. Claude Code
+  // stacks each plugin's drawing here itself, so another plugin's band, such
+  // as the usage mod's agents tree, is drawn beside this one, not through it.
   on("ui.render", { component: "AbovePrompt" }, async ($, e, next) => {
+    const s = await settingsNow($);
+
+    if (e.props.hasSurvey || s === null) {
+      return next(e);
+    }
+
     const b = await read($, band);
     const item = shownItem(b);
-    const s = await settingsNow($);
-    const seen = { rows: e.props.maxRows, columns: e.props.bodyColumns };
-
-    const fits = fitsBand(b.items, seen);
+    const fits = fitsBand(b.items, {
+      rows: e.props.maxRows,
+      columns: e.props.bodyColumns,
+    });
     const view = bandView(b, {
       fits,
       paneShown: await isPaneShown($),
       hasSurvey: e.props.hasSurvey,
-      hasSettings: s !== null,
+      hasSettings: true,
     });
+    const line = foldedLine(await read($, counts), b.items.length);
 
-    if (view === "none" || item === undefined || s === null) {
+    if (view !== "full" && line === "") {
       return next(e);
     }
 
     const elements = $.ui.resolve(e);
     const { Box, Button, Text } = elements;
 
-    if (view === "full") {
+    if (view === "full" && item !== undefined) {
       return fullView($, elements, s, b, item, await read($, draft));
     }
 
     return (
       <Box>
-        <Button key="reopen" label="🧠" plain onPress={() => reopen($)} />
-        <Text dimColor>{foldedLabel(b.items.length, fits)}</Text>
-        {view === "folded" ? null : (
+        <Button
+          key="reopen"
+          label={line}
+          plain
+          dimColor
+          onPress={() => reopen($)}
+        >
+          {line}
+        </Button>
+        {view === "folded-tall" ? (
+          <Text dimColor>, too tall for here </Text>
+        ) : null}
+        {view === "folded-tall" ? (
           <Button
             key="open-pane"
             label="Open in a pane"
@@ -338,7 +391,7 @@ export const register: Register = (on) => {
           >
             🪟 <Text underline>Open in a pane</Text>
           </Button>
-        )}
+        ) : null}
       </Box>
     );
   });
@@ -622,42 +675,70 @@ const itemView = (
         const pick = isChosen ? { backgroundColor: colors.chosen } : {};
         const key = view.keyOf(option.letter);
         // A Button holds only text, so each of the option's lines is a button
-        // of its own that picks it, and the lines light up together on hover.
+        // of its own that picks it. They share a hover group, so the pointer
+        // on any of them lights the gutter beside every one: a bar the
+        // option's height. A settled option's gutter stays dark.
+        const hover = { scope: key, backgroundColor: colors.hover } as const;
         const press = {
           plain: true,
           dimColor: dim,
-          hover: { scope: key, inverse: true },
+          hover: { scope: key },
           onPress: () => view.onPick(option.letter),
         } as const;
+        // One line of the option: the gutter cell, then the line, which wraps
+        // beside it; the gutter's Box stretches to the line's rows.
+        const row = (rowKey: string, content: RenderNode) => (
+          <Box key={`${rowKey}-row`}>
+            <Box
+              key={`${rowKey}-gutter`}
+              width={GUTTER}
+              flexShrink={0}
+              {...(dim ? {} : { hover })}
+            >
+              <Text {...(dim ? {} : { hover })}> </Text>
+            </Box>
+            {content}
+          </Box>
+        );
         const under = (
           prefix: string,
           texts: readonly string[] | undefined,
           part: string,
         ) =>
-          (texts ?? []).map((line, n) => (
-            <Box key={`${key}-${part}-${n}-box`} marginLeft={INDENT}>
-              <Button key={`${key}-${part}-${n}`} label={line} {...press}>
-                <Text {...pick}>{prefix ? `${prefix} ` : ""}</Text>
-                {inline(line, `${key}-${part}-${n}`, pick)}
-              </Button>
-            </Box>
-          ));
+          (texts ?? []).map((line, n) =>
+            row(
+              `${key}-${part}-${n}`,
+              <Box key={`${key}-${part}-${n}-box`} marginLeft={INDENT}>
+                <Button key={`${key}-${part}-${n}`} label={line} {...press}>
+                  <Text {...pick}>{prefix ? `${prefix} ` : ""}</Text>
+                  {inline(line, `${key}-${part}-${n}`, pick)}
+                </Button>
+              </Box>,
+            ),
+          );
 
         return (
-          <Box key={`${key}-box`} flexDirection="column" marginLeft={INDENT}>
-            <Button key={key} label={option.name} {...press}>
-              <Text {...pick}>
-                {glyphOf(item, option.letter)} {option.letter}.{" "}
-              </Text>
-              {inline(option.name, `${option.letter}-name`, {
-                ...pick,
-                bold: true,
-              })}
-              {option.consequence ? <Text {...pick}>: </Text> : null}
-              {option.consequence
-                ? inline(option.consequence, `${option.letter}-then`, pick)
-                : null}
-            </Button>
+          <Box
+            key={`${key}-box`}
+            flexDirection="column"
+            marginLeft={INDENT - GUTTER}
+          >
+            {row(
+              key,
+              <Button key={key} label={option.name} {...press}>
+                <Text {...pick}>
+                  {glyphOf(item, option.letter)} {option.letter}.{" "}
+                </Text>
+                {inline(option.name, `${option.letter}-name`, {
+                  ...pick,
+                  bold: true,
+                })}
+                {option.consequence ? <Text {...pick}>: </Text> : null}
+                {option.consequence
+                  ? inline(option.consequence, `${option.letter}-then`, pick)
+                  : null}
+              </Button>,
+            )}
             {under("➕", option.pros, "pro")}
             {under("➖", option.cons, "con")}
             {under("", option.notes, "note")}

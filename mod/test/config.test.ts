@@ -81,6 +81,17 @@ describe("the user's file over the defaults", () => {
     ]);
   });
 
+  test("the hover bar's colour is a setting like the others", () => {
+    expect(loaded(defaults, undefined).settings?.colors.hover).toBe("suggestion");
+    const got = loaded(defaults, user('{"colors": {"hover": "claude"}}'));
+    expect(got.problems).toEqual([]);
+    expect(got.settings?.colors.hover).toBe("claude");
+    expect(got.settings?.colors.chosen).toBe("diffAddedWord");
+    expect(loaded(defaults, user('{"colors": {"hover": 3}}')).problems).toEqual([
+      "~/.config/x/config.jsonc: colors.hover is number, not a string",
+    ]);
+  });
+
   test("a file that isn't JSONC is named with why", () => {
     expect(loaded(defaults, user("{")).problems[0]).toMatch(/^~\/\.config\/x\/config\.jsonc: /);
   });
