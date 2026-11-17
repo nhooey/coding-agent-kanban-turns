@@ -11,6 +11,90 @@ export const TOOL_CALLED = `mcp__${PLUGIN}__${TOOL}`;
 /** The context block the instructions go in, keyed by the mod's own name. */
 export const BLOCK = "kanbanTurns";
 
+/** The item kinds, in the order the instructions and the schema name them. */
+export const KINDS = ["radio", "checkbox", "binary"] as const;
+
+/** The kinds as the instructions write them: `radio`, `checkbox` or `binary`. */
+const kindsInWords = [
+  KINDS.slice(0, -1)
+    .map((kind) => `\`${kind}\``)
+    .join(", "),
+  `\`${KINDS[KINDS.length - 1]}\``,
+].join(" or ");
+
+/**
+ * One Decide item of the tool's input. Its required fields are the ones
+ * itemsOf won't do without; it fills in `list`, `ref` and a missing `kind`.
+ */
+export const ITEM_SCHEMA = {
+  type: "object",
+  required: ["turn", "number", "summary", "options"],
+  properties: {
+    turn: {
+      type: "string",
+      description:
+        "The turn id, the first 8 characters of this turn's promptId.",
+    },
+    list: { type: "string", enum: ["Decide"] },
+    number: {
+      type: "integer",
+      description: "The item number in the Decide list.",
+    },
+    summary: { type: "string", description: "The item's bold summary." },
+    kind: {
+      type: "string",
+      enum: KINDS,
+      description: "From the item's option glyphs; radio when left out.",
+    },
+    ref: {
+      type: "string",
+      description: "`<turn>.Decide.<number>`; filled in when left out.",
+    },
+    options: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["letter", "name"],
+        properties: {
+          letter: {
+            type: "string",
+            description: "The capital letter, A, B, C, or Y and N.",
+          },
+          name: { type: "string", description: "The option's bold name." },
+          consequence: {
+            type: "string",
+            description: "What follows the name after its colon.",
+          },
+          pros: {
+            type: "array",
+            items: { type: "string" },
+            description: "The option's ➕ lines, without the ➕.",
+          },
+          cons: {
+            type: "array",
+            items: { type: "string" },
+            description: "The option's ➖ lines, without the ➖.",
+          },
+        },
+      },
+    },
+  },
+} as const;
+
+/** The tool's whole input: the Decide items of the reply it comes before. */
+export const INPUT_SCHEMA = {
+  type: "object",
+  required: ["items"],
+  properties: { items: { type: "array", items: ITEM_SCHEMA } },
+} as const;
+
+/** What the tool does, as the engine lists it to the agent. */
+export const TOOL_DESCRIPTION = [
+  "Draws clickable buttons for this turn's Decide items in the transcript, just above the final response.",
+  "Call it once, right before writing the final response, with every Decide item that response will hold, in the shape `outstanding.py decide --json` prints.",
+  "A click writes the item's reference into the user's prompt draft; nothing is sent.",
+].join(" ");
+
 /** The instructions for the tool the agent calls as `tool`. */
 export const instructionsFor = (tool: string): string =>
   [
@@ -20,7 +104,7 @@ export const instructionsFor = (tool: string): string =>
     '- Input: `{"items": [...]}`, one entry per Decide item of that response, in its order, each with:',
     "  - `turn`: the turn id, the first 8 characters of the latest prompt's promptId;",
     "  - `number` and `summary`: the item's number in the Decide list and its bold summary;",
-    "  - `kind`: `radio`, `checkbox` or `binary`, from the item's option glyphs (🔘, 🔲, or 👍 and 👎);",
+    `  - \`kind\`: ${kindsInWords}, from the item's option glyphs (🔘, 🔲, or 👍 and 👎);`,
     "  - `options`: each option's `letter`, `name` and `consequence`, and its ➕ and ➖ lines, without the glyph, as `pros` and `cons`.",
     "- A click on a button writes the answer's reference, such as `0f311c94.Decide.2.B`, into the user's prompt draft and sends nothing.",
     "- Write the final response exactly as you would without the tool: the buttons add to it and replace nothing.",

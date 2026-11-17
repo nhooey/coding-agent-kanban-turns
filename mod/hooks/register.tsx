@@ -34,9 +34,15 @@ import {
   shownItem,
   skipped,
 } from "../src/band.ts";
-import { TOOL, TOOL_CALLED, withInstructions } from "../src/instructions.ts";
+import {
+  INPUT_SCHEMA,
+  TOOL,
+  TOOL_CALLED,
+  TOOL_DESCRIPTION,
+  withInstructions,
+} from "../src/instructions.ts";
 import { glyphOf, itemsOf, refOf } from "../src/items.ts";
-import { codeSpans, fitsBand } from "../src/layout.ts";
+import { INDENT, codeSpans, fitsBand } from "../src/layout.ts";
 import { itemOfLink, linkedQuestions } from "../src/links.ts";
 import {
   NOTHING,
@@ -67,12 +73,9 @@ import type {
 import { loadSettings } from "./settings.ts";
 
 const REASSESS = "reassess";
-// The pane that holds the item, and its title.
-const PANE = { id: "kanban-turns", title: "🧠 Decide" } as const;
-// Columns an option sits in from its summary, and its ➕ and ➖ lines from
-// it: fixed, since rowsNeeded counts with it. The hotkeys and colours are
+// The pane that holds the item, and its title. The hotkeys and colours are
 // settings, in defaults/config.jsonc.
-const INDENT = 3;
+const PANE = { id: "kanban-turns", title: "🧠 Decide" } as const;
 // Nothing read yet: no settings until session.start reads the files.
 const UNREAD: Loaded = { settings: null, effective: [], problems: [] };
 
@@ -98,63 +101,6 @@ const settings = atom(
 /** The settings in effect, or none while the defaults file can't be used. */
 const settingsNow = async ($: EngineInterface): Promise<Settings | null> =>
   (await read($, settings)).settings;
-
-const ITEM_SCHEMA = {
-  type: "object",
-  required: ["turn", "number", "summary", "kind", "options"],
-  properties: {
-    turn: {
-      type: "string",
-      description:
-        "The turn id, the first 8 characters of this turn's promptId.",
-    },
-    list: { type: "string", enum: ["Decide"] },
-    number: {
-      type: "integer",
-      description: "The item number in the Decide list.",
-    },
-    summary: { type: "string", description: "The item's bold summary." },
-    kind: { type: "string", enum: ["radio", "checkbox", "binary"] },
-    ref: {
-      type: "string",
-      description: "`<turn>.Decide.<number>`; filled in when left out.",
-    },
-    options: {
-      type: "array",
-      items: {
-        type: "object",
-        required: ["letter", "name"],
-        properties: {
-          letter: {
-            type: "string",
-            description: "The capital letter, A, B, C, or Y and N.",
-          },
-          name: { type: "string", description: "The option's bold name." },
-          consequence: {
-            type: "string",
-            description: "What follows the name after its colon.",
-          },
-          pros: {
-            type: "array",
-            items: { type: "string" },
-            description: "The option's ➕ lines, without the ➕.",
-          },
-          cons: {
-            type: "array",
-            items: { type: "string" },
-            description: "The option's ➖ lines, without the ➖.",
-          },
-        },
-      },
-    },
-  },
-} as const;
-
-const TOOL_DESCRIPTION = [
-  "Draws clickable buttons for this turn's Decide items in the transcript, just above the final response.",
-  "Call it once, right before writing the final response, with every Decide item that response will hold, in the shape `outstanding.py decide --json` prints.",
-  "A click writes the item's reference into the user's prompt draft; nothing is sent.",
-].join(" ");
 
 /** Runs `outstanding.py decide --json` over this session's transcript, as `outstanding` sets it: the open items, or why there are none. */
 const openItems = async (
@@ -286,11 +232,7 @@ export const register: Register = (on) => {
       name: TOOL,
       description: TOOL_DESCRIPTION,
       isDeferred: false,
-      inputSchema: {
-        type: "object",
-        required: ["items"],
-        properties: { items: { type: "array", items: ITEM_SCHEMA } },
-      },
+      inputSchema: INPUT_SCHEMA,
     });
     void refresh($);
 
