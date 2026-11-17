@@ -17,7 +17,7 @@ With this done:
 
 ## The implicit models today
 
-From a read of `master` at 23d9595, in `coding-agent-find-implicit-models`' five kinds. Each says what making it explicit deletes, and whether it changes.
+From a read of `master` at 23d9595, in `design-hygiene-find-implicit-models`' five kinds. Each says what making it explicit deletes, and whether it changes.
 
 - **Band visibility, a lifecycle.** `isDismissed` × `isAway` in the `band` atom, with the pane's being shown and the items' fit worked out in the render (`register.tsx:389-397`). prompt.submit and Reassess set away, turn.complete clears it, ❌ dismisses, a new ref, `/answers`, 🧠 or a question link reopen. Reachable but unhandled: dismissed and away at once (open the pane from the folded band during a reply, then ❌), a pane open over a dismissed band, 🧠 with items too tall (clears the flags, still draws folded), 🧠 during a reply clearing away early, and `dismissedRefs` kept stale after a reopen. Deletes: 2 reachable illegal states and the 2 paired `update`s in turn.complete (`:353-354`) and `reopen` (`:251-253`). Changes, in `band-transitions-reducer`.
 - **Position, a lifecycle.** Moved by prev, next, skip and mark straight in effect code (`register.tsx:544-548`, `:577-606`), and by answer and note through `rewriteDraft`'s callbacks. Deletes: fullView's `move` closure and the 4 position writes in its buttons, which become `Moved` events. Changes, in `band-transitions-reducer`.
