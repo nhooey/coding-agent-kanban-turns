@@ -6,72 +6,27 @@
     systems.url = "github:nix-systems/default";
 
     # `agent-skill-flake` is the builder library, not a skill — it provides
-    # `mkDevshellSkillsFlake`. Followed by every skill source below so the
-    # whole tree shares one evaluation.
+    # `mkDevshellSkillsFlake`.
     agent-skill-flake = {
       url = "github:nhooey/agent-skill-flake";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # Every input below this divider is a skill source, each on its
-    # repository's default branch.
+    # Every input below this divider is a skill source.
 
-    # The kanban turn-response skill this mod shares its rules with, headless
-    # runs in checkouts, tidy scratchpads and the plan graph in agents/plans/.
-    coding-agent-skills = {
-      url = "github:nhooey/coding-agent-skills";
-      inputs = {
-        nixpkgs.follows = "nixpkgs";
-        agent-skill-flake.follows = "agent-skill-flake";
-      };
+    # skillspkgs' `claude-code-tools` combination, this repository's family:
+    # the base skills, shipped defaults, changelogs and strict TypeScript.
+    skillspkgs-combinations = {
+      url = "github:nhooey/skillspkgs?dir=sources/combinations";
+      inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # Markdown hygiene, for the README and AGENTS.md.
-    document-skills = {
-      url = "github:nhooey/document-skills";
-      inputs = {
-        nixpkgs.follows = "nixpkgs";
-        agent-skill-flake.follows = "agent-skill-flake";
-      };
-    };
+    # The same coding-agent-skills revision the combination takes, for the
+    # one addition below.
+    coding-agent-skills.follows = "skillspkgs-combinations/coding-agent-skills";
 
-    # Git and GitHub hygiene, policy and workflow.
-    git-skills = {
-      url = "github:nhooey/git-skills";
-      inputs = {
-        nixpkgs.follows = "nixpkgs";
-        agent-skill-flake.follows = "agent-skill-flake";
-      };
-    };
-
-    # nix-flakes, which this repository's flake.nix follows.
-    nix-skills = {
-      url = "github:nhooey/nix-skills";
-      inputs = {
-        nixpkgs.follows = "nixpkgs";
-        agent-skill-flake.follows = "agent-skill-flake";
-      };
-    };
-
-    # Safe shell commands, and commands as CLI tools.
-    shell-skills = {
-      url = "github:nhooey/shell-skills";
-      inputs = {
-        nixpkgs.follows = "nixpkgs";
-        agent-skill-flake.follows = "agent-skill-flake";
-      };
-    };
-
-    # Prose hygiene, for the README, AGENTS.md and commit messages.
-    writing-skills = {
-      url = "github:nhooey/writing-skills";
-      inputs = {
-        nixpkgs.follows = "nixpkgs";
-        agent-skill-flake.follows = "agent-skill-flake";
-      };
-    };
-
-    # config-hygiene-shipped-defaults, which mod/defaults/config.jsonc follows.
+    # find-implicit-models, newer than the combination's pin of this
+    # repository.
     software-design-skills = {
       url = "github:nhooey/software-design-skills";
       inputs = {
@@ -92,16 +47,19 @@
       systems = import inputs.systems;
       name = "coding-agent-kanban-turns-devshell";
       sources = [
-        { source = inputs.coding-agent-skills; }
-        { source = inputs.document-skills; }
-        { source = inputs.git-skills; }
+        { source = inputs.skillspkgs-combinations.combinations.claude-code-tools; }
+        # The kanban turn-response skill, whose rules this mod renders and
+        # shares (see AGENTS.md); no other Claude Code tool uses it.
         {
-          source = inputs.nix-skills;
-          skills = [ "nix-flakes" ];
+          source = inputs.coding-agent-skills;
+          skills = [ "coding-agent-kanban-turn-responses" ];
         }
-        { source = inputs.shell-skills; }
-        { source = inputs.writing-skills; }
-        { source = inputs.software-design-skills; }
+        # Finds the implicit models in the mod's code; not in the family's
+        # combination.
+        {
+          source = inputs.software-design-skills;
+          skills = [ "design-hygiene-find-implicit-models" ];
+        }
       ];
     };
 }
