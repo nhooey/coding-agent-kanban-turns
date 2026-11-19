@@ -150,7 +150,8 @@ describe("the tool's schema", () => {
 describe("the tool's description", () => {
   test("says where the buttons go, when to call it and that a click sends nothing", () => {
     [
-      "just above the final response",
+      "just under the final response",
+      "Decide pane",
       "right before writing the final response",
       "nothing is sent",
     ].forEach((phrase) => expect(TOOL_DESCRIPTION).toContain(phrase));

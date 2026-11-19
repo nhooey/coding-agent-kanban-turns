@@ -1,5 +1,6 @@
-// A reply's Decide questions as links: each open item's summary line made a
-// link that names the item, and the item a pressed link names.
+// A reply's Decide questions as links: each raised item's summary line made
+// a link that names the item, the item a pressed link names, and the items a
+// reply links, drawn under it.
 
 import { refOf } from "./items.ts";
 import type { DecideItem } from "../types/index.d.ts";
@@ -14,7 +15,7 @@ const plainSummary = (summary: string): string =>
   summary.replaceAll("**", "").replaceAll("`", "").trim();
 
 /**
- * A reply's text with each open item's summary line, `1. **<summary>**`,
+ * A reply's text with each given item's summary line, `1. **<summary>**`,
  * made a link to the item, `1. **[<summary>](…/<ref>)**`; the hrefs it made.
  */
 export const linkedQuestions = (
@@ -57,3 +58,10 @@ export const itemOfLink = (
         (item) => refOf(item) === href.slice(QUESTION_LINK.length),
       )
     : -1;
+
+/** The items a reply's links name, once each, in the reply's order. */
+export const linkedItems = (
+  items: readonly DecideItem[],
+  hrefs: readonly string[],
+): readonly DecideItem[] =>
+  [...new Set(hrefs)].flatMap((href) => items[itemOfLink(items, href)] ?? []);
