@@ -10,7 +10,6 @@ import {
   bandView,
   configText,
   drewText,
-  foldedLabel,
   isPlainToolRow,
   noItemsText,
   toolRowTitle,
@@ -69,17 +68,6 @@ describe("the band's view", () => {
     expect(bandView({ ...band, isAway: true }, { ...clear, fits: false })).toBe(
       "folded-tall",
     );
-  });
-});
-
-describe("the folded band's label", () => {
-  test("counts the decisions, singular for one", () => {
-    expect(foldedLabel(1, true)).toBe(" 1 open decision");
-    expect(foldedLabel(3, true)).toBe(" 3 open decisions");
-  });
-
-  test("says when they're too tall for the band", () => {
-    expect(foldedLabel(2, false)).toBe(" 2 open decisions, too tall for here ");
   });
 });
 

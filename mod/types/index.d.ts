@@ -83,6 +83,7 @@ export type Settings = Readonly<{
     title: string;
     code: string;
     chosen: string;
+    hover: string;
   }>;
 }>;
 
@@ -101,6 +102,7 @@ declare module "claude-code" {
     "coding-agent-kanban-turns": {
       band: Shaped<Band>;
       draft: string;
+      counts: string;
       settings: Shaped<Loaded>;
     };
   }

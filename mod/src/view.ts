@@ -34,10 +34,6 @@ export const bandView = (band: Band, around: BandSurroundings): BandView =>
         ? "folded"
         : "folded-tall";
 
-/** The folded band's words after its 🧠: the count, and that the items are too tall when they are. */
-export const foldedLabel = (count: number, fits: boolean): string =>
-  ` ${count} open ${count === 1 ? "decision" : "decisions"}${fits ? "" : ", too tall for here "}`;
-
 /** What the pane and /answers say when there are no open items, with why when it's known. */
 export const noItemsText = (problem: string): string =>
   `No open Decide items${problem ? `: ${problem}` : ""}.`;

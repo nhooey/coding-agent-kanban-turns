@@ -1,6 +1,6 @@
 # coding-agent-kanban-turns
 
-The `coding-agent-kanban-turns` Claude Code mod, which makes the Decide items of the `coding-agent-kanban-turn-responses` skill clickable. A click writes the answer's reference, such as `9efb08a1.Decide.2.B`, into the prompt draft and never sends it, so you can pick several answers, add words of your own and press Enter when you're ready.
+The `coding-agent-kanban-turns` Claude Code mod, which makes the Decide items of the `coding-agent-kanban-turn-responses` skill clickable. A click writes the answer's reference, such as `9efb08a1.Decide.2.B`, on a line of its own in the prompt draft and never sends it, so you can pick several answers, add words of your own and press Enter when you're ready.
 
 The mod began in [nhooey/coding-agent-skills](https://github.com/nhooey/coding-agent-skills), beside the skill, and moved here with its history by `git subtree split`.
 
@@ -36,7 +36,9 @@ Sections merge key by key, so everything else follows the defaults as they chang
 
 ### The band above the prompt, or a pane
 
-The band shows one open Decide item at a time, inside a rounded border, laid out as the skill writes it, when every open item fits the rows it has. In fullscreen that's at most half the terminal, the prompt included. When an item is too tall, the band folds to `🧠 3 open decisions, too tall for here 🪟 Open in a pane`, and the button opens a pane beside the transcript with the same drawing at full height. `/answers` always opens the pane. A render hook can't open a pane by itself, so the band can't move an item there unasked.
+The band shows one open Decide item at a time, inside a rounded border, laid out as the skill writes it, when every open item fits the rows it has. In fullscreen that's at most half the terminal, the prompt included. Otherwise the band folds to the skill's count line, as `outstanding.py render --counts` prints it, such as `📌 Outstanding: 🚧 2 · 🤔 2 · 🔍 2 · 👉 2 · 🧠 3`; where the script prints none, the line reads `🧠 3 open decisions`. When an item is too tall, the folded line goes on `, too tall for here 🪟 Open in a pane`, and the button opens a pane beside the transcript with the same drawing at full height. `/answers` always opens the pane. A render hook can't open a pane by itself, so the band can't move an item there unasked.
+
+The band draws above whatever else the prompt has above it, such as another mod's agents tree: its line or its item comes first and that drawing beneath. That holds while the kanban mod's hook runs before the other mod's, since a mod that draws its own tree there without passing the rest on hides everything after it.
 
 ```text
 ╭──────────────────────────────────────────────────────────────────╮
@@ -54,18 +56,18 @@ The band shows one open Decide item at a time, inside a rounded border, laid out
 ╰──────────────────────────────────────────────────────────────────╯
 ```
 
-Each part has its own colour from the theme, so it reads in light and dark themes alike: the title in the accent colour, code spans in another and the option the draft picks on a highlighted background. The ➕ and ➖ lines are plain text, as in a reply, and part of their option: a click on any of an option's lines picks it, and they light up together under the pointer. The controls sit on top, so they stay put whatever the item's length, and the controls' words are underlined. Every item is drawn in full, its note and every ➕ and ➖ line, however many rows that takes.
+Each part has its own colour from the theme, so it reads in light and dark themes alike: the title in the accent colour, code spans in another and the option the draft picks on a highlighted background. The ➕ and ➖ lines are plain text, as in a reply, and part of their option: a click on any of an option's lines picks it, and with the pointer on any of them a bar lights in the column left of the option, its full height, in the `colors.hover` colour. The line right under the pointer still inverts, as every button does. The controls sit on top, so they stay put whatever the item's length, and the controls' words are underlined. Every item is drawn in full, its note and every ➕ and ➖ line, however many rows that takes.
 
 | Control         | What it does                                                                                                                                                                                        |
 | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| an option       | writes `<turn>.Decide.<n>.<letter>` into the draft, replacing the item's earlier answer there, and moves to the next unanswered item                                                                |
+| an option       | writes `<turn>.Decide.<n>.<letter>` into the draft on a line of its own, ending in a newline, or in place of the item's earlier answer there, and moves to the next unanswered item              |
 | `✏️` notes      | on Enter, writes what you typed after the item's reference, on a line of its own: `<turn>.Decide.<n>.B: <note>` with a letter picked, or `<turn>.Decide.<n>: <text>`, an answer in words, with none |
 | a checkbox item | toggles its letter in one reference, `…Decide.3.A,C`, and stays on the item so you can pick more; `⏩ Next` or `⏭️ Skip` moves on                                                                   |
 | `⏭️ Skip`       | goes to the next item the draft doesn't answer                                                                                                                                                      |
 | `⏪ Prev`       | goes to the previous item, wrapping round                                                                                                                                                           |
 | `⏩ Next`       | goes to the next item, wrapping round                                                                                                                                                               |
 | `🔄 Reassess`   | submits the skill's `reassess` command, which works the open items out afresh; the one button that sends a prompt                                                                                   |
-| `❌`            | folds the band to a single `🧠` until a reply raises a Decide item it hasn't shown, until you click the `🧠`, or until you run `/answers`                                                           |
+| `❌`            | folds the band to its count line until a reply raises a Decide item it hasn't shown, until you click the line, or until you run `/answers`                                                         |
 
 The circles after the controls show which items the draft answers, `●` answered and `○` not, the shown item ringed, `◉` or `◎`, in the accent colour. Click a circle to go to its item. The band refreshes when a reply finishes.
 
@@ -73,7 +75,7 @@ The hotkeys work only where the keyboard is. The prompt holds it by default, so 
 
 ### Bringing the band back
 
-Submitting a prompt folds the band to its `🧠` and closes the pane while the reply runs, and the reply's end shows the band again if any item is still open. After `❌`, which also closes the pane, while any Decide item is open, the band leaves a single clickable `🧠` where it stood. Clicking it shows the band again, and `/answers` opens the pane, at the first item the draft doesn't answer, and re-reads the open items. With no item open, the `🧠` goes too, and `/answers` says there is nothing to answer.
+Submitting a prompt folds the band to its count line and closes the pane while the reply runs, and the reply's end shows the band again if any item is still open. After `❌`, which also closes the pane, the band leaves the count line where it stood, the whole line clickable. Clicking it shows the band again, and `/answers` opens the pane, at the first item the draft doesn't answer, and re-reads the open items. With no Decide item open the count line stays while it counts other lists, and `/answers` says there is nothing to answer; with nothing outstanding at all the line goes too.
 
 ### Buttons in the transcript
 
@@ -87,7 +89,7 @@ Each open item's summary line in a reply, such as `1. **Which cache to keep**`, 
 
 ## Where the items come from
 
-The mod never parses Markdown. It runs `outstanding.py --session <id> decide --json`, which lists each open Decide item as:
+The mod never parses Markdown. At each refresh it runs `outstanding.py --session <id> render --counts` for the count line and `outstanding.py --session <id> decide --json`, which lists each open Decide item as:
 
 ```json
 {
@@ -113,9 +115,9 @@ claude --plugin-dir mod
 
 | File                                                         | Holds                                                                                                   |
 | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
-| [`mod/hooks/register.tsx`](mod/hooks/register.tsx)           | the hooks: the band and its `🧠`, the tool, its row and its instructions, `/answers`, `/answers-config`, the refreshes |
+| [`mod/hooks/register.tsx`](mod/hooks/register.tsx)           | the hooks: the band and its count line, the tool, its row and its instructions, `/answers`, `/answers-config`, the refreshes |
 | [`mod/hooks/settings.ts`](mod/hooks/settings.ts)             | reads the defaults file and the user's                                                                  |
-| [`mod/src/`](mod/src/)                                       | the pure core: the draft's answers, the band's moves, the items, their layout and links, the settings, the tool's instructions |
+| [`mod/src/`](mod/src/)                                       | the pure core: the draft's answers, the band's moves and its count line, the items, their layout and links, the settings, the tool's instructions |
 | [`mod/defaults/config.jsonc`](mod/defaults/config.jsonc)     | every setting, with its default and what it does                                                       |
 | [`mod/types/index.d.ts`](mod/types/index.d.ts)               | the item, band and settings shapes, and the `$.state` contract                                          |
 | [`mod/test/`](mod/test/)                                     | the core's tests, run by `node --test`                                                                  |

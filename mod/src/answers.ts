@@ -112,8 +112,7 @@ const replaced = (draft: string, answer: Answer, text: string): string =>
 const withoutAnswer = (draft: string, answer: Answer): string => {
   const before = draft.slice(0, answer.start);
   const after = draft.slice(answer.end);
-  const isBetweenWords =
-    before.endsWith(" ") && (after.startsWith(" ") || after === "");
+  const isBetweenWords = before.endsWith(" ") && /^(?: |\n|$)/.test(after);
   const isOnOwnLine =
     (before.endsWith("\n") || before === "") &&
     (after.startsWith("\n") || after === "");
@@ -126,31 +125,23 @@ const withoutAnswer = (draft: string, answer: Answer): string => {
       : before + after.replace(/^ /, "");
 };
 
-// A note runs to the end of its line, so what follows one starts a new line.
-const endsInNote = (draft: string): boolean => {
-  const last = answersIn(draft).at(-1);
+/**
+ * `text` on a line of its own after `draft`, ending in a newline, so each
+ * answer the draft gains sits on its own line; spaces trailing the draft go,
+ * and a draft already ending its line gains no blank one.
+ */
+const appended = (draft: string, text: string): string => {
+  const base = draft.replace(/[ \t]+$/, "");
 
-  return (
-    last !== undefined &&
-    last.note !== "" &&
-    !draft.slice(last.end).includes("\n")
-  );
+  return base === "" || base.endsWith("\n")
+    ? `${base}${text}\n`
+    : `${base}\n${text}\n`;
 };
-
-const appended = (draft: string, text: string): string =>
-  draft === "" || /\s$/.test(draft)
-    ? draft + text
-    : endsInNote(draft)
-      ? `${draft}\n${text}`
-      : `${draft} ${text}`;
-
-/** `text` on a line of its own after `base`, or alone when `base` is empty. */
-const onNewLine = (base: string, text: string): string =>
-  base === "" ? text : `${base}\n${text}`;
 
 /**
  * The draft once a note is written for the item: its answer, letters kept,
- * moved to a line of its own at the end, since a note runs to its line's end;
+ * moved to a line of its own at the end, as `choose` adds one, since a note
+ * runs to its line's end;
  * an empty note leaves the letters alone, or drops a letterless answer.
  */
 export const withNote = (
@@ -165,7 +156,7 @@ export const withNote = (
   const text = written(item, letters, said);
 
   return said !== ""
-    ? onNewLine(rest.replace(/\s+$/, ""), text)
+    ? appended(rest.replace(/\s+$/, ""), text)
     : held === undefined || letters.length === 0
       ? rest
       : replaced(draft, held, text);
@@ -173,7 +164,7 @@ export const withNote = (
 
 /**
  * The draft once an option is clicked: the item's answer written in place of
- * the one the draft held, or added at the end; a checkbox item's letter
+ * the one the draft held, or added on a line of its own at the end; a checkbox item's letter
  * toggled, its answer dropped when no letter is left.
  */
 export const choose = (

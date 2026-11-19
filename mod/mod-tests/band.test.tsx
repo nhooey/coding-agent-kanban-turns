@@ -57,6 +57,7 @@ const DEFAULTS = JSON.stringify({
     title: "claude",
     code: "permission",
     chosen: "diffAddedWord",
+    hover: "suggestion",
   },
 });
 
@@ -95,11 +96,19 @@ const ANSWERS = {
   presentation: { isFullscreen: true, columns: 100 },
 } as const;
 
+// The skill's count line, as `outstanding.py render --counts` prints it.
+const COUNTS = "📌 Outstanding: 🚧 2 · 🤔 2 · 🔍 2 · 👉 2 · 🧠 3";
+
 /**
  * The engine beneath the plugin: a prompt box held in `box`, the script's
- * output from `open`, and the prompts the plugin submits in `sent`.
+ * Decide items from `open` and its count line from `counts`, and the
+ * prompts the plugin submits in `sent`.
  */
-const engine = (on: On, open: () => readonly unknown[]) => {
+const engine = (
+  on: On,
+  open: () => readonly unknown[],
+  counts: () => string = () => `${COUNTS}\n`,
+) => {
   const state = { box: "", sent: [] as string[], isPaneOpen: false };
   on("ui.open", () => {
     state.isPaneOpen = true;
@@ -135,10 +144,12 @@ const engine = (on: On, open: () => readonly unknown[]) => {
   // A test has no files, so the defaults file reads as this; the Node tests
   // (test/config.test.ts) hold the real one to the shape.
   on("fs.read", () => ({ value: DEFAULTS }));
-  on("process.run", () => ({
+  on("process.run", (_, e) => ({
     value: {
       exitCode: 0,
-      stdout: JSON.stringify({ items: open() }),
+      stdout: e.argv.includes("--counts")
+        ? counts()
+        : JSON.stringify({ items: open() }),
       stderr: "",
       isStdoutTruncated: false,
       isStderrTruncated: false,
@@ -193,19 +204,19 @@ for (const surface of ["terminal", "desktop"] as const) {
 
     // A radio option writes its reference and moves on.
     await ui.press({ key: "option-B" });
-    expect(state.box).toBe("9efb08a1.Decide.1.B");
+    expect(state.box).toBe("9efb08a1.Decide.1.B\n");
     expect(await headerText(ui)).toBe("🧠 2/3 · Cleanups to start");
 
     // A checkbox item takes several letters and stays put.
     await ui.press({ key: "option-C" });
     await ui.press({ key: "option-A" });
-    expect(state.box).toBe("9efb08a1.Decide.1.B 9efb08a1.Decide.2.A,C");
+    expect(state.box).toBe("9efb08a1.Decide.1.B\n9efb08a1.Decide.2.A,C\n");
     expect(await headerText(ui)).toBe("🧠 2/3 · Cleanups to start");
 
     // Back to the first item: another option replaces its reference.
     await ui.press({ key: "prev" });
     await ui.press({ key: "option-A" });
-    expect(state.box).toBe("9efb08a1.Decide.1.A 9efb08a1.Decide.2.A,C");
+    expect(state.box).toBe("9efb08a1.Decide.1.A\n9efb08a1.Decide.2.A,C\n");
     expect(await headerText(ui)).toBe("🧠 3/3 · Ship tonight?");
 
     // Next wraps; skip goes to the next unanswered item.
@@ -232,7 +243,7 @@ test("/answers opens the pane, and dismiss closes it", async ($, on) => {
   await $.command.run(ANSWERS);
   expect(state.isPaneOpen).toBe(true);
   expect(await headerText(ui)).toBe("🧠 2/3 · Cleanups to start");
-  expect(state.box).toBe("9efb08a1.Decide.1.A");
+  expect(state.box).toBe("9efb08a1.Decide.1.A\n");
   await ui.unmount();
 });
 
@@ -243,7 +254,7 @@ test("/answers-config lists each setting in effect and its file", async ($, on) 
 });
 
 for (const surface of ["terminal", "desktop"] as const) {
-  test(`items that fit the band are drawn in it, and the 🧠 brings them back there, on ${surface}`, async ($, on) => {
+  test(`items that fit the band are drawn in it, and the count line brings them back there, on ${surface}`, async ($, on) => {
     const state = engine(on, () => ITEMS);
     const band = await $.ui.mount({ ...BAND, surface });
     await $.turn.complete(replyDone("t1"));
@@ -254,11 +265,8 @@ for (const surface of ["terminal", "desktop"] as const) {
     await band.press({ key: "option-A" });
     await band.press({ key: "dismiss" });
     expect((await band.find({ type: "Button", key: "reopen" }))?.text).toBe(
-      "🧠",
+      COUNTS,
     );
-    expect(
-      (await band.find({ type: "Text", text: /open decisions/ }))?.text,
-    ).toContain("3 open decisions");
 
     await band.press({ key: "reopen" });
     expect(state.isPaneOpen).toBe(false);
@@ -278,23 +286,81 @@ test("items too tall for the band leave a button that opens the pane", async ($,
   await $.turn.complete(replyDone("t1"));
 
   expect(await headerText(band)).toBeUndefined();
+  expect((await band.find({ type: "Button", key: "reopen" }))?.text).toBe(
+    COUNTS,
+  );
   expect(
-    (await band.find({ type: "Text", text: /open decisions/ }))?.text,
+    (await band.find({ type: "Text", text: /too tall/ }))?.text,
   ).toContain("too tall for here");
   await band.press({ key: "open-pane" });
   expect(state.isPaneOpen).toBe(true);
   await band.unmount();
 });
 
-test("with no open items there is no 🧠 above the prompt", async ($, on) => {
+test("without a count line or an open item nothing is drawn above the prompt", async ($, on) => {
   const open: unknown[] = [...ITEMS];
-  engine(on, () => open);
+  engine(on, () => open, () => "");
   await $.command.run(ANSWERS);
   open.splice(0, open.length);
   await $.turn.complete(replyDone("t1"));
   const band = await $.ui.mount({ ...BAND, surface: "terminal" });
 
   expect(await band.find({ type: "Button", key: "reopen" })).toBeUndefined();
+  await band.unmount();
+});
+
+test("with no Decide item open, the count line is still drawn", async ($, on) => {
+  engine(on, () => [], () => "📌 Outstanding: 🚧 2\n");
+  const band = await $.ui.mount({ ...BAND, surface: "terminal" });
+  await $.turn.complete(replyDone("t1"));
+
+  expect(await headerText(band)).toBeUndefined();
+  expect((await band.find({ type: "Button", key: "reopen" }))?.text).toBe(
+    "📌 Outstanding: 🚧 2",
+  );
+  await band.unmount();
+});
+
+test("when the script gives no count line, the folded line counts the open decisions", async ($, on) => {
+  engine(on, () => ITEMS, () => "");
+  const band = await $.ui.mount({ ...BAND, surface: "terminal" });
+  await $.turn.complete(replyDone("t1"));
+  await band.press({ key: "dismiss" });
+
+  expect((await band.find({ type: "Button", key: "reopen" }))?.text).toBe(
+    "🧠 3 open decisions",
+  );
+  await band.unmount();
+});
+
+test("another drawing in the site still shows, after the band", async ($, on) => {
+  engine(on, () => ITEMS);
+  on("ui.render", ($, e) => {
+    const { Text } = $.ui.resolve(e);
+
+    return <Text>agents tree</Text>;
+  });
+  const band = await $.ui.mount({ ...BAND, surface: "terminal" });
+  await $.turn.complete(replyDone("t1"));
+  // Where `text` first shows in the tree as drawn, -1 when it doesn't.
+  const at = async (text: string) =>
+    JSON.stringify(await band.drawn()).indexOf(text);
+
+  // The band calls no next(e): the engine stacks the other drawing itself.
+  // In full: the item, then the other drawing.
+  expect(await headerText(band)).toBe("🧠 1/3 · Which cache to keep");
+  expect(await at("Which cache to keep")).toBeGreaterThan(-1);
+  expect(await at("agents tree")).toBeGreaterThan(
+    await at("Which cache to keep"),
+  );
+
+  // Folded: the count line, then the other drawing.
+  await band.press({ key: "dismiss" });
+  expect((await band.find({ type: "Button", key: "reopen" }))?.text).toBe(
+    COUNTS,
+  );
+  expect(await at(COUNTS)).toBeGreaterThan(-1);
+  expect(await at("agents tree")).toBeGreaterThan(await at(COUNTS));
   await band.unmount();
 });
 
@@ -338,9 +404,15 @@ test("an option's pros and cons pick it too", async ($, on) => {
   const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
 
   await ui.press({ key: "option-B-con-0" });
-  expect(state.box).toBe("9efb08a1.Decide.1.B");
+  expect(state.box).toBe("9efb08a1.Decide.1.B\n");
   await ui.press({ key: "option-A-pro-0" });
-  expect(state.box).toBe("9efb08a1.Decide.1.A");
+  expect(state.box).toBe("9efb08a1.Decide.1.A\n");
+
+  // Under the pointer an option lights the gutter left of each of its
+  // lines, in the hover colour, and no longer inverts its text.
+  const drawn = JSON.stringify(await ui.drawn());
+  expect(drawn).toContain('"scope":"option-A","backgroundColor":"suggestion"');
+  expect(drawn).not.toContain('"inverse":true');
   await ui.unmount();
 });
 
@@ -352,7 +424,7 @@ test("the notes field writes a note into the draft", async ($, on) => {
   await ui.press({ key: "option-B" });
   await ui.press({ key: "prev" });
   await ui.input({ key: "option-notes", text: "only for the loader" });
-  expect(state.box).toBe("9efb08a1.Decide.1.B: only for the loader");
+  expect(state.box).toBe("9efb08a1.Decide.1.B: only for the loader\n");
   expect(await headerText(ui)).toBe("🧠 2/3 · Cleanups to start");
   expect(state.sent).toEqual([]);
   await ui.unmount();
@@ -422,7 +494,9 @@ test("a submitted prompt folds the band and closes the pane until the reply ends
 
   expect(state.isPaneOpen).toBe(false);
   expect(await headerText(band)).toBeUndefined();
-  expect((await band.find({ type: "Button", key: "reopen" }))?.text).toBe("🧠");
+  expect((await band.find({ type: "Button", key: "reopen" }))?.text).toBe(
+    COUNTS,
+  );
 
   await $.turn.complete(replyDone("t2"));
   expect(await headerText(band)).toBe("🧠 2/3 · Cleanups to start");
@@ -497,7 +571,7 @@ test("the tool row draws buttons that build the draft, and dims a settled item",
   expect(await row.find({ type: "Text", text: /engine row/ })).toBeDefined();
   await row.redraw(TOOL_ROW);
   await row.press({ key: "9efb08a1.Decide.3.N" });
-  expect(state.box).toBe("9efb08a1.Decide.3.N");
+  expect(state.box).toBe("9efb08a1.Decide.3.N\n");
 
   // Item 1 is answered elsewhere: the next refresh no longer lists it.
   open.splice(0, 1);
@@ -506,7 +580,7 @@ test("the tool row draws buttons that build the draft, and dims a settled item",
     "(settled)",
   );
   await row.press({ key: "9efb08a1.Decide.1.A" });
-  expect(state.box).toBe("9efb08a1.Decide.3.N");
+  expect(state.box).toBe("9efb08a1.Decide.3.N\n");
   await row.unmount();
 });
 

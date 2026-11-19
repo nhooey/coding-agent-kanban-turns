@@ -21,6 +21,7 @@ export const SETTINGS_SHAPE: Shape = {
     title: "string",
     code: "string",
     chosen: "string",
+    hover: "string",
   },
 };
 

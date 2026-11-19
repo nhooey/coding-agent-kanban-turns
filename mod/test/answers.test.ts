@@ -66,16 +66,29 @@ const items = [radio, checkbox, binary];
 const band: Band = { ...emptyBand, items, knownRefs: items.map((i) => i.ref) };
 
 describe("building and replacing references in the draft", () => {
-  test("a click on an empty draft writes the reference", () => {
-    expect(choose("", radio, "A")).toBe("9efb08a1.Decide.1.A");
+  test("a click on an empty draft writes the reference on its own line", () => {
+    expect(choose("", radio, "A")).toBe("9efb08a1.Decide.1.A\n");
   });
 
-  test("a click appends after what the person typed, with one space", () => {
+  test("a click puts the reference on a line of its own after what the person typed", () => {
     expect(choose("Go ahead:", radio, "B")).toBe(
-      "Go ahead: 9efb08a1.Decide.1.B",
+      "Go ahead:\n9efb08a1.Decide.1.B\n",
     );
     expect(choose("Go ahead: ", radio, "B")).toBe(
-      "Go ahead: 9efb08a1.Decide.1.B",
+      "Go ahead:\n9efb08a1.Decide.1.B\n",
+    );
+  });
+
+  test("a draft already ending its line gains no blank line", () => {
+    expect(choose("Go ahead:\n", radio, "B")).toBe(
+      "Go ahead:\n9efb08a1.Decide.1.B\n",
+    );
+  });
+
+  test("each click on another item adds a line of its own", () => {
+    const once = choose("", radio, "A");
+    expect(choose(once, binary, "Y")).toBe(
+      "9efb08a1.Decide.1.A\n9efb08a1.Decide.3.Y\n",
     );
   });
 
@@ -100,7 +113,7 @@ describe("building and replacing references in the draft", () => {
 
   test("an item of another turn with the same number is not touched", () => {
     expect(choose("0f311c94.Decide.1.A", radio, "B")).toBe(
-      "0f311c94.Decide.1.A 9efb08a1.Decide.1.B",
+      "0f311c94.Decide.1.A\n9efb08a1.Decide.1.B\n",
     );
   });
 
@@ -114,13 +127,13 @@ describe("notes and answers in words", () => {
   test("a note follows the item's letters, on a line of its own", () => {
     const draft = choose("9efb08a1.Decide.3.Y", radio, "B");
     expect(withNote(draft, radio, "only for the loader")).toBe(
-      "9efb08a1.Decide.3.Y\n9efb08a1.Decide.1.B: only for the loader",
+      "9efb08a1.Decide.3.Y\n9efb08a1.Decide.1.B: only for the loader\n",
     );
   });
 
   test("a note with no letter answers the item in words", () => {
     const draft = withNote("", radio, "I'd rather wait");
-    expect(draft).toBe("9efb08a1.Decide.1: I'd rather wait");
+    expect(draft).toBe("9efb08a1.Decide.1: I'd rather wait\n");
     expect(isAnswered(draft, radio)).toBe(true);
     expect(lettersFor(draft, radio)).toEqual([]);
     expect(noteFor(draft, radio)).toBe("I'd rather wait");
@@ -138,9 +151,9 @@ describe("notes and answers in words", () => {
 
   test("another letter keeps the note, and a click after a note starts a new line", () => {
     const noted = withNote("", radio, "for now");
-    expect(choose(noted, radio, "A")).toBe("9efb08a1.Decide.1.A: for now");
+    expect(choose(noted, radio, "A")).toBe("9efb08a1.Decide.1.A: for now\n");
     expect(choose(noted, binary, "N")).toBe(
-      "9efb08a1.Decide.1: for now\n9efb08a1.Decide.3.N",
+      "9efb08a1.Decide.1: for now\n9efb08a1.Decide.3.N\n",
     );
   });
 
@@ -149,6 +162,15 @@ describe("notes and answers in words", () => {
       "9efb08a1.Decide.1.A",
     );
     expect(withNote("ok\n9efb08a1.Decide.1: for now", radio, " ")).toBe("ok");
+    expect(withNote("ok\n9efb08a1.Decide.1: for now\n", radio, " ")).toBe(
+      "ok\n",
+    );
+  });
+
+  test("a note for an answer mid-draft moves it to a line of its own at the end", () => {
+    expect(
+      withNote("9efb08a1.Decide.1.A\n9efb08a1.Decide.3.Y\n", radio, "why"),
+    ).toBe("9efb08a1.Decide.3.Y\n9efb08a1.Decide.1.A: why\n");
   });
 });
 
@@ -178,8 +200,8 @@ describe("questions in a reply", () => {
 describe("checkbox items", () => {
   test("a second letter joins the first, in option order", () => {
     const once = choose("", checkbox, "C");
-    expect(once).toBe("9efb08a1.Decide.2.C");
-    expect(choose(once, checkbox, "A")).toBe("9efb08a1.Decide.2.A,C");
+    expect(once).toBe("9efb08a1.Decide.2.C\n");
+    expect(choose(once, checkbox, "A")).toBe("9efb08a1.Decide.2.A,C\n");
   });
 
   test("a letter clicked again is taken out", () => {
@@ -193,6 +215,17 @@ describe("checkbox items", () => {
       "ok thanks",
     );
     expect(choose("ok 9efb08a1.Decide.2.B", checkbox, "B")).toBe("ok");
+    expect(choose("ok 9efb08a1.Decide.2.B\nthanks", checkbox, "B")).toBe(
+      "ok\nthanks",
+    );
+  });
+
+  test("the last letter taken out of an answer on its own line leaves no blank line", () => {
+    expect(choose("9efb08a1.Decide.2.B\n", checkbox, "B")).toBe("");
+    expect(
+      choose("ok\n9efb08a1.Decide.2.B\n9efb08a1.Decide.3.Y\n", checkbox, "B"),
+    ).toBe("ok\n9efb08a1.Decide.3.Y\n");
+    expect(choose("ok\n9efb08a1.Decide.2.B\n", checkbox, "B")).toBe("ok\n");
   });
 });
 
