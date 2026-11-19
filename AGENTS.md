@@ -11,7 +11,7 @@ The `coding-agent-kanban-turns` Claude Code mod, in TypeScript: a band above the
   - `types/index.d.ts`: the shapes and the `$.state` contract, self-contained as `claude plugin validate` asks.
   - `test/`: the core's tests, `node --test` with Jest's standalone `expect`.
   - `mod-tests/`: the band and tool row driven through the engine, `claude plugin test`.
-- `skills-devshell/`: the sub-flake that installs this repository's skills into `.agents/skills/`.
+- `skills-devshell/`: the sub-flake that installs this repository's skills into `.agents/skills/`: skillspkgs' `claude-code-tools` combination, plus `coding-agent-kanban-turn-responses`, whose rules the mod shares, and `design-hygiene-find-implicit-models`.
 
 ## Build and test
 
