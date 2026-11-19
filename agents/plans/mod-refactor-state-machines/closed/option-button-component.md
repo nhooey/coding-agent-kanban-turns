@@ -1,6 +1,7 @@
 ---
 title: The option buttons are one component that takes callbacks
-state: approved
+state: superseded
+superseded-by: items-after-reply
 kind: implementation
 part-of: mod-refactor-state-machines
 needs: [band-transitions-reducer]

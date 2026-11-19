@@ -1,6 +1,7 @@
 ---
 title: One pure step function moves the band, and hooks dispatch to it
-state: approved
+state: superseded
+superseded-by: pane-lists-raised-items
 kind: implementation
 part-of: mod-refactor-state-machines
 needs: [mod-view-text-in-core, band-differential-test]

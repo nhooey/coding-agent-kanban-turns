@@ -1,6 +1,7 @@
 ---
 title: Answers gather in a basket and go out in one prompt on Submit
-state: approved
+state: superseded
+superseded-by: kanban-pane
 kind: implementation
 part-of: kanban-answers-in-transcript
 needs: [kanban-items-tool-row]
