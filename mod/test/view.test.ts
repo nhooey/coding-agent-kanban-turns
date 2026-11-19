@@ -1,20 +1,19 @@
-// What the hooks draw: the band's view, the commands' and the tool's text,
-// and when the tool's row is drawn as its buttons alone.
+// What the hooks draw: the commands' and the tool's text, an item's title,
+// and when the tool's row draws nothing.
 
 import { describe, test } from "node:test";
 import { expect } from "expect";
 
-import { emptyBand } from "../src/band.ts";
+import { emptyRaised } from "../src/raised.ts";
 import {
   answersText,
-  bandView,
   configText,
   drewText,
   isPlainToolRow,
+  itemTitle,
   noItemsText,
-  toolRowTitle,
 } from "../src/view.ts";
-import type { Band, DecideItem } from "../types/index.d.ts";
+import type { DecideItem, Raised } from "../types/index.d.ts";
 
 const radio: DecideItem = {
   turn: "9efb08a1",
@@ -38,38 +37,7 @@ const binary: DecideItem = {
     { letter: "N", name: "Hold" },
   ],
 };
-const band: Band = { ...emptyBand, items: [radio, binary] };
-const clear = {
-  fits: true,
-  paneShown: false,
-  hasSurvey: false,
-  hasSettings: true,
-} as const;
-
-describe("the band's view", () => {
-  test("an item that fits, with nothing over it, shows in full", () => {
-    expect(bandView(band, clear)).toBe("full");
-  });
-
-  test("a survey, unread settings or no items show no band", () => {
-    expect(bandView(band, { ...clear, hasSurvey: true })).toBe("none");
-    expect(bandView(band, { ...clear, hasSettings: false })).toBe("none");
-    expect(bandView(emptyBand, clear)).toBe("none");
-  });
-
-  test("a dismissed or away band, or one under the pane, folds", () => {
-    expect(bandView({ ...band, isDismissed: true }, clear)).toBe("folded");
-    expect(bandView({ ...band, isAway: true }, clear)).toBe("folded");
-    expect(bandView(band, { ...clear, paneShown: true })).toBe("folded");
-  });
-
-  test("items too tall fold with the pane's button, whatever else holds", () => {
-    expect(bandView(band, { ...clear, fits: false })).toBe("folded-tall");
-    expect(bandView({ ...band, isAway: true }, { ...clear, fits: false })).toBe(
-      "folded-tall",
-    );
-  });
-});
+const raised: Raised = { ...emptyRaised, items: [radio, binary] };
 
 describe("the text with no open items", () => {
   test("says why when the reason is known", () => {
@@ -79,21 +47,27 @@ describe("the text with no open items", () => {
 });
 
 describe("/answers's reply", () => {
-  test("counts the items the pane opened over", () => {
-    expect(answersText(band)).toBe("Decide pane opened: 2 open Decide items.");
+  test("counts the open items the pane opened over, the settled left out", () => {
+    expect(answersText(raised)).toBe("Decide pane opened: 2 open Decide items.");
+    expect(answersText({ ...raised, settledRefs: ["9efb08a1.Decide.1"] })).toBe(
+      "Decide pane opened: 1 open Decide items.",
+    );
   });
 
   test("says there are none, and why", () => {
-    expect(answersText({ ...emptyBand, problem: "it broke" })).toBe(
+    expect(answersText({ ...emptyRaised, problem: "it broke" })).toBe(
       "No open Decide items: it broke.",
     );
+    expect(
+      answersText({ ...raised, settledRefs: ["9efb08a1.Decide.1", "9efb08a1.Decide.2"] }),
+    ).toBe("No open Decide items.");
   });
 });
 
 describe("/answers-config's reply", () => {
   test("lists the settings in effect, then what wasn't used", () => {
-    expect(configText(["keys.prev = p", "keys.next = n"], ["bad.jsonc: parse error"])).toBe(
-      "keys.prev = p\nkeys.next = n\nNot used: bad.jsonc: parse error",
+    expect(configText(["keys.dismiss = q", "colors.title = claude"], ["bad.jsonc: parse error"])).toBe(
+      "keys.dismiss = q\ncolors.title = claude\nNot used: bad.jsonc: parse error",
     );
   });
 
@@ -105,15 +79,15 @@ describe("/answers-config's reply", () => {
 describe("the tool's result", () => {
   test("names each item drawn by its reference, filling a missing one", () => {
     expect(drewText([radio, binary])).toBe(
-      "Drew buttons for 2 Decide items above the final response: 9efb08a1.Decide.1, 9efb08a1.Decide.2.",
+      "Drew buttons for 2 Decide items under the final response and in the Decide pane: 9efb08a1.Decide.1, 9efb08a1.Decide.2.",
     );
   });
 });
 
-describe("the tool row's title", () => {
+describe("an item's title", () => {
   test("is the item's number and summary, marked when settled", () => {
-    expect(toolRowTitle(radio, false)).toBe("🧠 Decide.1 · Which cache to keep");
-    expect(toolRowTitle(radio, true)).toBe("🧠 Decide.1 · Which cache to keep (settled)");
+    expect(itemTitle(radio, false)).toBe("🧠 Decide.1 · Which cache to keep");
+    expect(itemTitle(radio, true)).toBe("🧠 Decide.1 · Which cache to keep (settled)");
   });
 });
 

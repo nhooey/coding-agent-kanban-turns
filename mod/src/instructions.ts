@@ -90,7 +90,7 @@ export const INPUT_SCHEMA = {
 
 /** What the tool does, as the engine lists it to the agent. */
 export const TOOL_DESCRIPTION = [
-  "Draws clickable buttons for this turn's Decide items in the transcript, just above the final response.",
+  "Draws clickable buttons for this turn's Decide items in the transcript, just under the final response, and lists them in the mod's Decide pane.",
   "Call it once, right before writing the final response, with every Decide item that response will hold, in the shape `outstanding.py decide --json` prints.",
   "A click writes the item's reference into the user's prompt draft; nothing is sent.",
 ].join(" ");
@@ -100,7 +100,7 @@ export const instructionsFor = (tool: string): string =>
   [
     `The coding-agent-kanban-turns mod draws clickable buttons for a final response's Decide items, through the tool \`${tool}\`.`,
     "",
-    `- When: call \`${tool}\` once, right before writing a final response that holds Decide items, so their buttons sit just above the reply. Don't call it for a response without Decide items.`,
+    `- When: call \`${tool}\` once, right before writing a final response that holds Decide items, so their buttons sit just under the reply and in the Decide pane. Don't call it for a response without Decide items.`,
     '- Input: `{"items": [...]}`, one entry per Decide item of that response, in its order, each with:',
     "  - `turn`: the turn id, the first 8 characters of the latest prompt's promptId;",
     "  - `number` and `summary`: the item's number in the Decide list and its bold summary;",

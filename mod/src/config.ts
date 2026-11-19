@@ -15,13 +15,14 @@ type Shape = "string" | "number" | { readonly [key: string]: Shape };
 /** Every setting the mod reads, by the type its value must have. */
 export const SETTINGS_SHAPE: Shape = {
   outstanding: { script: "string", python: "string", "timeout-ms": "number" },
-  keys: { prev: "string", skip: "string", next: "string", dismiss: "string" },
+  keys: { dismiss: "string" },
   colors: {
     border: "string",
     title: "string",
     code: "string",
     chosen: "string",
     hover: "string",
+    expand: "string",
   },
 };
 

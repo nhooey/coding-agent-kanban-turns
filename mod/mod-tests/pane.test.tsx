@@ -44,6 +44,14 @@ const ITEMS = [
   },
 ] as const;
 
+// An item a later reply raises.
+const LATER = {
+  ...ITEMS[0],
+  turn: "b2c3d4e5",
+  ref: "b2c3d4e5.Decide.1",
+  summary: "Which loader to keep",
+} as const;
+
 // The settings the tests draw with: defaults/config.jsonc's values.
 const DEFAULTS = JSON.stringify({
   outstanding: {
@@ -51,17 +59,18 @@ const DEFAULTS = JSON.stringify({
     python: "python3",
     "timeout-ms": 20000,
   },
-  keys: { prev: "h", skip: "j", next: "l", dismiss: "q" },
+  keys: { dismiss: "q" },
   colors: {
     border: "promptBorder",
     title: "claude",
     code: "permission",
     chosen: "diffAddedWord",
     hover: "suggestion",
+    expand: "claude",
   },
 });
 
-const BAND = {
+const ABOVE_PROMPT = {
   plugin: PLUGIN,
   component: "AbovePrompt",
   props: {
@@ -101,17 +110,25 @@ const COUNTS = "📌 Outstanding: 🚧 2 · 🤔 2 · 🔍 2 · 👉 2 · 🧠 3
 
 /**
  * The engine beneath the plugin: a prompt box held in `box`, the script's
- * Decide items from `open` and its count line from `counts`, and the
- * prompts the plugin submits in `sent`.
+ * Decide items from `open` and its count line from `counts`, the prompts
+ * the plugin submits in `sent`, and each pane open with whether it asked
+ * for the keyboard in `opens`. The kit has no layout to scroll a pane by,
+ * so `$.ui.scroll` is refused here, as on a pane not drawn yet.
  */
 const engine = (
   on: On,
   open: () => readonly unknown[],
   counts: () => string = () => `${COUNTS}\n`,
 ) => {
-  const state = { box: "", sent: [] as string[], isPaneOpen: false };
-  on("ui.open", () => {
+  const state = {
+    box: "",
+    sent: [] as string[],
+    isPaneOpen: false,
+    opens: [] as boolean[],
+  };
+  on("ui.open", (_, e) => {
     state.isPaneOpen = true;
+    state.opens.push(e.focus === true);
 
     return { value: { isPlaced: true } };
   });
@@ -135,6 +152,7 @@ const engine = (
   });
   on("session.id", () => ({ value: "session-1" }));
   on("session.cwd", () => ({ value: "/work" }));
+  on("session.start", (_, e) => ({ cwd: e.cwd }));
   on("env.get", () => ({ value: "/home/neil" }));
   // The script is there; no user settings file is, so the shipped defaults
   // are what's in effect.
@@ -187,43 +205,43 @@ const replyDone = (turnId: string) =>
     isAborted: false,
   }) as const;
 
-const headerText = async (ui: {
-  find: (q: {
+type Drawing = {
+  findAll: (q: {
     type: string;
     text: RegExp;
-  }) => Promise<{ text: string } | undefined>;
-}) => (await ui.find({ type: "Text", text: /🧠/ }))?.text;
+  }) => Promise<readonly { text: string }[]>;
+};
+
+/** The items' titles, in the order drawn: a title's Text holds a Text per code span, which matches too, so each shows once. */
+const titles = async (ui: Drawing) =>
+  (await ui.findAll({ type: "Text", text: /^🧠 Decide\./ }))
+    .map((found) => found.text)
+    .filter((text, n, all) => text !== all[n - 1]);
 
 for (const surface of ["terminal", "desktop"] as const) {
-  test(`the pane builds the draft and walks the items, on ${surface}`, async ($, on) => {
+  test(`the pane lists every item and its options build the draft, on ${surface}`, async ($, on) => {
     const state = engine(on, () => ITEMS);
     await $.command.run(ANSWERS);
     const ui = await $.ui.mount({ ...PANE, surface });
 
-    expect(await headerText(ui)).toBe("🧠 1/3 · Which cache to keep");
+    expect(await titles(ui)).toEqual([
+      "🧠 Decide.1 · Which cache to keep",
+      "🧠 Decide.2 · Cleanups to start",
+      "🧠 Decide.3 · Ship tonight?",
+    ]);
 
-    // A radio option writes its reference and moves on.
-    await ui.press({ key: "option-B" });
+    // A radio option writes its reference on a line of its own.
+    await ui.press({ key: "9efb08a1.Decide.1.B" });
     expect(state.box).toBe("9efb08a1.Decide.1.B\n");
-    expect(await headerText(ui)).toBe("🧠 2/3 · Cleanups to start");
 
-    // A checkbox item takes several letters and stays put.
-    await ui.press({ key: "option-C" });
-    await ui.press({ key: "option-A" });
+    // A checkbox item takes several letters, in option order.
+    await ui.press({ key: "9efb08a1.Decide.2.C" });
+    await ui.press({ key: "9efb08a1.Decide.2.A" });
     expect(state.box).toBe("9efb08a1.Decide.1.B\n9efb08a1.Decide.2.A,C\n");
-    expect(await headerText(ui)).toBe("🧠 2/3 · Cleanups to start");
 
-    // Back to the first item: another option replaces its reference.
-    await ui.press({ key: "prev" });
-    await ui.press({ key: "option-A" });
+    // Another option replaces the item's reference.
+    await ui.press({ key: "9efb08a1.Decide.1.A" });
     expect(state.box).toBe("9efb08a1.Decide.1.A\n9efb08a1.Decide.2.A,C\n");
-    expect(await headerText(ui)).toBe("🧠 3/3 · Ship tonight?");
-
-    // Next wraps; skip goes to the next unanswered item.
-    await ui.press({ key: "next" });
-    expect(await headerText(ui)).toBe("🧠 1/3 · Which cache to keep");
-    await ui.press({ key: "skip" });
-    expect(await headerText(ui)).toBe("🧠 3/3 · Ship tonight?");
 
     // No click sent anything.
     expect(state.sent).toEqual([]);
@@ -231,19 +249,14 @@ for (const surface of ["terminal", "desktop"] as const) {
   });
 }
 
-test("/answers opens the pane, and dismiss closes it", async ($, on) => {
+test("/answers opens the pane with the keyboard, and ❌ closes it", async ($, on) => {
   const state = engine(on, () => ITEMS);
   await $.command.run(ANSWERS);
   expect(state.isPaneOpen).toBe(true);
+  expect(state.opens).toEqual([true]);
   const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
-  await ui.press({ key: "option-A" });
   await ui.press({ key: "dismiss" });
   expect(state.isPaneOpen).toBe(false);
-
-  await $.command.run(ANSWERS);
-  expect(state.isPaneOpen).toBe(true);
-  expect(await headerText(ui)).toBe("🧠 2/3 · Cleanups to start");
-  expect(state.box).toBe("9efb08a1.Decide.1.A\n");
   await ui.unmount();
 });
 
@@ -253,131 +266,127 @@ test("/answers-config lists each setting in effect and its file", async ($, on) 
   expect(JSON.stringify(shown)).toContain('keys.dismiss = \\"q\\"  # defaults: ');
 });
 
-for (const surface of ["terminal", "desktop"] as const) {
-  test(`items that fit the band are drawn in it, and the count line brings them back there, on ${surface}`, async ($, on) => {
-    const state = engine(on, () => ITEMS);
-    const band = await $.ui.mount({ ...BAND, surface });
-    await $.turn.complete(replyDone("t1"));
-
-    expect(state.isPaneOpen).toBe(false);
-    expect(await headerText(band)).toBe("🧠 1/3 · Which cache to keep");
-
-    await band.press({ key: "option-A" });
-    await band.press({ key: "dismiss" });
-    expect((await band.find({ type: "Button", key: "reopen" }))?.text).toBe(
-      COUNTS,
-    );
-
-    await band.press({ key: "reopen" });
-    expect(state.isPaneOpen).toBe(false);
-    expect(await headerText(band)).toBe("🧠 2/3 · Cleanups to start");
-    expect(state.sent).toEqual([]);
-    await band.unmount();
-  });
-}
-
-test("items too tall for the band leave a button that opens the pane", async ($, on) => {
-  const state = engine(on, () => ITEMS);
-  const band = await $.ui.mount({
-    ...BAND,
-    surface: "terminal",
-    props: { ...BAND.props, maxRows: 6, scroll: { offset: 0, bodyRows: 6 } },
-  });
+test("the pane keeps every item raised, newest at the bottom, a settled one dimmed and dead", async ($, on) => {
+  const open: unknown[] = [...ITEMS];
+  const state = engine(on, () => open);
+  await $.tool.call({ tool: TOOL, items: ITEMS } as never);
   await $.turn.complete(replyDone("t1"));
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
 
-  expect(await headerText(band)).toBeUndefined();
-  expect((await band.find({ type: "Button", key: "reopen" }))?.text).toBe(
+  // A later reply raises one more, and item 1 is answered meanwhile.
+  open.splice(0, 1);
+  open.push(LATER);
+  await $.tool.call({ tool: TOOL, items: [LATER] } as never);
+  await $.turn.complete(replyDone("t2"));
+
+  expect(await titles(ui)).toEqual([
+    "🧠 Decide.1 · Which cache to keep (settled)",
+    "🧠 Decide.2 · Cleanups to start",
+    "🧠 Decide.3 · Ship tonight?",
+    "🧠 Decide.1 · Which loader to keep",
+  ]);
+  await ui.press({ key: "9efb08a1.Decide.1.A" });
+  expect(state.box).toBe("");
+  await ui.press({ key: "b2c3d4e5.Decide.1.B" });
+  expect(state.box).toBe("b2c3d4e5.Decide.1.B\n");
+  await ui.unmount();
+});
+
+test("a reply that raises a new item opens the pane without the keyboard, at its end", async ($, on) => {
+  const open: unknown[] = [...ITEMS];
+  const state = engine(on, () => open);
+  await $.turn.complete(replyDone("t1"));
+  expect(state.opens).toEqual([false]);
+
+  // The pane stays open while the next prompt runs.
+  await $.prompt.submit({
+    text: "go on",
+    wait: false,
+    origin: { kind: "composer" },
+  });
+  expect(state.isPaneOpen).toBe(true);
+
+  // Closed by the person, it opens again only for an item it hasn't shown.
+  state.isPaneOpen = false;
+  await $.turn.complete(replyDone("t2"));
+  expect(state.isPaneOpen).toBe(false);
+  open.push(LATER);
+  await $.turn.complete(replyDone("t3"));
+  expect(state.isPaneOpen).toBe(true);
+  expect(state.opens).toEqual([false, false]);
+});
+
+test("an agent's turn doesn't open the pane", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  await $.turn.complete({ ...replyDone("t1"), agentId: "agent-1" } as never);
+  expect(state.isPaneOpen).toBe(false);
+});
+
+test("the session's start opens the pane without the keyboard when items are open", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  await $.session.start({
+    cwd: "/work",
+    surface: "terminal",
+    isInteractive: true,
+  });
+  // The refresh runs after the start returns: wait on the engine meanwhile,
+  // with an agent's turn, which the mod passes by.
+  for (let n = 0; n < 100 && !state.isPaneOpen; n += 1) {
+    await $.turn.complete({ ...replyDone(`w${n}`), agentId: "agent-1" } as never);
+  }
+  expect(state.opens).toEqual([false]);
+});
+
+test("above the prompt: the count line and 🪟 ↗, each opening the pane with the keyboard", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  await $.turn.complete(replyDone("t1"));
+  state.isPaneOpen = false;
+  const line = await $.ui.mount({ ...ABOVE_PROMPT, surface: "terminal" });
+
+  expect((await line.find({ type: "Button", key: "counts" }))?.text).toBe(
     COUNTS,
   );
-  expect(
-    (await band.find({ type: "Text", text: /too tall/ }))?.text,
-  ).toContain("too tall for here");
-  await band.press({ key: "open-pane" });
+  const drawn = JSON.stringify(await line.drawn());
+  expect(drawn).toContain("🪟");
+  expect(drawn).toContain("↗");
+  expect(drawn).not.toContain("Which cache to keep");
+
+  await line.press({ key: "open-pane" });
   expect(state.isPaneOpen).toBe(true);
-  await band.unmount();
+  state.isPaneOpen = false;
+  await line.press({ key: "counts" });
+  expect(state.isPaneOpen).toBe(true);
+  expect(state.opens).toEqual([false, true, true]);
+  await line.unmount();
 });
 
-test("without a count line or an open item nothing is drawn above the prompt", async ($, on) => {
-  const open: unknown[] = [...ITEMS];
-  engine(on, () => open, () => "");
-  await $.command.run(ANSWERS);
-  open.splice(0, open.length);
-  await $.turn.complete(replyDone("t1"));
-  const band = await $.ui.mount({ ...BAND, surface: "terminal" });
-
-  expect(await band.find({ type: "Button", key: "reopen" })).toBeUndefined();
-  await band.unmount();
-});
-
-test("with no Decide item open, the count line is still drawn", async ($, on) => {
-  engine(on, () => [], () => "📌 Outstanding: 🚧 2\n");
-  const band = await $.ui.mount({ ...BAND, surface: "terminal" });
-  await $.turn.complete(replyDone("t1"));
-
-  expect(await headerText(band)).toBeUndefined();
-  expect((await band.find({ type: "Button", key: "reopen" }))?.text).toBe(
-    "📌 Outstanding: 🚧 2",
-  );
-  await band.unmount();
-});
-
-test("when the script gives no count line, the folded line counts the open decisions", async ($, on) => {
+test("without a count line nothing is drawn above the prompt", async ($, on) => {
   engine(on, () => ITEMS, () => "");
-  const band = await $.ui.mount({ ...BAND, surface: "terminal" });
   await $.turn.complete(replyDone("t1"));
-  await band.press({ key: "dismiss" });
+  const line = await $.ui.mount({ ...ABOVE_PROMPT, surface: "terminal" });
 
-  expect((await band.find({ type: "Button", key: "reopen" }))?.text).toBe(
-    "🧠 3 open decisions",
-  );
-  await band.unmount();
+  expect(await line.find({ type: "Button", key: "counts" })).toBeUndefined();
+  expect(await line.find({ type: "Button", key: "open-pane" })).toBeUndefined();
+  await line.unmount();
 });
 
-test("another drawing in the site still shows, after the band", async ($, on) => {
+test("another drawing above the prompt still shows, after the count line", async ($, on) => {
   engine(on, () => ITEMS);
   on("ui.render", ($, e) => {
     const { Text } = $.ui.resolve(e);
 
     return <Text>agents tree</Text>;
   });
-  const band = await $.ui.mount({ ...BAND, surface: "terminal" });
+  const line = await $.ui.mount({ ...ABOVE_PROMPT, surface: "terminal" });
   await $.turn.complete(replyDone("t1"));
   // Where `text` first shows in the tree as drawn, -1 when it doesn't.
   const at = async (text: string) =>
-    JSON.stringify(await band.drawn()).indexOf(text);
+    JSON.stringify(await line.drawn()).indexOf(text);
 
-  // The band calls no next(e): the engine stacks the other drawing itself.
-  // In full: the item, then the other drawing.
-  expect(await headerText(band)).toBe("🧠 1/3 · Which cache to keep");
-  expect(await at("Which cache to keep")).toBeGreaterThan(-1);
-  expect(await at("agents tree")).toBeGreaterThan(
-    await at("Which cache to keep"),
-  );
-
-  // Folded: the count line, then the other drawing.
-  await band.press({ key: "dismiss" });
-  expect((await band.find({ type: "Button", key: "reopen" }))?.text).toBe(
-    COUNTS,
-  );
+  // The hook calls no next(e): the engine stacks the other drawing itself.
   expect(await at(COUNTS)).toBeGreaterThan(-1);
   expect(await at("agents tree")).toBeGreaterThan(await at(COUNTS));
-  await band.unmount();
-});
-
-test("a dismissed band stays folded until a reply raises a new item", async ($, on) => {
-  const open: unknown[] = [...ITEMS];
-  engine(on, () => open);
-  const band = await $.ui.mount({ ...BAND, surface: "terminal" });
-  await $.turn.complete(replyDone("t0"));
-  await band.press({ key: "dismiss" });
-
-  await $.turn.complete(replyDone("t1"));
-  expect(await headerText(band)).toBeUndefined();
-
-  open.push({ ...ITEMS[0], turn: "b2c3d4e5", ref: "b2c3d4e5.Decide.1" });
-  await $.turn.complete(replyDone("t2"));
-  expect(await headerText(band)).toBe("🧠 1/4 · Which cache to keep");
-  await band.unmount();
+  await line.unmount();
 });
 
 test("an option's pros and cons pick it too", async ($, on) => {
@@ -403,15 +412,17 @@ test("an option's pros and cons pick it too", async ($, on) => {
   await $.command.run(ANSWERS);
   const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
 
-  await ui.press({ key: "option-B-con-0" });
+  await ui.press({ key: "9efb08a1.Decide.1.B-con-0" });
   expect(state.box).toBe("9efb08a1.Decide.1.B\n");
-  await ui.press({ key: "option-A-pro-0" });
+  await ui.press({ key: "9efb08a1.Decide.1.A-pro-0" });
   expect(state.box).toBe("9efb08a1.Decide.1.A\n");
 
   // Under the pointer an option lights the gutter left of each of its
   // lines, in the hover colour, and no longer inverts its text.
   const drawn = JSON.stringify(await ui.drawn());
-  expect(drawn).toContain('"scope":"option-A","backgroundColor":"suggestion"');
+  expect(drawn).toContain(
+    '"scope":"9efb08a1.Decide.1.A","backgroundColor":"suggestion"',
+  );
   expect(drawn).not.toContain('"inverse":true');
   await ui.unmount();
 });
@@ -421,51 +432,84 @@ test("the notes field writes a note into the draft", async ($, on) => {
   await $.command.run(ANSWERS);
   const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
 
-  await ui.press({ key: "option-B" });
-  await ui.press({ key: "prev" });
-  await ui.input({ key: "option-notes", text: "only for the loader" });
+  await ui.press({ key: "9efb08a1.Decide.1.B" });
+  await ui.input({ key: "9efb08a1.Decide.1.notes", text: "only for the loader" });
   expect(state.box).toBe("9efb08a1.Decide.1.B: only for the loader\n");
-  expect(await headerText(ui)).toBe("🧠 2/3 · Cleanups to start");
   expect(state.sent).toEqual([]);
   await ui.unmount();
 });
 
-test("a question in a reply opens the band at its item", async ($, on) => {
-  engine(on, () => ITEMS);
-  const band = await $.ui.mount({ ...BAND, surface: "terminal" });
+const REPLY = {
+  plugin: PLUGIN,
+  component: "AssistantMessage",
+  surface: "terminal",
+  props: {
+    text: "Some work.\n\n1. **Which cache to keep**  \n   Or wait.\n3. **Ship tonight?**  ",
+    isFirstOfReply: true,
+  },
+} as const;
+
+test("a reply draws its items under its text, a settled one dimmed", async ($, on) => {
+  const open: unknown[] = [...ITEMS];
+  const state = engine(on, () => open);
+  await $.tool.call({ tool: TOOL, items: ITEMS } as never);
+  await $.turn.complete(replyDone("t0"));
+  const reply = await $.ui.mount(REPLY);
+
+  // The reply's text first, then its two items, in its order.
+  const drawn = JSON.stringify(await reply.drawn());
+  expect(drawn.indexOf("Some work.")).toBeGreaterThan(-1);
+  expect(drawn.indexOf("🧠 Decide.1 · Which cache to keep")).toBeGreaterThan(
+    drawn.indexOf("Some work."),
+  );
+  expect(await titles(reply)).toEqual([
+    "🧠 Decide.1 · Which cache to keep",
+    "🧠 Decide.3 · Ship tonight?",
+  ]);
+  await reply.press({ key: "9efb08a1.Decide.3.N" });
+  expect(state.box).toBe("9efb08a1.Decide.3.N\n");
+
+  // Item 1 is answered elsewhere: the next refresh no longer lists it.
+  open.splice(0, 1);
   await $.turn.complete(replyDone("t1"));
-  const reply = await $.ui.mount({
-    plugin: PLUGIN,
-    component: "AssistantMessage",
-    surface: "terminal",
-    props: {
-      text: "3. **Ship tonight?**  \n   Or wait.",
-      isFirstOfReply: true,
-    },
-  });
+  expect(await titles(reply)).toEqual([
+    "🧠 Decide.1 · Which cache to keep (settled)",
+    "🧠 Decide.3 · Ship tonight?",
+  ]);
+  await reply.press({ key: "9efb08a1.Decide.1.A" });
+  expect(state.box).toBe("9efb08a1.Decide.3.N\n");
+  await reply.unmount();
+});
+
+test("a question in a reply opens the pane with the keyboard, though it can't scroll here", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  await $.tool.call({ tool: TOOL, items: ITEMS } as never);
+  await $.turn.complete(replyDone("t0"));
+  state.isPaneOpen = false;
+  const reply = await $.ui.mount(REPLY);
 
   await reply.press({
     key: "kanban-questions",
     link: { href: "https://kanban-turns.invalid/9efb08a1.Decide.3" },
   });
-  expect(await headerText(band)).toBe("🧠 3/3 · Ship tonight?");
+  expect(state.isPaneOpen).toBe(true);
+  expect(state.opens).toEqual([false, true]);
   await reply.unmount();
-  await band.unmount();
 });
 
-test("a progress circle jumps to its item", async ($, on) => {
+test("a reply without the items' summaries is drawn as the engine draws it", async ($, on) => {
   engine(on, () => ITEMS);
-  await $.command.run(ANSWERS);
-  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
-  await ui.press({ key: "mark-2" });
+  await $.tool.call({ tool: TOOL, items: ITEMS } as never);
+  const reply = await $.ui.mount({
+    ...REPLY,
+    props: { ...REPLY.props, text: "Nothing to decide." },
+  });
 
-  expect(await headerText(ui)).toBe("🧠 3/3 · Ship tonight?");
-  await ui.press({ key: "mark-0" });
-  expect(await headerText(ui)).toBe("🧠 1/3 · Which cache to keep");
-  await ui.unmount();
+  expect(await titles(reply)).toEqual([]);
+  await reply.unmount();
 });
 
-test("Reassess submits the reassess command", async ($, on) => {
+test("Reassess submits the reassess command and leaves the pane open", async ($, on) => {
   const state = engine(on, () => ITEMS);
   await $.command.run(ANSWERS);
   const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
@@ -473,34 +517,8 @@ test("Reassess submits the reassess command", async ($, on) => {
 
   expect(state.sent).toEqual(["reassess"]);
   expect(state.box).toBe("");
-  expect(state.isPaneOpen).toBe(false);
-  await ui.unmount();
-});
-
-test("a submitted prompt folds the band and closes the pane until the reply ends", async ($, on) => {
-  const state = engine(on, () => ITEMS);
-  const band = await $.ui.mount({ ...BAND, surface: "terminal" });
-  await $.turn.complete(replyDone("t1"));
-  await band.press({ key: "option-A" });
-  expect(await headerText(band)).toBe("🧠 2/3 · Cleanups to start");
-
-  await $.command.run(ANSWERS);
   expect(state.isPaneOpen).toBe(true);
-  await $.prompt.submit({
-    text: state.box,
-    wait: false,
-    origin: { kind: "composer" },
-  });
-
-  expect(state.isPaneOpen).toBe(false);
-  expect(await headerText(band)).toBeUndefined();
-  expect((await band.find({ type: "Button", key: "reopen" }))?.text).toBe(
-    COUNTS,
-  );
-
-  await $.turn.complete(replyDone("t2"));
-  expect(await headerText(band)).toBe("🧠 2/3 · Cleanups to start");
-  await band.unmount();
+  await ui.unmount();
 });
 
 const TOOL_ROW = {
@@ -515,7 +533,7 @@ const TOOL_ROW = {
 const TOOL_RESULT = {
   tool_use_id: "toolu_1",
   tool: TOOL,
-  output: "Drew buttons for 3 Decide items above the final response",
+  output: "Drew buttons for 3 Decide items under the final response",
   isErrored: false,
 };
 
@@ -547,16 +565,14 @@ test("the tool's result line shows only in ctrl+o or on an error", async ($, on)
   await result.unmount();
 });
 
-test("the tool row draws buttons that build the draft, and dims a settled item", async ($, on) => {
-  const open: unknown[] = [...ITEMS];
-  const state = engine(on, () => open);
+test("the tool's row draws nothing, its items going under the reply, but in ctrl+o", async ($, on) => {
+  engine(on, () => ITEMS);
   on("ui.render", ($, e) => {
     const { Text } = $.ui.resolve(e);
 
     return <Text>engine row</Text>;
   });
   await $.tool.call({ tool: TOOL, items: ITEMS } as never);
-  await $.command.run(ANSWERS);
   const row = await $.ui.mount({
     plugin: PLUGIN,
     surface: "terminal",
@@ -565,22 +581,12 @@ test("the tool row draws buttons that build the draft, and dims a settled item",
     props: TOOL_ROW,
   });
 
-  // The buttons repeat the call, so the engine's row shows only in ctrl+o.
   expect(await row.find({ type: "Text", text: /engine row/ })).toBeUndefined();
+  expect(await titles(row)).toEqual([]);
   await row.redraw({ ...TOOL_ROW, isExpanded: true });
   expect(await row.find({ type: "Text", text: /engine row/ })).toBeDefined();
-  await row.redraw(TOOL_ROW);
-  await row.press({ key: "9efb08a1.Decide.3.N" });
-  expect(state.box).toBe("9efb08a1.Decide.3.N\n");
-
-  // Item 1 is answered elsewhere: the next refresh no longer lists it.
-  open.splice(0, 1);
-  await $.turn.complete(replyDone("t1"));
-  expect((await row.find({ type: "Text", text: /Decide\.1/ }))?.text).toContain(
-    "(settled)",
-  );
-  await row.press({ key: "9efb08a1.Decide.1.A" });
-  expect(state.box).toBe("9efb08a1.Decide.3.N\n");
+  await row.redraw({ ...TOOL_ROW, isInterrupted: true });
+  expect(await row.find({ type: "Text", text: /engine row/ })).toBeDefined();
   await row.unmount();
 });
 

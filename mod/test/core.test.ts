@@ -5,20 +5,8 @@ import { describe, test } from "node:test";
 import { expect } from "expect";
 
 import { answersIn, answerTo, lettersAfter } from "../src/answers.ts";
-import {
-  afterChoice,
-  away,
-  back,
-  drawnMark,
-  emptyBand,
-  movedOn,
-  positionIn,
-  progressMarks,
-  shownAt,
-  shownItem,
-} from "../src/band.ts";
 import { glyphOf, refOf } from "../src/items.ts";
-import type { Band, DecideItem } from "../types/index.d.ts";
+import type { DecideItem } from "../types/index.d.ts";
 
 const radio: DecideItem = {
   turn: "9efb08a1",
@@ -53,8 +41,6 @@ const binary: DecideItem = {
     { letter: "N", name: "Hold" },
   ],
 };
-const items = [radio, checkbox, binary];
-const band: Band = { ...emptyBand, items };
 
 describe("reading the answers in a draft", () => {
   test("each answer is found with where it sits, its letters and its note", () => {
@@ -105,54 +91,3 @@ describe("the items themselves", () => {
   });
 });
 
-describe("where the band stands", () => {
-  test("its position is held inside its items", () => {
-    expect(positionIn({ ...band, position: 7 })).toBe(2);
-    expect(positionIn({ ...band, position: -1 })).toBe(0);
-    expect(positionIn(emptyBand)).toBe(0);
-  });
-
-  test("the shown item is the one at its position, none when it has no items", () => {
-    expect(shownItem({ ...band, position: 1 })).toBe(checkbox);
-    expect(shownItem(emptyBand)).toBeUndefined();
-  });
-
-  test("an answer to the shown item moves on to the next unanswered one", () => {
-    expect(movedOn(band, radio, "9efb08a1.Decide.1.A").position).toBe(1);
-    expect(movedOn(band, checkbox, "9efb08a1.Decide.2.A")).toBe(band);
-  });
-
-  test("a checkbox click stays for more letters; a radio click moves on", () => {
-    const onCheckbox = { ...band, position: 1 };
-    expect(afterChoice(onCheckbox, checkbox, "9efb08a1.Decide.2.A")).toBe(onCheckbox);
-    expect(afterChoice(band, radio, "9efb08a1.Decide.1.A").position).toBe(1);
-  });
-
-  test("a link's item is shown, and the band reopened; no item leaves it be", () => {
-    const folded = { ...band, isDismissed: true, isAway: true };
-    expect(shownAt(folded, 2, "")).toMatchObject({ position: 2, isDismissed: false, isAway: false });
-    expect(shownAt(folded, -1, "")).toBe(folded);
-  });
-
-  test("a submitted prompt folds the band and the reply's end brings it back", () => {
-    expect(away(band).isAway).toBe(true);
-    expect(back(away(band)).isAway).toBe(false);
-    expect(back({ ...band, isDismissed: true }).isDismissed).toBe(true);
-  });
-});
-
-describe("the progress marks", () => {
-  test("one mark per item, answered or not, with the shown one", () => {
-    expect(progressMarks({ ...band, position: 1 }, "9efb08a1.Decide.2.A")).toEqual([
-      { mark: "○", isShown: false },
-      { mark: "●", isShown: true },
-      { mark: "○", isShown: false },
-    ]);
-  });
-
-  test("the shown mark is ringed", () => {
-    expect(drawnMark("●", true)).toBe("◉");
-    expect(drawnMark("○", true)).toBe("◎");
-    expect(drawnMark("●", false)).toBe("●");
-  });
-});

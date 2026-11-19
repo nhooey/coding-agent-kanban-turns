@@ -12,7 +12,7 @@
 // Sections merge key by key, so every key you leave out comes from here
 // and follows this file as it changes. A key that's no setting here, or a
 // value of the wrong type, refuses your whole file: the mod uses these
-// defaults and says why in the band and in /answers-config, which lists
+// defaults and says why in the pane and in /answers-config, which lists
 // every setting in effect and the file it came from.
 {
   // Where the open Decide items come from: the kanban skill's
@@ -24,21 +24,15 @@
     "script": "~/.claude/skills/coding-agent-kanban-turn-responses/scripts/outstanding.py",
     // The Python that runs it, a name on your PATH or a path.
     "python": "python3",
-    // How long one run may take before the band gives up on it, in
+    // How long one run may take before the mod gives up on it, in
     // milliseconds.
     "timeout-ms": 20000
   },
 
-  // The band's and the pane's hotkeys, one key each, pressed while the
-  // band or the pane holds the keyboard (ctrl+x tab, or a click).
+  // The pane's hotkeys, pressed while the pane holds the keyboard (as it
+  // opens from /answers or the line above the prompt, or after a click).
   "keys": {
-    // ⏪ Prev: the previous item, wrapping round.
-    "prev": "h",
-    // ⏭️ Skip: the next item the draft doesn't answer.
-    "skip": "j",
-    // ⏩ Next: the next item, wrapping round.
-    "next": "l",
-    // ❌: fold the band to its count line and close the pane.
+    // ❌: close the pane.
     "dismiss": "q"
   },
 
@@ -47,7 +41,7 @@
   "colors": {
     // The rounded border round an item.
     "border": "promptBorder",
-    // The item's title line, and the ring on the shown item's mark.
+    // The item's title line.
     "title": "claude",
     // Code spans in a summary, note or option.
     "code": "permission",
@@ -55,6 +49,9 @@
     "chosen": "diffAddedWord",
     // The bar in the column left of an option, lit down the option's
     // full height while the pointer is over any of its lines.
-    "hover": "suggestion"
+    "hover": "suggestion",
+    // The ↗ arrow beside 🪟 after the count line above the prompt, the
+    // button that opens the pane.
+    "expand": "claude"
   }
 }

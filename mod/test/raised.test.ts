@@ -1,0 +1,146 @@
+// The Decide items raised this session: merged in by ref, settled by a
+// refresh, and announced once, so the pane opens by itself for a new one.
+
+import { describe, test } from "node:test";
+import { expect } from "expect";
+
+import {
+  emptyRaised,
+  firstUnanswered,
+  forSession,
+  isSettled,
+  refreshed,
+  seen,
+  stillOpen,
+  unseen,
+  withItems,
+} from "../src/raised.ts";
+import type { DecideItem, Raised } from "../types/index.d.ts";
+
+const radio: DecideItem = {
+  turn: "9efb08a1",
+  list: "Decide",
+  number: 1,
+  summary: "Which cache to keep",
+  kind: "radio",
+  ref: "9efb08a1.Decide.1",
+  options: [
+    { letter: "A", name: "Disk" },
+    { letter: "B", name: "Memory" },
+  ],
+};
+const checkbox: DecideItem = {
+  ...radio,
+  number: 2,
+  summary: "Cleanups to start",
+  kind: "checkbox",
+  ref: "9efb08a1.Decide.2",
+  options: [
+    { letter: "A", name: "Matchers" },
+    { letter: "B", name: "Dead code" },
+  ],
+};
+const binary: DecideItem = {
+  ...radio,
+  number: 3,
+  summary: "Ship tonight?",
+  kind: "binary",
+  ref: "9efb08a1.Decide.3",
+  options: [
+    { letter: "Y", name: "Ship" },
+    { letter: "N", name: "Hold" },
+  ],
+};
+const raised: Raised = { ...emptyRaised, session: "s1", items: [radio, checkbox] };
+const refs = (r: Raised) => r.items.map((item) => item.ref);
+
+describe("the session the items belong to", () => {
+  test("the same session keeps its items", () => {
+    expect(forSession(raised, "s1")).toBe(raised);
+  });
+
+  test("another session starts with none", () => {
+    expect(forSession(raised, "s2")).toEqual({ ...emptyRaised, session: "s2" });
+  });
+});
+
+describe("merging items in", () => {
+  test("a new item goes at the end, newest last", () => {
+    expect(refs(withItems(raised, [binary]))).toEqual([
+      "9efb08a1.Decide.1",
+      "9efb08a1.Decide.2",
+      "9efb08a1.Decide.3",
+    ]);
+  });
+
+  test("an item raised before keeps its place and takes the newer content", () => {
+    const told = { ...radio, note: ["Both are built."] };
+    const merged = withItems(raised, [binary, told]);
+    expect(refs(merged)).toEqual([
+      "9efb08a1.Decide.1",
+      "9efb08a1.Decide.2",
+      "9efb08a1.Decide.3",
+    ]);
+    expect(merged.items[0]?.note).toEqual(["Both are built."]);
+  });
+
+  test("an item handed over twice at once is raised once", () => {
+    expect(refs(withItems(emptyRaised, [binary, binary]))).toEqual([
+      "9efb08a1.Decide.3",
+    ]);
+  });
+});
+
+describe("a refresh", () => {
+  test("merges in the open items and settles every raised item not among them", () => {
+    const after = refreshed(raised, [checkbox, binary], "");
+    expect(refs(after)).toEqual([
+      "9efb08a1.Decide.1",
+      "9efb08a1.Decide.2",
+      "9efb08a1.Decide.3",
+    ]);
+    expect(after.settledRefs).toEqual(["9efb08a1.Decide.1"]);
+    expect(isSettled(after, radio)).toBe(true);
+    expect(isSettled(after, checkbox)).toBe(false);
+  });
+
+  test("an item open again is no longer settled", () => {
+    const settled = refreshed(raised, [checkbox], "");
+    expect(refreshed(settled, [radio, checkbox], "").settledRefs).toEqual([]);
+  });
+
+  test("keeps why it found nothing", () => {
+    expect(refreshed(raised, [], "no script").problem).toBe("no script");
+  });
+
+  test("the items still open are the raised ones not settled, in order", () => {
+    expect(stillOpen(refreshed(raised, [checkbox, binary], ""))).toEqual([
+      checkbox,
+      binary,
+    ]);
+  });
+});
+
+describe("announcing new items", () => {
+  test("open items not yet seen are unseen, settled ones never", () => {
+    const after = refreshed(raised, [checkbox], "");
+    expect(unseen(after)).toEqual([checkbox]);
+  });
+
+  test("once seen, only an item raised after is unseen", () => {
+    const looked = seen(raised);
+    expect(unseen(looked)).toEqual([]);
+    expect(unseen(withItems(looked, [binary]))).toEqual([binary]);
+  });
+});
+
+describe("where /answers scrolls", () => {
+  test("to the first open item the draft doesn't answer", () => {
+    expect(firstUnanswered(raised, "9efb08a1.Decide.1.A")).toBe(checkbox);
+  });
+
+  test("to none when the draft answers every open item", () => {
+    const after = refreshed(raised, [checkbox], "");
+    expect(firstUnanswered(after, "9efb08a1.Decide.2.A")).toBeUndefined();
+  });
+});

@@ -59,18 +59,20 @@ describe("the shipped defaults file", () => {
 
 describe("the user's file over the defaults", () => {
   test("changes only the keys it names, and says where each came from", () => {
-    const got = loaded(defaults, user('{"keys": {"dismiss": "x"}, // mine\n}'));
+    const got = loaded(defaults, user('{"keys": {"dismiss": "x"}, "colors": {"expand": "red"}, // mine\n}'));
     expect(got.problems).toEqual([]);
-    expect(got.settings?.keys).toEqual({ prev: "h", skip: "j", next: "l", dismiss: "x" });
+    expect(got.settings?.keys).toEqual({ dismiss: "x" });
+    expect(got.settings?.colors.expand).toBe("red");
+    expect(got.settings?.colors.title).toBe("claude");
     expect(got.effective).toContain('keys.dismiss = "x"  # user: ~/.config/x/config.jsonc');
-    expect(got.effective).toContain('keys.prev = "h"  # defaults: defaults/config.jsonc');
+    expect(got.effective).toContain('colors.title = "claude"  # defaults: defaults/config.jsonc');
   });
 
   test("an unknown key refuses the file, which leaves the defaults in effect", () => {
-    const got = loaded(defaults, user('{"keys": {"dimiss": "x"}}'));
+    const got = loaded(defaults, user('{"keys": {"prev": "h"}}'));
     expect(got.settings?.keys.dismiss).toBe("q");
     expect(got.problems).toEqual([
-      "~/.config/x/config.jsonc: keys.dimiss is no setting; the keys here are prev, skip, next, dismiss",
+      "~/.config/x/config.jsonc: keys.prev is no setting; the keys here are dismiss",
     ]);
   });
 

@@ -1,6 +1,6 @@
 # coding-agent-kanban-turns
 
-The `coding-agent-kanban-turns` Claude Code mod, in TypeScript: a band above the prompt and buttons in the transcript that answer the kanban turn responses' Decide items. See `README.md`. Plans live in `agents/plans/`; `agents/plans/README.md` is their overview.
+The `coding-agent-kanban-turns` Claude Code mod, in TypeScript: a pane that lists the kanban turn responses' Decide items as they're raised, and the same buttons under each reply in the transcript, that answer them. See `README.md`. Plans live in `agents/plans/`; `agents/plans/README.md` is their overview.
 
 ## Layout
 
@@ -10,7 +10,7 @@ The `coding-agent-kanban-turns` Claude Code mod, in TypeScript: a band above the
   - `defaults/config.jsonc`: every setting with its default and a comment; a user's own file merges over it.
   - `types/index.d.ts`: the shapes and the `$.state` contract, self-contained as `claude plugin validate` asks.
   - `test/`: the core's tests, `node --test` with Jest's standalone `expect`.
-  - `mod-tests/`: the band and tool row driven through the engine, `claude plugin test`.
+  - `mod-tests/`: the pane, the count line above the prompt, a reply's buttons and the tool row driven through the engine, `claude plugin test`.
 - `skills-devshell/`: the sub-flake that installs this repository's skills into `.agents/skills/`: skillspkgs' `claude-code-tools` combination, plus `coding-agent-kanban-turn-responses`, whose rules the mod shares, and `design-hygiene-find-implicit-models`.
 
 ## Build and test

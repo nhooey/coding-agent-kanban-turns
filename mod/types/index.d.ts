@@ -37,23 +37,21 @@ export type DecideItem = Readonly<{
   options: readonly DecideOption[];
 }>;
 
-/** The band above the prompt: the open items and where it stands among them. */
-export type Band = Readonly<{
-  /** The open Decide items, oldest first, from the last refresh. */
+/**
+ * Every Decide item raised in this session, oldest first: the pane lists
+ * them all, and a reply draws its own under its text. An item stays once
+ * raised; one no longer open is settled, drawn dimmed, its buttons dead.
+ */
+export type Raised = Readonly<{
+  /** The session the items were raised in: another session starts empty. */
+  session: string;
+  /** Each item a `kanban_options` call drew or a refresh found open, by ref once, oldest first. */
   items: readonly DecideItem[];
-  /** Which item the band shows, an index into `items`. */
-  position: number;
-  /** True after ❌, until a refresh raises an item not in `dismissedRefs`, or /answers. */
-  isDismissed: boolean;
-  /** True from a submitted prompt until the main loop's reply ends: folded meanwhile, then shown again. */
-  isAway: boolean;
-  /** The items' refs when ✕ was pressed. */
-  dismissedRefs: readonly string[];
-  /** Every ref a tool row drew or a refresh found open, so a ref gone from the open list reads as settled. */
-  knownRefs: readonly string[];
-  /** Known refs no longer open: their tool-row buttons are dimmed and do nothing. */
+  /** Raised refs the last refresh didn't find open. */
   settledRefs: readonly string[];
-  /** Why the last refresh found nothing, for the band to say; empty when it worked. */
+  /** Refs raised by the last main-loop turn's end, so the pane opens by itself only for a new one. */
+  seenRefs: readonly string[];
+  /** Why the last refresh found nothing, for the pane to say; empty when it worked. */
   problem: string;
 }>;
 
@@ -77,13 +75,14 @@ export type Settings = Readonly<{
     python: string;
     "timeout-ms": number;
   }>;
-  keys: Readonly<{ prev: string; skip: string; next: string; dismiss: string }>;
+  keys: Readonly<{ dismiss: string }>;
   colors: Readonly<{
     border: string;
     title: string;
     code: string;
     chosen: string;
     hover: string;
+    expand: string;
   }>;
 }>;
 
@@ -100,7 +99,7 @@ export type Loaded = Readonly<{
 declare module "claude-code" {
   interface PluginState {
     "coding-agent-kanban-turns": {
-      band: Shaped<Band>;
+      raised: Shaped<Raised>;
       draft: string;
       counts: string;
       settings: Shaped<Loaded>;
