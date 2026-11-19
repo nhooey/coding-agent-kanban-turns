@@ -1,6 +1,7 @@
 ---
 title: The band shows the open counts, the latest reply's Decide buttons and the answers waiting to be submitted
-state: approved
+state: superseded
+superseded-by: count-line-opens-pane
 kind: implementation
 part-of: kanban-answers-in-transcript
 needs: [kanban-mod-reads-transcript, kanban-items-tool-row, kanban-answers-basket]

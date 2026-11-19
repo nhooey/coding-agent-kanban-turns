@@ -1,6 +1,7 @@
 ---
 title: The tool row draws the turn's Decide items with their buttons, marked by a bar
-state: approved
+state: superseded
+superseded-by: items-after-reply
 kind: implementation
 part-of: kanban-answers-in-transcript
 needs: [kanban-mod-instructions, mod-view-text-in-core, mod-tool-schema-in-core, mod-outstanding-in-core, band-transitions-reducer, option-button-component]

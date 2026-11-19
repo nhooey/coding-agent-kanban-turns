@@ -1,6 +1,7 @@
 ---
 title: The mod's state changes are pure transitions, and its hooks only dispatch and draw
-state: approved
+state: superseded
+superseded-by: kanban-pane
 kind: end-state
 ---
 
