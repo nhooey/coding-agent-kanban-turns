@@ -4,7 +4,7 @@ state: approved
 kind: implementation
 part-of: pane-every-list
 needs: [protocol-spec-data, kanban-skill-retired]
-touches: [plugin/spec/kanban.yaml, plugin/spec/cases/, plugin/test/]
+touches: [plugin/spec/kanban.yaml, plugin/spec/cases/, plugin/test/unit/]
 ---
 
 # The spec holds each list's settling words and the grouped answer syntax

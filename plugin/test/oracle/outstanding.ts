@@ -1,12 +1,12 @@
 // The differential test's oracle for what the turns leave open: the core's
 // functions that read turns, reading the oracle's turns with `isOwn`, and
 // the names a report goes by read out of its text. The pure helpers they
-// share with src/outstanding.ts, which read no turn, are imported from it.
+// share with src/items/outstanding.ts, which read no turn, are imported from it.
 //
 // Temporary: the oracle and its test are deleted once `protocol-spec-data`
 // is rebased onto the neutral turns.
 
-import { itemsOf, refOf } from "../../src/items.ts";
+import { itemsOf, refOf } from "../../src/items/items.ts";
 import {
   answerFor,
   answersOfLine,
@@ -20,16 +20,16 @@ import {
   settlementsIn,
   subjectKey,
   summaryOf,
-} from "../../src/outstanding.ts";
+} from "../../src/items/outstanding.ts";
 import type {
   Answer,
   DecideState,
   ListItem,
   ListKey,
   Open,
-} from "../../src/outstanding.ts";
-import { elements, reportNamesItem } from "../../src/reports.ts";
-import { withoutDraftHeader } from "../../src/transcript.ts";
+} from "../../src/items/outstanding.ts";
+import { elements, reportNamesItem } from "../../src/transcript/reports.ts";
+import { withoutDraftHeader } from "../../src/transcript/turns.ts";
 import type { DecideItem, Settlement } from "../../types/index.d.ts";
 import { reassessStart } from "./transcript.ts";
 import type { Turn } from "./transcript.ts";

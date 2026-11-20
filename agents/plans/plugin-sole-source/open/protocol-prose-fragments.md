@@ -4,7 +4,7 @@ state: approved
 kind: implementation
 part-of: plugin-sole-source
 needs: [protocol-spec-data]
-touches: [plugin/spec/fragments/, plugin/src/instructions.ts, plugin/src/view.ts, plugin/hooks/register.tsx, plugin/test/instructions.test.ts, plugin/test/view.test.ts]
+touches: [plugin/spec/fragments/, plugin/src/protocol/instructions.ts, plugin/src/pane/view.ts, plugin/hooks/register.tsx, plugin/test/unit/protocol/instructions.test.ts, plugin/test/unit/pane/view.test.ts]
 ---
 
 # The protocol's prose rules are Markdown fragments, and the prompt.context instructions and a derived SKILL.md are assembled from them

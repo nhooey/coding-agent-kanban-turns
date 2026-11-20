@@ -35,8 +35,8 @@ import {
   reassessKept,
   toggledReassess,
   withNote,
-} from "../src/answers.ts";
-import { instructing } from "../src/instructed.ts";
+} from "../src/items/answers.ts";
+import { instructing } from "../src/transcript/instructed.ts";
 import {
   INPUT_SCHEMA,
   INSTRUCTIONS,
@@ -44,24 +44,24 @@ import {
   TOOL_CALLED,
   TOOL_DESCRIPTION,
   withInstructions,
-} from "../src/instructions.ts";
-import { CHOSEN_MARK, itemsOf, optionMark, refOf } from "../src/items.ts";
-import { INDENT, cellWidth, codeSpans } from "../src/layout.ts";
-import { DECIDE } from "../src/protocol.ts";
-import { SPEC } from "../src/spec.ts";
+} from "../src/protocol/instructions.ts";
+import { CHOSEN_MARK, itemsOf, optionMark, refOf } from "../src/items/items.ts";
+import { INDENT, cellWidth, codeSpans } from "../src/pane/layout.ts";
+import { DECIDE } from "../src/protocol/rules.ts";
+import { SPEC } from "../src/protocol/spec.ts";
 import {
   decideListCut,
   itemOfLink,
   linkedItems,
   linkedQuestions,
-} from "../src/links.ts";
+} from "../src/pane/links.ts";
 import {
   countLine,
   mergedOfResponse,
   mergedQuery,
   openOf,
   pullRequestsToAsk,
-} from "../src/outstanding.ts";
+} from "../src/items/outstanding.ts";
 import {
   answeredCount,
   closesOnSubmit,
@@ -79,7 +79,7 @@ import {
   withItems,
   withSent,
   withoutRead,
-} from "../src/raised.ts";
+} from "../src/items/raised.ts";
 import {
   doneHeader,
   doneKey,
@@ -91,15 +91,15 @@ import {
   firstUnansweredIn,
   turnSections,
   withKeys,
-} from "../src/sections.ts";
-import type { TurnSection } from "../src/sections.ts";
-import { transcriptPathFor, turnsOfText } from "../src/claude-code-transcript.ts";
+} from "../src/pane/sections.ts";
+import type { TurnSection } from "../src/pane/sections.ts";
+import { transcriptPathFor, turnsOfText } from "../src/transcript/claude-code.ts";
 import {
   NOT_DECODED,
   chunkOffsets,
   decodedText,
   withRange,
-} from "../src/transcript.ts";
+} from "../src/transcript/turns.ts";
 import type { Turn } from "../types/index.d.ts";
 import {
   answeredText,
@@ -123,8 +123,8 @@ import {
   sentLetters,
   settledText,
   submitStep,
-} from "../src/view.ts";
-import type { NotesMode } from "../src/view.ts";
+} from "../src/pane/view.ts";
+import type { NotesMode } from "../src/pane/view.ts";
 import type {
   DecideItem,
   Loaded,

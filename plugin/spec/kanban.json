@@ -1,5 +1,5 @@
 {
-  "$comment": "The kanban turn-response protocol's checkable rules. Generated from plugin/spec/kanban.yaml by plugin/tools/compile-spec.ts: edit the spec and run spec-build, never this file.",
+  "$comment": "The kanban turn-response protocol's checkable rules. Generated from plugin/spec/kanban.yaml by plugin/tools/spec/compile.ts: edit the spec and run spec-build, never this file.",
   "lists": {
     "done": {
       "header": "Done",

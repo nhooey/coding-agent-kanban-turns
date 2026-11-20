@@ -1,5 +1,5 @@
 # The shape of kanban.yaml, as a JSON Schema (draft-07) written in YAML.
-# tools/compile-spec.ts checks the spec against it before writing anything;
+# tools/spec/compile.ts checks the spec against it before writing anything;
 # kanban.yaml's comments say what each key means.
 $schema: http://json-schema.org/draft-07/schema#
 title: The kanban turn-response protocol's checkable rules

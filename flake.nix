@@ -27,7 +27,7 @@
     };
     # The dev-shell skills wiring (flakeModules.devshellSkills), which
     # bundles numtide/devshell. The skill sources are not inputs here: they
-    # live only in skills-devshell/'s lock, which the dev shell runs on
+    # live only in nix/skills-devshell/'s lock, which the dev shell runs on
     # entry, so this flake stays a leaf with no skill inputs.
     agent-skill-flake = {
       url = "github:nhooey/agent-skill-flake";
@@ -52,7 +52,7 @@
         # command that links it to result-plugin.
         inputs.agent-plugins-nixpkgs.flakeModules.claudePlugin
         # Bundles numtide/devshell, the skills startup that installs
-        # skills-devshell/'s skills into .agents/skills, and the check, fmt,
+        # nix/skills-devshell/'s skills into .agents/skills, and the check, fmt,
         # update-flake, reap-skills and update-skills-devshell commands.
         inputs.agent-skill-flake.flakeModules.devshellSkills
         inputs.treefmt-nix.flakeModule
@@ -60,6 +60,7 @@
 
       agent-skill-flake.devshellSkills = {
         name = "coding-agent-kanban-turns";
+        dir = "nix/skills-devshell";
         motd = ''
           {bold}{14}🧠 Entering the coding-agent-kanban-turns dev shell{reset}
           Run {bold}menu{reset} to list available commands.
@@ -77,7 +78,7 @@
           # dev shell and the checks run it.
           nodejs = pkgs.nodejs_26;
 
-          # plugin/'s npm dependencies (the YAML and JSONC parsers, and for
+          # plugin/'s npm dependencies (the YAML parser, and for
           # development TypeScript, Node's types, Jest's expect and ajv, which
           # checks the protocol's spec against its schema), each
           # fetched by the integrity hash its
@@ -90,9 +91,9 @@
             inherit nodejs;
           };
 
-          # The parsers the plugin runs, yaml and jsonc-parser, each bundled
+          # The libraries the plugin runs, yaml alone, each bundled
           # into one ES module file with its licence beside it, for
-          # plugin/vendor/: the engine loads a hooks module's `claude-code`
+          # plugin/vendor/<library>/: the engine loads a hooks module's `claude-code`
           # import and the plugin's own files, as plugin-authoring's
           # reference says, so each library goes in as a file of the
           # plugin's. plugin/vendor/ commits them, for the marketplace
@@ -104,14 +105,14 @@
             nativeBuildInputs = [ pkgs.esbuild ];
             nodeModules = "${pluginNodeModules}/node_modules";
             disallowedReferences = [ pluginNodeModules ];
-          } (builtins.readFile ./nix/bundle-vendor.sh);
+          } (builtins.readFile ./nix/scripts/vendor/bundle.sh);
 
           # Fails where plugin/vendor/'s committed bundles aren't
           # pluginVendor's, naming the command that refreshes them.
           vendorCheck = pkgs.runCommand "coding-agent-kanban-turns-vendor-check" {
             committed = ./plugin/vendor;
             bundled = pluginVendor;
-          } (builtins.readFile ./nix/check-vendor.sh);
+          } (builtins.readFile ./nix/scripts/vendor/check.sh);
 
           # Runs one of plugin/package.json's scripts in a writable copy of
           # plugin/, with the flake's node_modules linked in, against the
@@ -172,8 +173,8 @@
                 value = "${pluginVendor}";
               }
             ];
-            devshell.startup.link-node-modules.text = builtins.readFile ./nix/link-node-modules.sh;
-            devshell.startup.lay-vendor.text = builtins.readFile ./nix/lay-vendor.sh;
+            devshell.startup.link-node-modules.text = builtins.readFile ./nix/scripts/link-node-modules.sh;
+            devshell.startup.lay-vendor.text = builtins.readFile ./nix/scripts/vendor/lay.sh;
             commands = [
               {
                 category = "test";
@@ -196,20 +197,20 @@
               {
                 category = "test";
                 name = "plugin-test";
-                help = "claude plugin validate, then the engine-driven tests in plugin/plugin-tests/ (needs the claude CLI)";
+                help = "claude plugin validate, then the engine-driven tests in plugin/test/engine/ (needs the claude CLI)";
                 command = ''bash "$PRJ_ROOT/plugin/tools/plugin-test.sh"'';
               }
               {
                 category = "build";
                 name = "spec-build";
-                help = "compile plugin/spec/kanban.yaml into plugin/src/spec.ts and plugin/spec/kanban.json, for a commit after the spec changes";
+                help = "compile plugin/spec/kanban.yaml into plugin/src/protocol/spec.ts and plugin/spec/kanban.json, for a commit after the spec changes";
                 command = ''cd "$PRJ_ROOT/plugin" && npm run --silent spec:build'';
               }
               {
                 category = "build";
                 name = "refresh-vendor";
                 help = "lay the flake's bundled parsers in plugin/vendor/, as the dev shell does on entry, for a commit when nix flake check says they differ";
-                command = builtins.readFile ./nix/lay-vendor.sh;
+                command = builtins.readFile ./nix/scripts/vendor/lay.sh;
               }
             ];
           };
@@ -217,7 +218,7 @@
           # What a build can run: the core's type-check and its tests, the
           # committed bundles against the flake's, and the module and JSON
           # copy the protocol's spec compiles to against the committed ones.
-          # The hooks' type-check and plugin-tests/ need the engine (its API
+          # The hooks' type-check and test/engine/ need the engine (its API
           # declarations, and claude plugin test), which a build has not.
           checks = {
             inherit (config.packages) plugin;

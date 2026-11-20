@@ -4,13 +4,13 @@ state: proposed
 kind: implementation
 part-of: kanban-next-chunk
 needs: [kanban-items-name-what-they-free, mod-open-items-state, protocol-spec-data, kanban-cli-adapter, plugin-tools-replace-skill-scripts]
-touches: [plugin/spec/kanban.yaml, plugin/spec/cases/, plugin/src/chunk.ts, plugin/test/chunk.test.ts, plugin/cli/, plugin/hooks/register.tsx]
+touches: [plugin/spec/kanban.yaml, plugin/spec/cases/, plugin/src/items/chunk.ts, plugin/test/unit/items/chunk.test.ts, plugin/cli/, plugin/hooks/register.tsx]
 ---
 
 # The chunk is picked by a pure function over the open items, what they free and what earlier chunks showed
 
 - **The rules are in the spec.** `plugin/spec/kanban.yaml` holds the `next-chunk` command and its `stop` form, the chunk's size, by default 7, the lists a chunk draws from, and the tie-break order ([protocol-spec-data](../../plugin-sole-source/closed/protocol-spec-data.md)).
-- **One pure function.** `nextChunk(items, shown, size)` in `plugin/src/chunk.ts` takes the open items, the refs earlier chunks showed, in the order they showed them, and the size from the spec.
+- **One pure function.** `nextChunk(items, shown, size)` in `plugin/src/items/chunk.ts` takes the open items, the refs earlier chunks showed, in the order they showed them, and the size from the spec.
 - **What it returns.** First every ref in `shown` whose item is still open, in `shown`'s order, then the other open items up to `size`, ranked by how many open items each frees, directly or through others, then oldest first, then by list in the spec's tie-break order (Decide, Todo, Review, Pending, Waiting). When more than `size` shown items are still open, it returns them all; it never drops one to fit.
 - **Freeing.** An item whose freed items are all settled ranks as freeing nothing; a cycle of `Frees` counts each item once.
 - **Two edges over it,** both thin:
