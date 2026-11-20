@@ -14,6 +14,7 @@ export const emptyRaised: Raised = {
   settledRefs: [],
   seenRefs: [],
   problem: "",
+  warnings: [],
 };
 
 /** The items raised in `session`: as they stand when they're that session's, else none. */
@@ -33,11 +34,11 @@ export const withItems = (
   items: readonly DecideItem[],
 ): Raised => ({ ...raised, items: byRef([...raised.items, ...items]) });
 
-/** The items once a refresh found `open`: those merged in, and every raised item not among them settled. */
+/** The items once a refresh read the transcript and found `open`: those merged in, and every raised item not among them settled. */
 export const refreshed = (
   raised: Raised,
   open: readonly DecideItem[],
-  problem: string,
+  warnings: readonly string[],
 ): Raised => {
   const merged = withItems(raised, open);
   const openRefs = open.map(refOf);
@@ -47,9 +48,21 @@ export const refreshed = (
     settledRefs: merged.items
       .map(refOf)
       .filter((ref) => !openRefs.includes(ref)),
-    problem,
+    problem: "",
+    warnings,
   };
 };
+
+/** The items once a refresh couldn't read the transcript, for `problem`: each raised item settled or open as it was. */
+export const unread = (
+  raised: Raised,
+  problem: string,
+  warnings: readonly string[],
+): Raised => ({ ...raised, problem, warnings });
+
+/** What the pane says is wrong: the settings files' problems, then the read's, in one line; empty when nothing is. */
+export const problemsOf = (raised: Raised): string =>
+  [...raised.warnings, raised.problem].filter((p) => p !== "").join("; ");
 
 /** Whether the last refresh found the item no longer open. */
 export const isSettled = (raised: Raised, item: DecideItem): boolean =>

@@ -22,8 +22,8 @@ export type DecideOption = Readonly<{
 export type DecideKind = "radio" | "checkbox" | "binary";
 
 /**
- * One open Decide item, as `outstanding.py decide --json` prints it and the
- * `kanban_options` tool takes it.
+ * One open Decide item, as the `kanban_options` tool takes it, in the shape
+ * the kanban skill's `outstanding.py decide --json` prints.
  */
 export type DecideItem = Readonly<{
   turn: string;
@@ -51,8 +51,10 @@ export type Raised = Readonly<{
   settledRefs: readonly string[];
   /** Refs raised by the last main-loop turn's end, so the pane opens by itself only for a new one. */
   seenRefs: readonly string[];
-  /** Why the last refresh found nothing, for the pane to say; empty when it worked. */
+  /** Why the last refresh couldn't read the transcript, for the pane to say; empty when it could. */
   problem: string;
+  /** What was wrong with the settings files at the last refresh, for the pane to say. */
+  warnings: readonly string[];
 }>;
 
 /** A value a JSON or JSONC file holds. */
@@ -70,11 +72,7 @@ export type Json =
  * schema.
  */
 export type Settings = Readonly<{
-  outstanding: Readonly<{
-    script: string;
-    python: string;
-    "timeout-ms": number;
-  }>;
+  counts: Readonly<{ turns: number; "gh-timeout-ms": number }>;
   keys: Readonly<{ dismiss: string }>;
   colors: Readonly<{
     border: string;
@@ -102,6 +100,8 @@ declare module "claude-code" {
       raised: Shaped<Raised>;
       draft: string;
       counts: string;
+      merged: readonly string[];
+      refreshes: number;
       settings: Shaped<Loaded>;
     };
   }

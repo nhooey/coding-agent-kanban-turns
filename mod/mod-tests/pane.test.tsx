@@ -1,6 +1,60 @@
 import { expect, test } from "claude-code/testing";
 import type { On } from "claude-code";
 
+// The transcript's records, trimmed as test/records.ts trims them for the
+// Node tests: the engine's test kit loads this file alone.
+type TranscriptRecord = Readonly<Record<string, unknown>>;
+
+/** A prompt the user typed, its turn's id `id`. */
+const human = (id: string, text: string): TranscriptRecord => ({
+  isSidechain: false,
+  type: "user",
+  promptId: `${id}-0000-4000-8000-000000000000`,
+  turnOrigin: "human",
+  origin: { kind: "human" },
+  message: { role: "user", content: text },
+});
+
+/** A prompt a mod submitted: its text in `pluginPrompt`, the engine's words round it in the message. */
+const pluginPrompt = (id: string, text: string): TranscriptRecord => ({
+  ...human(id, `The coding-agent-kanban-tur… plugin sent a message:\n${text}`),
+  turnOrigin: "system",
+  origin: undefined,
+  pluginPrompt: { name: "coding-agent-kanban-turns", text },
+});
+
+/** A reply: its text, and a `kanban_options` call for each of `calls`. */
+const assistant = (
+  text: string,
+  calls: readonly unknown[] = [],
+): TranscriptRecord => ({
+  isSidechain: false,
+  type: "assistant",
+  message: {
+    role: "assistant",
+    content: [
+      { type: "text", text },
+      ...calls.map((input) => ({
+        type: "tool_use",
+        id: "toolu_1",
+        name: "mcp__coding-agent-kanban-turns__kanban_options",
+        input,
+      })),
+    ],
+  },
+});
+
+/** A message sent while a turn ran: a `queued_command` attachment. */
+const queued = (text: string): TranscriptRecord => ({
+  isSidechain: false,
+  type: "attachment",
+  attachment: { type: "queued_command", prompt: text, origin: { kind: "human" } },
+});
+
+/** The records as the file holds them, one JSON object a line. */
+const jsonl = (records: readonly TranscriptRecord[]): string =>
+  records.map((record) => `${JSON.stringify(record)}\n`).join("");
+
 const PLUGIN = "coding-agent-kanban-turns";
 const TOOL = "mcp__coding-agent-kanban-turns__kanban_options";
 
@@ -54,11 +108,7 @@ const LATER = {
 
 // The settings the tests draw with: defaults/config.jsonc's values.
 const DEFAULTS = JSON.stringify({
-  outstanding: {
-    script: "~/.claude/skills/coding-agent-kanban-turn-responses/scripts/outstanding.py",
-    python: "python3",
-    "timeout-ms": 20000,
-  },
+  counts: { turns: 20, "gh-timeout-ms": 20000 },
   keys: { dismiss: "q" },
   colors: {
     border: "promptBorder",
@@ -105,27 +155,106 @@ const ANSWERS = {
   presentation: { isFullscreen: true, columns: 100 },
 } as const;
 
-// The skill's count line, as `outstanding.py render --counts` prints it.
-const COUNTS = "📌 Outstanding: 🚧 2 · 🤔 2 · 🔍 2 · 👉 2 · 🧠 3";
+type Item = Readonly<{
+  number: number;
+  summary: string;
+  kind?: string;
+  options?: readonly Readonly<{ letter: string; name: string }>[];
+}>;
+
+/** An option's glyph, by its item's kind. */
+const glyph = (kind: string | undefined, letter: string): string =>
+  kind === "checkbox" ? "🔲" : kind === "binary" ? (letter === "N" ? "👎" : "👍") : "🔘";
+
+/** A reply as the kanban skill writes it: a Pending item, then a Decide list of `items`, each by its summary and options. */
+const listsText = (items: readonly Item[]): string =>
+  [
+    "Some work.",
+    "",
+    "🚧 **Pending:**  ",
+    "1. **Rework the loader**",
+    "",
+    ...(items.length > 0
+      ? [
+          "🧠 **Decide:**  ",
+          ...items.flatMap((i) => [
+            `${i.number}. **${i.summary}**`,
+            ...(i.options ?? []).map(
+              (o) => `   ${glyph(i.kind, o.letter)} ${o.letter}. **${o.name}**`,
+            ),
+          ]),
+        ]
+      : []),
+    "",
+  ].join("\n");
+
+// The count line the mod works out from listsText(ITEMS).
+const COUNTS = "📌 Outstanding: 🚧 1 · 🧠 3";
+
+/** A reply raising `items` with a kanban_options call, as a transcript record. */
+const replyRecord = (
+  items: readonly unknown[],
+  text: string,
+): TranscriptRecord => assistant(text, [{ items }]);
+
+// Where the engine says the session's transcript is.
+const TRANSCRIPT = "/home/neil/.claude/projects/-work/session-1.jsonl";
+
+/** The base64 of bytes, as `$.fs.read` gives them. */
+const base64Of = (bytes: Uint8Array): string =>
+  btoa(Array.from(bytes, (byte) => String.fromCharCode(byte)).join(""));
 
 /**
- * The engine beneath the plugin: a prompt box held in `box`, the script's
- * Decide items from `open` and its count line from `counts`, the prompts
- * the plugin submits in `sent`, and each pane open with whether it asked
- * for the keyboard in `opens`. The kit has no layout to scroll a pane by,
- * so `$.ui.scroll` is refused here, as on a pane not drawn yet.
+ * The engine beneath the plugin: a prompt box held in `box`, a transcript
+ * file whose first turn raises the items `open` holds, in a reply `text`
+ * writes, then the records `later` holds, the prompts the plugin submits in `sent`,
+ * each pane open with whether it asked for the keyboard in `opens`, and
+ * each command run in `runs`, `gh` answering with what `gh` gives, or
+ * failing to start where it gives undefined. The kit has no layout to
+ * scroll a pane by, so `$.ui.scroll` is refused here, as on a pane not
+ * drawn yet.
  */
 const engine = (
   on: On,
   open: () => readonly unknown[],
-  counts: () => string = () => `${COUNTS}\n`,
+  text: (items: readonly Item[]) => string = listsText,
+  later: () => readonly TranscriptRecord[] = () => [],
+  gh: () => string | undefined | Promise<string | undefined> = () => undefined,
 ) => {
+  const transcript = () =>
+    new TextEncoder().encode(
+      jsonl([
+        human("9efb08a1", "go"),
+        replyRecord(open(), text(open() as readonly Item[])),
+        ...later(),
+      ]),
+    );
   const state = {
     box: "",
     sent: [] as string[],
     isPaneOpen: false,
     opens: [] as boolean[],
+    runs: [] as (readonly string[])[],
+    isUnreadable: false,
   };
+  on("process.run", async (_, e) => {
+    state.runs.push(e.argv);
+    const stdout = await gh();
+
+    if (stdout === undefined) {
+      throw new Error("gh: not found");
+    }
+
+    return {
+      value: {
+        exitCode: 0,
+        stdout,
+        stderr: "",
+        isStdoutTruncated: false,
+        isStderrTruncated: false,
+      },
+    };
+  });
   on("ui.open", (_, e) => {
     state.isPaneOpen = true;
     state.opens.push(e.focus === true);
@@ -154,25 +283,31 @@ const engine = (
   on("session.cwd", () => ({ value: "/work" }));
   on("session.start", (_, e) => ({ cwd: e.cwd }));
   on("env.get", () => ({ value: "/home/neil" }));
-  // The script is there; no user settings file is, so the shipped defaults
-  // are what's in effect.
+  // No user settings file is there, so the shipped defaults are what's in
+  // effect.
   on("fs.exists", (_, e) => ({
     value: !e.path.endsWith("/coding-agent-kanban-turns/config.jsonc"),
   }));
   // A test has no files, so the defaults file reads as this; the Node tests
-  // (test/config.test.ts) hold the real one to the shape.
-  on("fs.read", () => ({ value: DEFAULTS }));
-  on("process.run", (_, e) => ({
-    value: {
-      exitCode: 0,
-      stdout: e.argv.includes("--counts")
-        ? counts()
-        : JSON.stringify({ items: open() }),
-      stderr: "",
-      isStdoutTruncated: false,
-      isStderrTruncated: false,
-    },
-  }));
+  // (test/config.test.ts) hold the real one to the shape. The transcript is
+  // read as bytes, by the range asked for.
+  on("fs.read", (_, e) => {
+    if (e.path !== TRANSCRIPT) {
+      return { value: DEFAULTS };
+    }
+    const offset = e.offset ?? 0;
+    const bytes = transcript().slice(offset, offset + (e.length ?? Infinity));
+
+    return { value: { base64: base64Of(bytes) } };
+  });
+  on("fs.stat", () => {
+    return state.isUnreadable
+      ? { deny: "the transcript is gone" }
+      : {
+          value: { kind: "file", size: transcript().length, mtimeMs: 0, isLink: false },
+        };
+  });
+  on("session.info", () => ({ value: { transcriptPath: TRANSCRIPT } }));
   on("prompt.read", () => ({
     value: { text: state.box, cursor: state.box.length },
   }));
@@ -359,6 +494,259 @@ test("above the prompt: the count line and 🪟 ↗, each opening the pane with 
   expect(state.opens).toEqual([false, true, true]);
   await line.unmount();
 });
+
+type Mounted = {
+  find: (q: { type: string; key: string }) => Promise<{ text: string } | undefined>;
+};
+
+/** The text of the count line a mounted AbovePrompt draws, or none. */
+const countsOn = async (line: Mounted) =>
+  (await line.find({ type: "Button", key: "counts" }))?.text;
+
+test("an answer in a later prompt settles its item, in the pane and the count line", async ($, on) => {
+  const later: TranscriptRecord[] = [];
+  engine(on, () => ITEMS, listsText, () => later);
+  await $.turn.complete(replyDone("t1"));
+  later.push(human("b2c3d4e5", "9efb08a1.Decide.1.A\n3. B"), assistant("On it."));
+  await $.turn.complete(replyDone("t2"));
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  const line = await $.ui.mount({ ...ABOVE_PROMPT, surface: "terminal" });
+
+  expect(await titles(ui)).toEqual([
+    "🧠 Decide.1 · Which cache to keep (settled)",
+    "🧠 Decide.2 · Cleanups to start",
+    "🧠 Decide.3 · Ship tonight? (settled)",
+  ]);
+  expect(await countsOn(line)).toBe("📌 Outstanding: 🚧 1 · 🧠 1");
+  await line.unmount();
+  await ui.unmount();
+});
+
+test("a message sent while a turn runs settles the item it answers", async ($, on) => {
+  const later: TranscriptRecord[] = [];
+  engine(on, () => ITEMS, listsText, () => later);
+  await $.turn.complete(replyDone("t1"));
+  // The next turn has started when the message is sent, and the transcript
+  // keeps it as an attachment of that turn.
+  later.push(human("b2c3d4e5", "go on"), queued("Decide.2: A, C"));
+  await $.turn.complete(replyDone("t2"));
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  const line = await $.ui.mount({ ...ABOVE_PROMPT, surface: "terminal" });
+
+  expect(await titles(ui)).toEqual([
+    "🧠 Decide.1 · Which cache to keep",
+    "🧠 Decide.2 · Cleanups to start (settled)",
+    "🧠 Decide.3 · Ship tonight?",
+  ]);
+  expect(await countsOn(line)).toBe("📌 Outstanding: 🚧 1 · 🧠 2");
+  await line.unmount();
+  await ui.unmount();
+});
+
+test("the Reassess button's prompt replaces every earlier item", async ($, on) => {
+  const later: TranscriptRecord[] = [];
+  engine(on, () => ITEMS, listsText, () => later);
+  await $.turn.complete(replyDone("t1"));
+  later.push(
+    pluginPrompt("b2c3d4e5", "reassess"),
+    replyRecord([LATER], listsText([LATER])),
+  );
+  await $.turn.complete(replyDone("t2"));
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  const line = await $.ui.mount({ ...ABOVE_PROMPT, surface: "terminal" });
+
+  expect(await titles(ui)).toEqual([
+    "🧠 Decide.1 · Which cache to keep (settled)",
+    "🧠 Decide.2 · Cleanups to start (settled)",
+    "🧠 Decide.3 · Ship tonight? (settled)",
+    "🧠 Decide.1 · Which loader to keep",
+  ]);
+  expect(await countsOn(line)).toBe("📌 Outstanding: 🚧 1 · 🧠 1");
+  await line.unmount();
+  await ui.unmount();
+});
+
+/** A reply with a Review list: one pull request named with its repository, and one bare. */
+const REVIEW_TEXT = [
+  "🔍 **Review:**  ",
+  "1. **[#21 Close the pane](https://github.com/nhooey/kanban/pull/21)**",
+  "2. **#23 The README**",
+  "",
+].join("\n");
+
+test("a Review item leaves the count line once gh says its pull request merged", async ($, on) => {
+  const response = JSON.stringify({
+    data: { pr0: { pullRequest: { state: "MERGED" } } },
+  });
+  const state = engine(on, () => [], () => REVIEW_TEXT, () => [], () => response);
+  await $.turn.complete(replyDone("t1"));
+  const line = await $.ui.mount({ ...ABOVE_PROMPT, surface: "terminal" });
+
+  expect(await eventually(() => countsOn(line), "📌 Outstanding: 🔍 1")).toBe(
+    "📌 Outstanding: 🔍 1",
+  );
+  // One call, for the pull request named with its repository alone.
+  expect(state.runs.map((argv) => argv.slice(0, 3))).toEqual([
+    ["gh", "api", "graphql"],
+  ]);
+  expect(state.runs[0]?.[4]).toContain(
+    'repository(owner: "nhooey", name: "kanban") { pullRequest(number: 21)',
+  );
+  expect(state.runs[0]?.[4]).not.toContain("number: 23");
+  await line.unmount();
+});
+
+// The test runtime's timer, which the engine's types leave out.
+declare const setTimeout: (callback: () => void, ms: number) => unknown;
+
+/** What `read` gives once it gives `expected`, asked again every few milliseconds for up to two seconds. */
+const eventually = async <T,>(read: () => Promise<T>, expected: T): Promise<T> => {
+  const deadline = Date.now() + 2000;
+  const poll = async (): Promise<T> => {
+    const got = await read();
+
+    return got === expected || Date.now() > deadline
+      ? got
+      : new Promise<void>((resolve) => setTimeout(resolve, 10)).then(poll);
+  };
+
+  return poll();
+};
+
+test("the count line is drawn before gh answers, and again once it does", async ($, on) => {
+  const response = JSON.stringify({
+    data: { pr0: { pullRequest: { state: "MERGED" } } },
+  });
+  const gate = { release: () => {} };
+  const released = new Promise<void>((resolve) => {
+    gate.release = resolve;
+  });
+  engine(on, () => [], () => REVIEW_TEXT, () => [], () => released.then(() => response));
+  const line = await $.ui.mount({ ...ABOVE_PROMPT, surface: "terminal" });
+  const done = $.turn.complete(replyDone("t1"));
+
+  expect(await eventually(() => countsOn(line), "📌 Outstanding: 🔍 2")).toBe(
+    "📌 Outstanding: 🔍 2",
+  );
+  gate.release();
+  await done;
+  expect(await eventually(() => countsOn(line), "📌 Outstanding: 🔍 1")).toBe(
+    "📌 Outstanding: 🔍 1",
+  );
+  await line.unmount();
+});
+
+test("a gh answer that comes after a later refresh leaves that refresh's count line", async ($, on) => {
+  const response = JSON.stringify({
+    data: { pr0: { pullRequest: { state: "MERGED" } } },
+  });
+  const gate = { release: () => {} };
+  const released = new Promise<void>((resolve) => {
+    gate.release = resolve;
+  });
+  const later: TranscriptRecord[] = [];
+  const state = engine(on, () => [], () => REVIEW_TEXT, () => later, () => released.then(() => response));
+  const line = await $.ui.mount({ ...ABOVE_PROMPT, surface: "terminal" });
+  const first = $.turn.complete(replyDone("t1"));
+  expect(await eventually(() => countsOn(line), "📌 Outstanding: 🔍 2")).toBe(
+    "📌 Outstanding: 🔍 2",
+  );
+  // A reassess turn whose lists hold nothing: the next refresh counts nothing.
+  later.push(human("b2c3d4e5", "reassess"), assistant("Prose."));
+  await $.turn.complete(replyDone("t2"));
+  expect(await eventually(() => countsOn(line), undefined)).toBeUndefined();
+  gate.release();
+  await first;
+  await new Promise<void>((resolve) => setTimeout(resolve, 100));
+
+  expect(await countsOn(line)).toBeUndefined();
+  expect(state.runs).toHaveLength(1);
+  await line.unmount();
+});
+
+test("a pull request gh said merged is not asked about again", async ($, on) => {
+  const response = JSON.stringify({
+    data: { pr0: { pullRequest: { state: "MERGED" } } },
+  });
+  const state = engine(on, () => [], () => REVIEW_TEXT, () => [], () => response);
+  await $.turn.complete(replyDone("t1"));
+  await $.turn.complete(replyDone("t2"));
+  const line = await $.ui.mount({ ...ABOVE_PROMPT, surface: "terminal" });
+
+  expect(await eventually(() => countsOn(line), "📌 Outstanding: 🔍 1")).toBe(
+    "📌 Outstanding: 🔍 1",
+  );
+  expect(state.runs).toHaveLength(1);
+  expect(state.runs[0]?.slice(5)).toEqual(["--hostname", "github.com"]);
+  await line.unmount();
+});
+
+test("a transcript longer than one read reads whole, a character cut at a range's edge kept", async ($, on) => {
+  const CAFE = { ...LATER, summary: "Which café to keep" };
+  const READ_BYTES = 4 * 1024 * 1024;
+  // Filler that opens no turn, as long as it takes to put the é's two bytes
+  // either side of the first range's end.
+  const filler = (length: number): TranscriptRecord => ({
+    type: "user",
+    isMeta: true,
+    message: { role: "user", content: "x".repeat(length) },
+  });
+  const records = (length: number) => [
+    filler(length),
+    human("b2c3d4e5", "go on"),
+    assistant("", [{ items: [CAFE] }]),
+  ];
+  const head = jsonl([human("9efb08a1", "go"), replyRecord([], "")]);
+  const firstCut = (length: number) => {
+    const bytes = new TextEncoder().encode(head + jsonl(records(length)));
+
+    return bytes.findIndex((byte, n) => byte === 0xc3 && bytes[n + 1] === 0xa9);
+  };
+  const later = records(READ_BYTES - 1 - firstCut(0));
+  engine(on, () => [], () => "", () => later);
+  await $.turn.complete(replyDone("t1"));
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+
+  expect(firstCut(READ_BYTES - 1 - firstCut(0))).toBe(READ_BYTES - 1);
+  expect(await titles(ui)).toEqual(["🧠 Decide.1 · Which café to keep"]);
+  await ui.unmount();
+});
+
+test("a transcript that can't be read settles nothing, and the pane says why", async ($, on) => {
+  const later: TranscriptRecord[] = [];
+  const state = engine(on, () => ITEMS, listsText, () => later);
+  await $.turn.complete(replyDone("t1"));
+  later.push(human("b2c3d4e5", "9efb08a1.Decide.1.A"), assistant("On it."));
+  await $.turn.complete(replyDone("t2"));
+  state.isUnreadable = true;
+  await $.turn.complete(replyDone("t3"));
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  const line = await $.ui.mount({ ...ABOVE_PROMPT, surface: "terminal" });
+
+  expect(await titles(ui)).toEqual([
+    "🧠 Decide.1 · Which cache to keep (settled)",
+    "🧠 Decide.2 · Cleanups to start",
+    "🧠 Decide.3 · Ship tonight?",
+  ]);
+  expect(await ui.find({ type: "Text", text: /the transcript is gone/ })).toBeDefined();
+  expect(await countsOn(line)).toBe("📌 Outstanding: 🚧 1 · 🧠 2");
+  await line.unmount();
+  await ui.unmount();
+});
+
+for (const [why, gh] of [
+  ["is missing", () => undefined],
+  ["fails", () => ""],
+] as const) {
+  test(`a gh that ${why} keeps every Review item`, async ($, on) => {
+    engine(on, () => [], () => REVIEW_TEXT, () => [], gh);
+    await $.turn.complete(replyDone("t1"));
+    const line = await $.ui.mount({ ...ABOVE_PROMPT, surface: "terminal" });
+
+    expect(await countsOn(line)).toBe("📌 Outstanding: 🔍 2");
+    await line.unmount();
+  });
+}
 
 test("without a count line nothing is drawn above the prompt", async ($, on) => {
   engine(on, () => ITEMS, () => "");

@@ -13,20 +13,23 @@
 // and follows this file as it changes. A key that's no setting here, or a
 // value of the wrong type, refuses your whole file: the mod uses these
 // defaults and says why in the pane and in /answers-config, which lists
-// every setting in effect and the file it came from.
+// every setting in effect and the file it came from. An `outstanding`
+// section, which the mod no longer reads, is left out with a warning
+// instead, and the rest of your file is used.
 {
-  // Where the open Decide items come from: the kanban skill's
-  // outstanding.py, run over this session's transcript.
-  "outstanding": {
-    // The script's path. A leading ~/ is your home directory. The default
-    // is where Claude Code installs the coding-agent-kanban-turn-responses
-    // skill for you; point it at a checkout's copy to follow that instead.
-    "script": "~/.claude/skills/coding-agent-kanban-turn-responses/scripts/outstanding.py",
-    // The Python that runs it, a name on your PATH or a path.
-    "python": "python3",
-    // How long one run may take before the mod gives up on it, in
-    // milliseconds.
-    "timeout-ms": 20000
+  // The count line above the prompt, such as `📌 Outstanding: 🚧 2 · 🧠 3`,
+  // which the mod works out from this session's transcript.
+  "counts": {
+    // How many of the latest turns it reads the open items from, as the
+    // kanban skill's `outstanding.py render --counts` does; never further
+    // back than the latest `reassess` turn, whose lists replace the rest.
+    // 0 or less reads every turn since that `reassess` turn, or since the
+    // session began when there is none.
+    "turns": 20,
+    // How long the one `gh api graphql` call that asks which of the Review
+    // items' pull requests merged may take, in milliseconds. A `gh` that
+    // takes longer, fails or is missing settles no Review item.
+    "gh-timeout-ms": 20000
   },
 
   // The pane's hotkeys, pressed while the pane holds the keyboard (as it
