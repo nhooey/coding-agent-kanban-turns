@@ -19,7 +19,7 @@ With the coding-agent-kanban-turns plugin loaded:
 - **Answers from the picker count.** An AskUserQuestion answer to a Decide item settles it the same as a typed `<turn>.Decide.<n>.<letter>`.
 - **The skill inside the plugin runs it where the hooks don't.** The plugin ships the derived skill ([derived-skill-package](../../plugin-sole-source/open/derived-skill-package.md)), the fallback when its hooks fail to load, and the same skill is `packages.skill-standalone` for a harness with no plugins. Either way, the skill picks one chunk through the CLI's `chunk` subcommand ([kanban-cli-adapter](../../plugin-sole-source/open/kanban-cli-adapter.md)), and the user types `next-chunk` again for the next.
 
-Checks: the plugin's repository's checks pass with a test for each bullet above; golden cases ([protocol-golden-cases](../../plugin-sole-source/open/protocol-golden-cases.md)) cover the chunk's pick and the picker's answers, run by the core's tests and through the CLI.
+Checks: the plugin's repository's checks pass with a test for each bullet above; golden cases ([protocol-golden-cases](../../plugin-sole-source/closed/protocol-golden-cases.md)) cover the chunk's pick and the picker's answers, run by the core's tests and through the CLI.
 
 For Neil to look at afresh, before approving:
 

@@ -20,7 +20,7 @@ The settling words for every list and the grouped answer syntax are written into
   A word stands alone after `: `, or is followed by `: ` and a note, `Todo.3: done: rotated it yesterday`. Any other text after `: ` is a note, which settles a Decide item, as an answer in words does today, and no other list's item.
 - **Grouped answers.** The spec's reference grammar gains the grouped form: a line `<turn>.<List>` opens a group, and each indented line under it answers an item of that turn and list, `<n>[.<letters>][ (<context>)][: <word or note>]`. The parenthesised context is skipped. The first line naming the plugin, `coding-agent-kanban-turns:` or `coding-agent-kanban-turns@<marketplace>:`, and a trailing `reassess` line are part of the form.
 - **Plain references stay valid**, in a group's draft and on their own.
-- **Cases show them.** The golden cases ([protocol-golden-cases](../../plugin-sole-source/open/protocol-golden-cases.md)) gain cases for:
+- **Cases show them.** The golden cases ([protocol-golden-cases](../../plugin-sole-source/closed/protocol-golden-cases.md)) gain cases for:
   - each word on each list;
   - the grouped example in [the end state](pane-every-list.md);
   - a group line beside a numbered answer such as `2. B`, which still answers the turn before;

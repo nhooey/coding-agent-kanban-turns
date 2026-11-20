@@ -1,0 +1,100 @@
+title: >-
+  Replies breaking a list's rules, one rule each: its separators, its blank
+  lines, its summary lines and a Decide item's option lines
+example: false
+turns:
+  - id: c0d1e2f3
+    prompt: How did the rerun go?
+    replies:
+      - text: "\
+          ✅ **Done:**  \n\
+          ▔▔▔▔▔▔▔▔\n\
+          1. **Test suite rerun after the fix**  \n\
+          \   412 passed and 0 failed.\n\
+          2. **Tokenizer fix in commit `a1b2c3d`**\n"
+        lint:
+          - { line: 5, rule: no-separator }
+  - id: d1e2f3a4
+    prompt: And the lock?
+    replies:
+      - text: "\
+          ✅ **Done:**  \n\
+          ▔▔▔▔▔▔▔▔\n\
+          1. **Tokenizer fix in commit `a1b2c3d`**\n\
+          \   ⠀\n\
+          2. **The lock bumped**\n"
+        lint:
+          - { line: 4, rule: stray-separator }
+  - id: e2f3a4b5
+    prompt: Anything else done?
+    replies:
+      - text: "\
+          ✅ **Done:**  \n\
+          ▔▔▔▔▔▔▔▔\n\
+          1. **Test suite rerun after the fix**  \n\
+          \   412 passed and 0 failed.\n\
+          \    \n\
+          2. **Tokenizer fix in commit `a1b2c3d`**\n"
+        lint:
+          - { line: 5, rule: whitespace-line }
+          - { line: 6, rule: no-separator }
+  - id: f3a4b5c6
+    prompt: Say it again.
+    replies:
+      - text: "\
+          ✅ **Done:**  \n\
+          ▔▔▔▔▔▔▔▔\n\
+          1. **Test suite rerun after the fix**  \n\
+          \   412 passed and 0 failed.\n\
+          \  ⠀\n\
+          2. **Tokenizer fix in commit `a1b2c3d`**\n"
+        lint:
+          - { line: 5, rule: separator-indent }
+  - id: a4b5c6d7
+    prompt: Once more.
+    replies:
+      - text: "\
+          ✅ **Done:**  \n\
+          ▔▔▔▔▔▔▔▔\n\
+          1. **Test suite rerun after the fix**  \n\
+          \   412 passed and 0 failed.\n\
+          \n\
+          \   ⠀\n\
+          2. **Tokenizer fix in commit `a1b2c3d`**\n"
+        lint:
+          - { line: 6, rule: blank-beside-separator }
+  - id: b5c6d7e8
+    prompt: Shorter, please.
+    replies:
+      - text: "\
+          ✅ **Done:**  \n\
+          ▔▔▔▔▔▔▔▔\n\
+          1. **Test suite rerun after the fix** 412 passed and 0 failed.\n"
+        lint:
+          - { line: 3, rule: text-after-summary }
+  - id: c6d7e8f9
+    prompt: On two lines, then.
+    replies:
+      - text: "\
+          ✅ **Done:**  \n\
+          ▔▔▔▔▔▔▔▔\n\
+          1. **Test suite rerun after the fix**\n\
+          \   412 passed and 0 failed.\n"
+        lint:
+          - { line: 3, rule: no-hard-break }
+  - id: d7e8f9a0
+    prompt: Which cache, then?
+    replies:
+      - text: "\
+          🧠 **Decide:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔\n\
+          1. **Which cache to keep for the loader**  \n\
+          \   🔘 A. **Keep the disk cache**: it survives restarts.\n\
+          \      - Faster cold starts, and more disk.\n\
+          \   🔘 B. **Keep the memory cache**: simpler.\n"
+        lint:
+          - { line: 5, rule: list-among-options }
+expect:
+  open: []
+  outstanding: ["Decide: Which cache to keep for the loader"]
+  counts: "📌 Outstanding: 🧠 1"

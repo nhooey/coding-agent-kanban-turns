@@ -4,14 +4,14 @@
 // text here, and writes or checks what comes back.
 //
 // The spec and its schema are read as strictly as a settings file, by
-// src/config/config.ts's `parseYaml`: YAML 1.2's core schema, so `no`, `Y` and `N`
+// tools/spec/strict.ts: YAML 1.2's core schema, so `no`, `Y` and `N`
 // are strings, and a key written twice refuses the file. The spec is then
 // checked against the schema, which types every value, so a plain scalar
 // the core schema reads as a number or a boolean where a string belongs is
 // refused; then for the consistency no schema can state.
 
-import { Ajv } from "ajv";
-import { parseYaml } from "../../src/config/config.ts";
+import { messageOf, repeated, strictlyRead } from "./strict.ts";
+import type { Problem } from "./strict.ts";
 import type { Json } from "../../types/index.d.ts";
 
 /** The spec, its schema and what they compile to, from the plugin's folder. */
@@ -52,11 +52,6 @@ export type SpecShape = Readonly<{
     letters: Readonly<{ first: string; last: string }>;
   }>;
 }>;
-
-/** Each value `values` holds more than once, once, in the order it first repeats. */
-const repeated = (values: readonly string[]): readonly string[] => [
-  ...new Set(values.filter((value, n) => values.indexOf(value) !== n)),
-];
 
 /** Each settling word two lists give different effects, with the lists, by name. */
 const clashingWords = (spec: SpecShape): readonly string[] => {
@@ -188,44 +183,14 @@ const consistencyProblems = (spec: Json): readonly string[] => {
     );
   } catch (error) {
     return [
-      `${SCHEMA_FILE}: lets through a spec the build step can't read: ${error instanceof Error ? error.message : String(error)}`,
+      `${SCHEMA_FILE}: lets through a spec the build step can't read: ${messageOf(error)}`,
     ];
   }
 };
 
-/** Whether a schema is empty, `{}`, as an empty file reads, so it checks nothing. */
-const isEmptySchema = (schema: Json): boolean =>
-  typeof schema === "object" &&
-  schema !== null &&
-  Object.keys(schema).length === 0;
-
-/**
- * What's wrong with `value` against `schema`, one line per error, by its
- * path in the spec. The schema is read strictly, but for `required` naming
- * keys of a map, such as the lists the core reads by name, which strict
- * mode wants spelled out under `properties` too.
- */
-const schemaProblems = (schema: Json, value: Json): readonly string[] => {
-  try {
-    const validate = new Ajv({
-      allErrors: true,
-      strict: true,
-      strictRequired: false,
-    }).compile(schema as object);
-
-    return validate(value)
-      ? []
-      : (validate.errors ?? []).map((error) => {
-          const extra: unknown = error.params["additionalProperty"];
-
-          return `${SPEC_FILE}: ${error.instancePath || "/"} ${error.message ?? "is wrong"}${typeof extra === "string" ? `: ${extra}` : ""}`;
-        });
-  } catch (error) {
-    return [
-      `${SCHEMA_FILE}: ${error instanceof Error ? error.message : String(error)}`,
-    ];
-  }
-};
+/** A problem strict reading found, naming its file. */
+const named = (problem: Problem): string =>
+  `${problem.in === "schema" ? SCHEMA_FILE : SPEC_FILE}: ${problem.problem}`;
 
 /** The header each generated file opens with, naming what it's generated from. */
 const GENERATED = `Generated from plugin/${SPEC_FILE} by plugin/tools/spec/compile.ts: edit the spec and run spec-build, never this file.`;
@@ -265,28 +230,14 @@ export type Compiled = Readonly<
  * checked for consistency only once its schema holds.
  */
 export const compiled = (specText: string, schemaText: string): Compiled => {
-  const schema = parseYaml(schemaText);
-  const spec = parseYaml(specText);
-  const unread = [
-    ...("error" in schema
-      ? [`${SCHEMA_FILE}: ${schema.error}`]
-      : isEmptySchema(schema.value)
-        ? [`${SCHEMA_FILE}: is empty, so it checks nothing`]
-        : []),
-    ...("error" in spec ? [`${SPEC_FILE}: ${spec.error}`] : []),
-  ];
-  const unshaped =
-    "value" in schema && "value" in spec
-      ? schemaProblems(schema.value, spec.value)
-      : [];
+  // The schema is read strictly, but for `required` naming keys of a map,
+  // such as the lists the core reads by name, which strict mode wants
+  // spelled out under `properties` too.
+  const spec = strictlyRead(specText, schemaText, { strictRequired: false });
   const problems =
-    unread.length > 0
-      ? unread
-      : unshaped.length > 0
-        ? unshaped
-        : "value" in spec
-          ? consistencyProblems(spec.value)
-          : [];
+    "problems" in spec
+      ? spec.problems.map(named)
+      : consistencyProblems(spec.value);
 
   return problems.length > 0 || !("value" in spec)
     ? { problems }

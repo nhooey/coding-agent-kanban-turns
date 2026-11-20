@@ -17,7 +17,7 @@ kind: end-state
 - **Rules are data, read by code.** In `plugin/spec/`:
   - the checkable rules are `kanban.yaml`, compiled at build time into a typed readonly TypeScript module and a JSON copy ([protocol-spec-data](../closed/protocol-spec-data.md));
   - the prose rules are Markdown fragments ([protocol-prose-fragments](protocol-prose-fragments.md));
-  - the expected behaviour is golden cases in YAML ([protocol-golden-cases](protocol-golden-cases.md)).
+  - the expected behaviour is golden cases in YAML ([protocol-golden-cases](../closed/protocol-golden-cases.md)).
 
   The plugin's core, its `prompt.context` instructions and the derived skill all read these, so none restates a rule by hand.
 - **Data and settings are YAML** throughout the repository, the user's settings in `config.yaml` among them, read by a well-known YAML library ([yaml-data-and-settings](../closed/yaml-data-and-settings.md)).

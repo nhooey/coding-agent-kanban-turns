@@ -1,0 +1,65 @@
+title: >-
+  A report names a Waiting item, by a name it goes by or the item's branch,
+  and settles it; the user's own text naming an item settles nothing
+turns:
+  - id: 7a91bc35
+    prompt: Run the watcher and the implementer.
+    replies:
+      - text: "\
+          Three jobs run in the background.\n\
+          \n\
+          ⏳ **Waiting:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔▔\n\
+          1. **Watcher on #143 (`b8a83gfv0`)**\n\
+          2. **The implementer, on branch `golden-cases-runner`**\n\
+          3. **The nightly build (`n1ght1y`)**\n"
+        lint: []
+  - id: 8ba2cd46
+    prompt: Meanwhile, look at the pane.
+    messages:
+      - owner: notification
+        text: |-
+          <task-notification>
+          <task-id>b8a83gfv0</task-id>
+          <status>completed</status>
+          </task-notification>
+        report-names: [b8a83gfv0]
+    replies:
+      - text: "\
+          The pane draws its buttons twice, once per refresh.\n\
+          \n\
+          ✅ **Done:**  \n\
+          ▔▔▔▔▔▔▔▔\n\
+          1. **Watcher on #143, finished**  \n\
+          \   Every check on #143 passed.\n\
+          \n\
+          📌 Outstanding: ⏳ 2\n"
+        lint: []
+  - id: 9cb3de57
+    owner: peer
+    prompt: |-
+      <agent-message from="a48bb9142825233bb">
+      Pushed branch golden-cases-runner at 1234abc.
+      </agent-message>
+    report-names: [a48bb9142825233bb]
+    replies:
+      - text: "\
+          ✅ **Done:**  \n\
+          ▔▔▔▔▔▔▔▔\n\
+          1. **Branch `golden-cases-runner`, pushed at `1234abc`**\n\
+          \n\
+          📌 Outstanding: ⏳ 1\n"
+        lint: []
+  - id: add0ef68
+    prompt: The nightly build n1ght1y is done, I think.
+    report-names: [n1ght1y]
+    replies:
+      - text: "\
+          Its log hasn't ended yet, so it still runs.\n\
+          \n\
+          📌 Outstanding: ⏳ 1\n"
+        lint: []
+expect:
+  open: []
+  outstanding: ["Waiting: The nightly build (`n1ght1y`)"]
+  counts: "📌 Outstanding: ⏳ 1"
