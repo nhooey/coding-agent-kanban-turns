@@ -15,6 +15,7 @@ import {
   countLine,
   decideItemsOfText,
   decideStates,
+  factsOf,
   isMergeKnown,
   itemsOfText,
   listItemRef,
@@ -1332,6 +1333,85 @@ describe("openOf", () => {
     const open = openOf(found, WINDOW);
     expect(open.items).toEqual(openDecideItems(found));
     expect(open.settlements).toEqual(settlementsOf(found));
+  });
+
+  test("reads each turn's replies at most twice: once for every item, once for the Decide items its lists print", () => {
+    const reads = FACTS_TURNS.map(() => 0);
+    const watched = FACTS_TURNS.map(
+      (found, at) =>
+        new Proxy(found, {
+          get: (target, field, receiver) => {
+            reads[at] = (reads[at] ?? 0) + (field === "replies" ? 1 : 0);
+
+            return Reflect.get(target, field, receiver);
+          },
+        }),
+    );
+    openOf(watched, WINDOW, new Set(["example/kanban#22"]));
+    expect(reads.every((count) => count >= 1 && count <= 2)).toBe(true);
+  });
+});
+
+/** Turns that reassess, answer and report, each printing Decide and Waiting items. */
+const FACTS_TURNS: readonly Turn[] = [
+  turn(FIRST, "go", waiting("Watcher (`b8a83gfv0`)"), DECIDE_REPLY),
+  turnOf(SECOND, "reassess", {
+    replies: [DECIDE_REPLY, waiting("Watcher (`b8a83gfv0`)")],
+    messages: [said("Done.", "notification", ["b8a83gfv0"])],
+  }),
+  turn(THIRD, "1. A", DECIDE_REPLY.replace("**Ship", "**Hold")),
+];
+
+/** An item as a line: its list, its turn's place, its number or `-`, a pin where a roll-up held it, and its summary. */
+const itemLine = (item: ListItem): string =>
+  [item.list, item.at, item.number ?? "-", item.isPinned ? "📌" : "", summaryOf(item.line)].join(" ");
+
+describe("factsOf", () => {
+  test("holds the turns, the latest reassess, the answers and every item", () => {
+    const facts = factsOf(FACTS_TURNS);
+    expect(facts.turns).toBe(FACTS_TURNS);
+    expect(facts.start).toBe(1);
+    expect(facts.answers).toEqual([
+      { turn: "", number: 1, letters: ["A"], note: "", at: 1, sent: THIRD },
+    ]);
+    expect(facts.items.map(itemLine)).toEqual([
+      "waiting 0 1  Watcher (`b8a83gfv0`)",
+      "decide 0 1  Which cache to keep for the loader",
+      "decide 0 2  Backlog cleanups to start",
+      "decide 0 3  Ship the release tonight?",
+      "decide 0 - 📌 An older decision",
+      "decide 1 1  Which cache to keep for the loader",
+      "decide 1 2  Backlog cleanups to start",
+      "decide 1 3  Ship the release tonight?",
+      "decide 1 - 📌 An older decision",
+      "waiting 1 1  Watcher (`b8a83gfv0`)",
+      "decide 2 1  Which cache to keep for the loader",
+      "decide 2 2  Backlog cleanups to start",
+      "decide 2 3  Hold the release tonight?",
+      "decide 2 - 📌 An older decision",
+    ]);
+  });
+
+  test("holds each item's latest printing in its own list since the latest reassess, by its key", () => {
+    expect(
+      [...factsOf(FACTS_TURNS).latestOwn].map(([key, item]) => [key, itemLine(item)]),
+    ).toEqual([
+      ["decide\twhich cache keep", "decide 2 1  Which cache to keep for the loader"],
+      ["decide\tbacklog cleanups start", "decide 2 2  Backlog cleanups to start"],
+      ["decide\tship release tonight", "decide 1 3  Ship the release tonight?"],
+      ["waiting\twatcher b8a83gfv0", "waiting 1 1  Watcher (`b8a83gfv0`)"],
+      ["decide\thold release tonight", "decide 2 3  Hold the release tonight?"],
+    ]);
+  });
+
+  test("of no turns, holds nothing and starts at the first turn", () => {
+    expect(factsOf([])).toEqual({
+      turns: [],
+      start: 0,
+      answers: [],
+      items: [],
+      latestOwn: new Map(),
+    });
   });
 });
 
