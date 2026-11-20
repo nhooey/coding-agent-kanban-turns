@@ -5,21 +5,21 @@
 # it changes, which `nix flake check` asks for.
 #
 # Copied, not linked: the engine refuses a module whose real path is
-# outside the plugin's folder. A file that already matches is left alone,
-# and a bundle the flake no longer makes is removed by its name; the types
-# beside them are left alone.
+# outside the plugin's folder. A file that already matches is left alone.
+# A bundle there that the flake no longer makes is named, not deleted, for
+# whoever runs this to remove; `nix flake check` fails until it's gone.
 vendor="${PLUGIN_VENDOR:?the dev shell sets PLUGIN_VENDOR to the bundled libraries}"
-laid="$PRJ_ROOT/plugin/vendor"
+laid="${PRJ_ROOT:?the dev shell sets PRJ_ROOT to the repository}/plugin/vendor"
 
 for file in "$vendor"/*; do
   target="$laid/$(basename "$file")"
-  if ! cmp -s "$file" "$target"; then
-    install -m 0644 "$file" "$target"
+  if ! cmp --silent "$file" "$target"; then
+    install -m u=rw,go=r "$file" "$target"
   fi
 done
 
 for target in "$laid"/*.js "$laid"/*.LICENSE; do
   if [ -e "$target" ] && [ ! -e "$vendor/$(basename "$target")" ]; then
-    rm -- "$target"
+    echo "lay-vendor.sh: $target is no bundle the flake makes; delete it and commit that" >&2
   fi
 done

@@ -16,6 +16,7 @@
 // ES module, committed there.
 
 import { parseAllDocuments } from "../vendor/yaml.js";
+import type { ParsedDocument } from "../vendor/yaml.js";
 import { stripComments } from "../vendor/jsonc-parser.js";
 import type { Json, Loaded, Settings } from "../types/index.d.ts";
 
@@ -147,45 +148,48 @@ const headline = (message: string): string => {
 };
 
 /**
- * A YAML file's value, a file with no document's (empty, or comments alone)
- * an empty section, or why it can't be read: what the stream and its
- * document got wrong, more than one document, or one that holds nothing.
+ * A document's value, an empty one's (nothing, or comments alone, after a
+ * `---` or before a `...`) an empty section, or why it can't be resolved,
+ * such as an alias to no anchor.
+ */
+const valueOf = (document: ParsedDocument | undefined): Parsed => {
+  try {
+    return { value: (document?.toJS() as Json | null | undefined) ?? {} };
+  } catch (error) {
+    return {
+      error: headline(error instanceof Error ? error.message : String(error)),
+    };
+  }
+};
+
+/**
+ * A YAML file's value, a file with no document or an empty one an empty
+ * section, or why it can't be read: what the stream or its document got
+ * wrong, said before any value is resolved, or more than one document.
  */
 export const parseYaml = (yaml: string): Parsed => {
   const documents = parseAllDocuments(yaml, YAML_OPTIONS);
-  const [document] = documents;
   const errors = [
     ...(documents.errors ?? []),
     ...(documents.warnings ?? []),
     ...documents.flatMap((parsed) => [...parsed.errors, ...parsed.warnings]),
   ].map((error) => headline(error.message));
 
-  try {
-    const value =
-      document === undefined ? {} : (document.toJS() as Json | undefined);
-
-    return errors.length > 0
-      ? { error: errors.join("; ") }
-      : documents.length > 1
-        ? { error: `holds ${documents.length} YAML documents, not one` }
-        : value === null || value === undefined
-          ? {
-              error:
-                "holds no section, only an empty document; leave the file empty instead",
-            }
-          : { value };
-  } catch (error) {
-    return { error: error instanceof Error ? error.message : String(error) };
-  }
+  return errors.length > 0
+    ? { error: errors.join("; ") }
+    : documents.length > 1
+      ? { error: `holds ${documents.length} YAML documents, not one` }
+      : valueOf(documents[0]);
 };
 
 /**
  * A JSONC file's value, comments and trailing commas allowed, or why it can't
- * be read: its comments taken out, it is YAML, which reads JSON and a
+ * be read: its comments blanked to spaces, keeping every line break so an
+ * error's line and column are the file's, it is YAML, which reads JSON and a
  * trailing comma, so it is read as strictly as a config.yaml.
  */
 export const parseJsonc = (jsonc: string): Parsed =>
-  parseYaml(stripComments(jsonc));
+  parseYaml(stripComments(jsonc, " "));
 
 /** Whether the file is the user's old config.jsonc. */
 const isJsonc = (file: ConfigFile): boolean => file.path.endsWith(".jsonc");
@@ -204,10 +208,19 @@ const typeName = (value: Json): string =>
 
 /** What a scalar setting of `shape` must be, as its problem says it. */
 const WANTED: Readonly<Record<"string" | "number" | "boolean", string>> = {
-  string: "a string; quote it",
+  string: "a string",
   number: "a number",
   boolean: "true or false",
 };
+
+/** How to make `value` the string a setting wants: quotes, when YAML read a scalar as a number or a boolean. */
+const quoting = (
+  shape: "string" | "number" | "boolean",
+  value: Json,
+): string =>
+  shape === "string" && (typeof value === "number" || typeof value === "boolean")
+    ? "; quote it"
+    : "";
 
 /** A number YAML reads but no setting takes, as YAML writes it: `.inf`, `-.inf` or `.nan`. */
 const unfinite = (value: number): string =>
@@ -219,8 +232,10 @@ const scalarProblems = (
   value: Json,
   path: readonly string[],
 ): readonly string[] =>
-  typeof value !== shape || Array.isArray(value)
-    ? [`${named(path)} is ${typeName(value)}, not ${WANTED[shape]}`]
+  typeof value !== shape
+    ? [
+        `${named(path)} is ${typeName(value)}, not ${WANTED[shape]}${quoting(shape, value)}`,
+      ]
     : typeof value === "number" && !Number.isFinite(value)
       ? [`${named(path)} is ${unfinite(value)}, not a finite number`]
       : [];

@@ -292,6 +292,41 @@ describe("the user's file over the defaults", () => {
     expect(got.warnings).toHaveLength(1);
   });
 
+  test("a config.jsonc's error is placed by its own lines, a block comment's line breaks kept", () => {
+    const text = '{\n  /* one\n     two\n     three */\n  "keys": {"dismiss": "x"},\n  "keys": {}\n}';
+    expect(loaded(defaults, legacy(text)).problems).toEqual([
+      "~/.config/x/config.jsonc: Map keys must be unique at line 6, column 3",
+    ]);
+  });
+
+  test("a key written twice refuses a config.jsonc, as it does a config.yaml", () => {
+    expect(loaded(defaults, legacy('{"keys": {"dismiss": "x", "dismiss": "y"}}')).problems).toEqual([
+      "~/.config/x/config.jsonc: Map keys must be unique at line 1, column 27",
+    ]);
+  });
+
+  test("a config.jsonc indented by tabs, minified onto one long line, or with # and : in its strings reads as JSON", () => {
+    const nested = '{\n\t"keys": {\n\t\t"dismiss": "x",\n\t\t"next": "n"\n\t},\n\t"colors": {\n\t\t"kanban": "red"\n\t}\n}\n';
+    expect(loaded(defaults, legacy(nested)).settings).toMatchObject({
+      keys: { dismiss: "x", next: "n" },
+      colors: { kanban: "red" },
+    });
+
+    // Past YAML's 1024 characters for an implicit key, on the one line.
+    const everything = loaded(defaults, undefined).settings;
+    const long = { ...everything, marks: { sent: "☑".repeat(2000) } };
+    const minified = JSON.stringify(long);
+    expect(minified.length).toBeGreaterThan(2000);
+    expect(minified).not.toContain("\n");
+    const once = loaded(defaults, legacy(minified));
+    expect(once.problems).toEqual([]);
+    expect(once.settings).toEqual(long);
+
+    const marks = loaded(defaults, legacy('{"marks": {"sent": "# not: a comment // nor this"}} // but this'));
+    expect(marks.problems).toEqual([]);
+    expect(marks.settings?.marks.sent).toBe("# not: a comment // nor this");
+  });
+
   test("a __proto__ or constructor key, in a config.jsonc or a config.yaml, is no setting", () => {
     const shape = "is no setting; the keys here are dismiss, next, previous, submit, reassess, help";
     expect(loaded(defaults, legacy('{"keys": {"__proto__": {"dismiss": "x"}}}')).problems).toEqual([
@@ -312,10 +347,16 @@ describe("the user's file over the defaults", () => {
     expect(got.settings?.notes.rows).toBe(5);
   });
 
-  test("a file that holds only an end marker, or a YAML version the parser doesn't know, is refused", () => {
-    expect(loaded(defaults, user("...\n")).problems).toEqual([
-      "~/.config/x/config.yaml: holds no section, only an empty document; leave the file empty instead",
-    ]);
+  test("an empty document, after a --- or before a ..., with comments or none, is an empty file", () => {
+    const empty = loaded(defaults, undefined).settings;
+    for (const text of ["---\n# nothing set yet\n", "---\n", "...\n", "# mine\n...\n"]) {
+      const got = loaded(defaults, user(text));
+      expect(got.problems).toEqual([]);
+      expect(got.settings).toEqual(empty);
+    }
+  });
+
+  test("a YAML version the parser doesn't know is refused, with a document or none", () => {
     expect(loaded(defaults, user("%YAML 9.9\n")).problems).toEqual([
       "~/.config/x/config.yaml: Unsupported YAML version 9.9",
     ]);
@@ -348,6 +389,36 @@ describe("the user's file over the defaults", () => {
     ]);
     expect(loaded(defaults, user("notes:\n  rows: .nan\n")).problems).toEqual([
       "~/.config/x/config.yaml: notes.rows is .nan, not a finite number",
+    ]);
+    expect(loaded(defaults, user("counts:\n  gh-timeout-ms: -.inf\n")).problems).toEqual([
+      "~/.config/x/config.yaml: counts.gh-timeout-ms is -.inf, not a finite number",
+    ]);
+  });
+
+  test("a string setting given a number or a boolean asks for quotes, and one given a section or a list doesn't", () => {
+    expect(loaded(defaults, user("marks:\n  sent: true\n")).problems).toEqual([
+      "~/.config/x/config.yaml: marks.sent is boolean, not a string; quote it",
+    ]);
+    expect(loaded(defaults, user("marks:\n  sent: {a: b}\n")).problems).toEqual([
+      "~/.config/x/config.yaml: marks.sent is object, not a string",
+    ]);
+    expect(loaded(defaults, user("marks:\n  sent: [a]\n")).problems).toEqual([
+      "~/.config/x/config.yaml: marks.sent is a list, not a string",
+    ]);
+  });
+
+  test("a parse error beside an alias to no anchor is the parse error that's said", () => {
+    expect(loaded(defaults, user("keys:\n  dismiss: *x\n  dismiss: y\n")).problems).toEqual([
+      "~/.config/x/config.yaml: Map keys must be unique at line 3, column 3",
+    ]);
+    expect(loaded(defaults, user("keys: [\nnotes: *x\n")).problems).toEqual([
+      "~/.config/x/config.yaml: Flow sequence in block collection must be sufficiently indented and end with a ] at line 2, column 1",
+    ]);
+  });
+
+  test("an alias to no anchor, alone, refuses the file", () => {
+    expect(loaded(defaults, user("marks:\n  sent: *x\n")).problems).toEqual([
+      "~/.config/x/config.yaml: Unresolved alias (the anchor must be set before the alias): x",
     ]);
   });
 
