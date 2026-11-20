@@ -9,6 +9,7 @@ import {
   chunkOffsets,
   commandNamed,
   commandOf,
+  isReassessLine,
   isTopicRule,
   projectSlug,
   reassessStart,
@@ -19,6 +20,7 @@ import {
   turnsOf,
   turnsOfText,
   wholeEnd,
+  withoutDraftHeader,
 } from "../src/transcript.ts";
 import {
   assistant,
@@ -186,6 +188,29 @@ describe("the user's own text", () => {
       [SECOND, false],
       [THIRD, false],
     ]);
+  });
+});
+
+describe("the line naming the plugin", () => {
+  test("is taken off the start of a draft, with or without a marketplace", () => {
+    expect(withoutDraftHeader("coding-agent-kanban-turns@nix-pinned:\n9efb08a1.Decide.1.A\n")).toBe(
+      "9efb08a1.Decide.1.A\n",
+    );
+    expect(withoutDraftHeader("coding-agent-kanban-turns:\n1. A")).toBe("1. A");
+  });
+
+  test("is matched exactly: another plugin's, one with more on its line, or one further down stays", () => {
+    for (const text of [
+      "other-plugin@x:\n1. A",
+      "coding-agent-kanban-turns@x: and more\n1. A",
+      "coding-agent-kanban-turnsX:\n1. A",
+      "coding-agent-kanban-turns: 1. A",
+      "other-mod@market:\n1. A",
+      "1. A\ncoding-agent-kanban-turns:\n2. B",
+      "go\ncoding-agent-kanban-turns:\n1. A",
+    ]) {
+      expect(withoutDraftHeader(text)).toBe(text);
+    }
   });
 });
 
@@ -390,5 +415,73 @@ describe("reassessStart", () => {
     ]);
     expect(reassessStart(turns)).toBe(3);
     expect(reassessStart(turnsOf([human("00000001", "go"), human("00000002", "open")]))).toBe(0);
+  });
+
+  test("is a turn whose prompt ends on a reassess line, after its answers", () => {
+    const turns = turnsOf([
+      human("00000001", "go"),
+      human("00000002", "coding-agent-kanban-turns:\n9efb08a1.Decide.1.A\nreassess\n\n"),
+    ]);
+    expect(reassessStart(turns)).toBe(1);
+  });
+});
+
+describe("a command after the answers", () => {
+  test("a prompt that holds answers and ends on a line naming reassess alone reassesses", () => {
+    for (const prompt of [
+      "1. A / 3. Y\nreassess",
+      "9efb08a1.Decide.1.A\nRecalc!\n",
+      "9efb08a1.Decide.1.A\n9efb08a1.Decide.2: not yet\n  regen  \n\n",
+    ]) {
+      expect(commandOf(prompt)).toBe("reassess");
+    }
+  });
+
+  test("a trailing reassess with no answer before it, more on its line, or a question runs nothing", () => {
+    for (const prompt of [
+      "Look at the build again.\nreassess",
+      "go\nreassess",
+      "9efb08a1.Decide.1.A\nplease reassess",
+      "9efb08a1.Decide.1.A\nreassess?",
+      "9efb08a1.Decide.1.A\nre",
+    ]) {
+      expect(commandOf(prompt)).toBeUndefined();
+    }
+  });
+
+  test("only reassess runs from the last line: a trailing open runs nothing", () => {
+    for (const name of ["open", "restate", "pending"]) {
+      expect(commandOf(`9efb08a1.Decide.1.A\n${name}`)).toBeUndefined();
+    }
+  });
+
+  test("the opening word wins over the last line", () => {
+    expect(commandOf("restate\n1. A\nreassess")).toBe("open");
+  });
+
+  test("the line naming the plugin is left out before the prompt is read for a command", () => {
+    for (const header of ["coding-agent-kanban-turns@nix-pinned:", "coding-agent-kanban-turns:"]) {
+      expect(commandOf(`${header}\nreassess`)).toBe("reassess");
+      expect(commandOf(`${header}\nrestate`)).toBe("open");
+      expect(commandOf(`${header}\n2. B\nreassess\n`)).toBe("reassess");
+      expect(commandOf(`${header}\n2. B`)).toBeUndefined();
+    }
+    // Another plugin's header line is its first word, which names nothing.
+    expect(commandOf("other-mod@market:\nreassess")).toBeUndefined();
+  });
+
+  test("a turn that isn't the user's own, though it ends on reassess after answers, reassesses nothing", () => {
+    const turns = turnsOf([
+      human("00000001", "go"),
+      { ...human("00000002", "The mod sent:\n1. A\nreassess"), turnOrigin: "system", pluginPrompt: { name: "mod", text: "1. A\nreassess" } },
+    ]);
+    expect(reassessStart(turns)).toBe(0);
+  });
+
+  test("a line is a reassess line when it is only a name of reassess or a prefix no other command shares", () => {
+    expect(isReassessLine(" reass ")).toBe(true);
+    expect(isReassessLine("RECHECK.")).toBe(true);
+    expect(isReassessLine("res")).toBe(false);
+    expect(isReassessLine("")).toBe(false);
   });
 });

@@ -56,6 +56,9 @@ const jsonl = (records: readonly TranscriptRecord[]): string =>
   records.map((record) => `${JSON.stringify(record)}\n`).join("");
 
 const PLUGIN = "coding-agent-kanban-turns";
+// The line a draft the clicks start opens with: the plugin's name, which is
+// all of its id the engine gives, and a colon.
+const HEADER = `${PLUGIN}:\n`;
 const TOOL = "mcp__coding-agent-kanban-turns__kanban_options";
 
 const ITEMS = [
@@ -111,9 +114,10 @@ const DEFAULTS = JSON.stringify({
   counts: { turns: 20, "gh-timeout-ms": 20000 },
   keys: { dismiss: "q" },
   notes: { rows: 3 },
+  marks: { sent: "☑️" },
   colors: {
     border: "promptBorder",
-    title: "inverseText",
+    "title-label": "inverseText",
     "title-background": "claude",
     code: "permission",
     hover: "suggestion",
@@ -241,6 +245,8 @@ const engine = (
     opens: [] as boolean[],
     runs: [] as (readonly string[])[],
     isUnreadable: false,
+    isFillRefused: false,
+    submitAnswer: undefined as { drop: string } | Error | undefined,
   };
   on("process.run", async (_, e) => {
     state.runs.push(e.argv);
@@ -316,17 +322,34 @@ const engine = (
   on("prompt.read", () => ({
     value: { text: state.box, cursor: state.box.length },
   }));
+  // A box under a dialog takes no text.
   on("prompt.fill", (_, e) => {
+    if (state.isFillRefused) {
+      return { isFilled: false };
+    }
     state.box = e.text;
 
     return { isFilled: true };
   });
-  on("prompt.submit", (_, e) => {
+  // The engine takes a prompt, refuses it with a `drop`, or throws.
+  on("prompt.submit", async (_, e) => {
+    // A tick, as the engine's own submit takes: a second press can land meanwhile.
+    await Promise.resolve();
+    const answer = state.submitAnswer;
+
+    if (answer instanceof Error) {
+      throw answer;
+    }
+    if (answer !== undefined) {
+      return answer;
+    }
     state.sent.push(e.text);
     state.asUser.push(e.origin.kind === "plugin" && e.origin.asUser === true);
 
     return { text: e.text };
-  });  on("turn.complete", (_, e) => ({ text: e.answer }));
+  });
+  on("turn.start", (_, e) => ({ turnId: e.turnId }));
+  on("turn.complete", (_, e) => ({ text: e.answer }));
   on("command.register", (_, e) => ({ value: { command: e.name } }));
   on("tool.register", (_, e) => ({
     value: { tool: `mcp__${PLUGIN}__${e.name}` },
@@ -362,6 +385,10 @@ const titles = async (ui: Drawing) =>
     (found) => found.text.trim().replace(/^(🧠 Decide\.\d+)\s+/, "$1 · "),
   );
 
+/** What the pane says about the last Submit that sent nothing, if it says anything. */
+const sendProblem = async (ui: Drawing) =>
+  (await ui.findAll({ type: "Text", text: /^Not sent/ }))[0]?.text;
+
 for (const surface of ["terminal", "desktop"] as const) {
   test(`the pane lists every item and its options build the draft, on ${surface}`, async ($, on) => {
     const state = engine(on, () => ITEMS);
@@ -374,18 +401,20 @@ for (const surface of ["terminal", "desktop"] as const) {
       "🧠 Decide.3 · Ship tonight?",
     ]);
 
-    // A radio option writes its reference on a line of its own.
+    // A radio option writes its reference on a line of its own, under a
+    // line naming the plugin, since the box was empty.
     await ui.press({ key: "9efb08a1.Decide.1.B" });
-    expect(state.box).toBe("9efb08a1.Decide.1.B\n");
+    expect(state.box).toBe(`${HEADER}9efb08a1.Decide.1.B\n`);
 
-    // A checkbox item takes several letters, in option order.
+    // A checkbox item takes several letters, in option order; the line
+    // naming the plugin stays first, once.
     await ui.press({ key: "9efb08a1.Decide.2.C" });
     await ui.press({ key: "9efb08a1.Decide.2.A" });
-    expect(state.box).toBe("9efb08a1.Decide.1.B\n9efb08a1.Decide.2.A,C\n");
+    expect(state.box).toBe(`${HEADER}9efb08a1.Decide.1.B\n9efb08a1.Decide.2.A,C\n`);
 
     // Another option replaces the item's reference.
     await ui.press({ key: "9efb08a1.Decide.1.A" });
-    expect(state.box).toBe("9efb08a1.Decide.1.A\n9efb08a1.Decide.2.A,C\n");
+    expect(state.box).toBe(`${HEADER}9efb08a1.Decide.1.A\n9efb08a1.Decide.2.A,C\n`);
 
     // A chosen option is marked ✅ and underlined, never highlighted.
     const drawn = JSON.stringify(await ui.drawn());
@@ -395,7 +424,12 @@ for (const surface of ["terminal", "desktop"] as const) {
 
     // A second click on the chosen option unchooses it.
     await ui.press({ key: "9efb08a1.Decide.1.A" });
-    expect(state.box).toBe("9efb08a1.Decide.2.A,C\n");
+    expect(state.box).toBe(`${HEADER}9efb08a1.Decide.2.A,C\n`);
+
+    // Unpicking every answer takes the line naming the plugin out too.
+    await ui.press({ key: "9efb08a1.Decide.2.A" });
+    await ui.press({ key: "9efb08a1.Decide.2.C" });
+    expect(state.box).toBe("");
 
     // No click sent anything.
     expect(state.sent).toEqual([]);
@@ -455,7 +489,7 @@ test("the pane keeps every item raised, newest at the bottom, a settled one dimm
   await ui.press({ key: "9efb08a1.Decide.1.A" });
   expect(state.box).toBe("");
   await ui.press({ key: "b2c3d4e5.Decide.1.B" });
-  expect(state.box).toBe("b2c3d4e5.Decide.1.B\n");
+  expect(state.box).toBe(`${HEADER}b2c3d4e5.Decide.1.B\n`);
   await ui.unmount();
 });
 
@@ -561,7 +595,39 @@ test("an answer in a later prompt settles its item, in the pane and the count li
     "🧠 Decide.3 · Ship tonight? (settled)",
   ]);
   expect(await countsOn(line)).toBe("📌 Outstanding: 🚧 1 · 🧠 1");
+
+  // Each settled item says the answer that settled it, under its title, and
+  // marks the option it picked, at full strength in the dimmed item and
+  // never underlined; the others stay dim.
+  for (const drawing of [ui, await $.ui.mount(REPLY)]) {
+    expect(
+      (await drawing.findAll({ type: "Text", text: /^Answered in / })).map((found) => found.text),
+    ).toEqual(["Answered in b2c3d4e5: A", "Answered in b2c3d4e5: B"]);
+    const sent = await drawing.find({ type: "Button", key: "9efb08a1.Decide.1.A" });
+    expect(sent?.text).toStartWith("☑️ A.");
+    expect(sent?.props).toMatchObject({ dimColor: false });
+    expect(JSON.stringify(sent?.children)).not.toContain('"underline":true');
+    expect((await drawing.find({ type: "Button", key: "9efb08a1.Decide.1.B" }))?.props).toMatchObject({
+      dimColor: true,
+    });
+  }
   await line.unmount();
+  await ui.unmount();
+});
+
+test("an item a reassess settled, or one asked again, says so", async ($, on) => {
+  const later: TranscriptRecord[] = [];
+  engine(on, () => ITEMS, listsText, () => later);
+  await $.turn.complete(replyDone("t1"));
+  // A prompt that answers item 1 and ends on reassess: its answer stands,
+  // and the reassess settles the rest.
+  later.push(pluginPrompt("b2c3d4e5", `${HEADER}9efb08a1.Decide.1.B\nreassess\n`), assistant("Reassessed."));
+  await $.turn.complete(replyDone("t2"));
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+
+  expect(
+    (await ui.findAll({ type: "Text", text: /^(Answered in|Settled)/ })).map((found) => found.text),
+  ).toEqual(["Answered in b2c3d4e5: B", "Settled: reassessed", "Settled: reassessed"]);
   await ui.unmount();
 });
 
@@ -864,9 +930,9 @@ test("an option's pros and cons pick it too", async ($, on) => {
   const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
 
   await ui.press({ key: "9efb08a1.Decide.1.B-con-0" });
-  expect(state.box).toBe("9efb08a1.Decide.1.B\n");
+  expect(state.box).toBe(`${HEADER}9efb08a1.Decide.1.B\n`);
   await ui.press({ key: "9efb08a1.Decide.1.A-pro-0" });
-  expect(state.box).toBe("9efb08a1.Decide.1.A\n");
+  expect(state.box).toBe(`${HEADER}9efb08a1.Decide.1.A\n`);
 
   // Under the pointer an option lights the gutter left of each of its
   // lines, in the hover colour, and no longer inverts its text.
@@ -885,7 +951,7 @@ test("the notes field writes a note into the draft", async ($, on) => {
 
   await ui.press({ key: "9efb08a1.Decide.1.B" });
   await ui.input({ key: "9efb08a1.Decide.1.notes", text: "only for the loader" });
-  expect(state.box).toBe("9efb08a1.Decide.1.B: only for the loader\n");
+  expect(state.box).toBe(`${HEADER}9efb08a1.Decide.1.B: only for the loader\n`);
   expect(state.sent).toEqual([]);
   await ui.unmount();
 });
@@ -926,7 +992,7 @@ test("a reply draws its items under its text, a settled one dimmed", async ($, o
     backgroundColor: "claude",
   });
   await reply.press({ key: "9efb08a1.Decide.3.N" });
-  expect(state.box).toBe("9efb08a1.Decide.3.N\n");
+  expect(state.box).toBe(`${HEADER}9efb08a1.Decide.3.N\n`);
 
   // Item 1 is answered elsewhere: the next refresh no longer lists it, and
   // its label loses its background.
@@ -939,7 +1005,7 @@ test("a reply draws its items under its text, a settled one dimmed", async ($, o
   expect(await label(1)).not.toHaveProperty("backgroundColor");
   expect(await label(3)).toMatchObject({ backgroundColor: "claude" });
   await reply.press({ key: "9efb08a1.Decide.1.A" });
-  expect(state.box).toBe("9efb08a1.Decide.3.N\n");
+  expect(state.box).toBe(`${HEADER}9efb08a1.Decide.3.N\n`);
   await reply.unmount();
 });
 
@@ -971,14 +1037,32 @@ test("a reply without the items' summaries is drawn as the engine draws it", asy
   await reply.unmount();
 });
 
-test("Reassess submits the reassess command and leaves the pane open", async ($, on) => {
+test("Reassess adds reassess as the draft's last line for Submit to send, and a second press takes it out", async ($, on) => {
   const state = engine(on, () => ITEMS);
   await $.command.run(ANSWERS);
   const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
-  await ui.press({ key: "reassess" });
+  const reassess = async () => (await ui.find({ type: "Button", key: "reassess" }))?.text;
+  expect(await reassess()).toStartWith("🔄 ");
 
-  expect(state.sent).toEqual(["reassess"]);
-  expect(state.box).toBe("");
+  await ui.press({ key: "9efb08a1.Decide.1.A" });
+  await ui.press({ key: "reassess" });
+  expect(state.box).toBe(`${HEADER}9efb08a1.Decide.1.A\nreassess\n`);
+  expect(state.sent).toEqual([]);
+  expect(await reassess()).toStartWith("✅ ");
+
+  // A pick after it goes above it: reassess stays last.
+  await ui.press({ key: "9efb08a1.Decide.2.C" });
+  expect(state.box).toBe(`${HEADER}9efb08a1.Decide.1.A\n9efb08a1.Decide.2.C\nreassess\n`);
+
+  // A second press takes it out again.
+  await ui.press({ key: "reassess" });
+  expect(state.box).toBe(`${HEADER}9efb08a1.Decide.1.A\n9efb08a1.Decide.2.C\n`);
+  expect(await reassess()).toStartWith("🔄 ");
+
+  // Pressed again, Submit sends the answers and the reassess in one prompt.
+  await ui.press({ key: "reassess" });
+  await ui.press({ key: "submit" });
+  expect(state.sent).toEqual([`${HEADER}9efb08a1.Decide.1.A\n9efb08a1.Decide.2.C\nreassess\n`]);
   expect(state.isPaneOpen).toBe(true);
   await ui.unmount();
 });
@@ -1005,10 +1089,142 @@ test("Submit sends the draft as the user's own and empties the box; an empty box
     dimColor: false,
   });
   await ui.press({ key: "submit" });
-  expect(state.sent).toEqual(["9efb08a1.Decide.1.B\n"]);
+  expect(state.sent).toEqual([`${HEADER}9efb08a1.Decide.1.B\n`]);
   expect(state.asUser).toEqual([true]);
   expect(state.box).toBe("");
   expect(state.isPaneOpen).toBe(true);
+  await ui.unmount();
+});
+
+test("a Submit the engine refuses, or that throws, puts the draft back and says why", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  const problem = () => sendProblem(ui);
+
+  for (const answer of [
+    { drop: "a hook refused it" },
+    new Error("the engine fell over"),
+  ]) {
+    state.submitAnswer = answer;
+    state.box = `${HEADER}9efb08a1.Decide.1.B\n`;
+    await ui.press({ key: "submit" });
+    expect(state.box).toBe(`${HEADER}9efb08a1.Decide.1.B\n`);
+    expect(await problem()).toMatch(/^Not sent, the draft put back in the prompt box: /);
+  }
+  // A hook that throws is skipped, and with nothing else to take the prompt
+  // the engine's submit rejects: the pane says what it rejected with.
+  expect(await problem()).toContain("prompt.submit");
+
+  // A later Submit that goes through clears what the pane said.
+  state.submitAnswer = undefined;
+  await ui.press({ key: "submit" });
+  expect(state.box).toBe("");
+  expect(await problem()).toBeUndefined();
+  await ui.unmount();
+});
+
+test("a box that can't be emptied sends nothing and keeps the draft", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  await ui.press({ key: "9efb08a1.Decide.1.B" });
+  state.isFillRefused = true;
+  await ui.press({ key: "submit" });
+
+  expect(state.sent).toEqual([]);
+  expect(state.box).toBe(`${HEADER}9efb08a1.Decide.1.B\n`);
+  // The draft the pane draws from stays as it was: the option is still chosen.
+  expect(JSON.stringify(await ui.drawn())).toContain("✅");
+  expect(await sendProblem(ui)).toContain(
+    "couldn't be emptied",
+  );
+  await ui.unmount();
+});
+
+test("two Submit presses at once send the draft once", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  await ui.press({ key: "9efb08a1.Decide.1.B" });
+
+  await Promise.all([ui.press({ key: "submit" }), ui.press({ key: "submit" })]);
+  expect(state.sent).toEqual([`${HEADER}9efb08a1.Decide.1.B\n`]);
+
+  // Once the first has settled, Submit works again.
+  state.box = "9efb08a1.Decide.2.A\n";
+  await ui.press({ key: "submit" });
+  expect(state.sent).toHaveLength(2);
+  await ui.unmount();
+});
+
+test("a draft with an @ mention or a pasted image stays in the box, the pane saying to press Enter", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+
+  for (const draft of ["9efb08a1.Decide.1: see @plugin/src/view.ts\n", "Decide.1: like [Image #1]\n"]) {
+    state.box = draft;
+    await ui.press({ key: "submit" });
+    expect(state.sent).toEqual([]);
+    expect(state.box).toBe(draft);
+  }
+  expect(await sendProblem(ui)).toContain(
+    "press Enter in the prompt to send mentions or images",
+  );
+  await ui.unmount();
+});
+
+test("while a turn runs Submit is dim and does nothing", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  await ui.press({ key: "9efb08a1.Decide.1.B" });
+  await $.turn.start({ text: "go on", turnId: "t1" });
+
+  expect((await ui.find({ type: "Button", key: "submit" }))?.props).toMatchObject({
+    dimColor: true,
+  });
+  await ui.press({ key: "submit" });
+  expect(state.sent).toEqual([]);
+  expect(state.box).toBe(`${HEADER}9efb08a1.Decide.1.B\n`);
+
+  // An agent's turn ending doesn't end the main one; the main one's does.
+  await $.turn.complete({ ...replyDone("a1"), agentId: "agent-1" } as never);
+  await ui.press({ key: "submit" });
+  expect(state.sent).toEqual([]);
+  await $.turn.complete(replyDone("t1"));
+  expect((await ui.find({ type: "Button", key: "submit" }))?.props).toMatchObject({
+    dimColor: false,
+  });
+  await ui.press({ key: "submit" });
+  expect(state.sent).toEqual([`${HEADER}9efb08a1.Decide.1.B\n`]);
+  await ui.unmount();
+});
+
+test("settings stored under an older shape are not used", async ($, on) => {
+  engine(on, () => ITEMS);
+  // What an earlier version of the plugin kept, before Settings gained
+  // notes and lost colors.expand, as a reload finds it: the store answers it
+  // whatever the plugin writes since.
+  const stale = {
+    shape: "settings-2",
+    value: {
+      settings: { ...JSON.parse(DEFAULTS), notes: undefined, colors: { expand: "claude" } },
+      effective: [],
+      problems: [],
+    },
+  };
+  on("state.get", (_, e, next) =>
+    e.key === "settings" ? { value: { value: stale, version: 1 } } : next(e),
+  );
+  await $.tool.call({ tool: TOOL, items: ITEMS } as never);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+
+  // Read as absent, the stale value draws nothing: no items drawn with
+  // settings that lack notes.rows.
+  expect(await titles(ui)).toEqual([]);
+  expect(await ui.find({ type: "Text", text: /^No open Decide items/ })).toBeDefined();
   await ui.unmount();
 });
 
@@ -1109,8 +1325,41 @@ test("under a reply, ✏️ Add a note opens the pane with the keyboard at the i
   expect(
     (await ui.find({ type: "Input", key: "9efb08a1.Decide.1.notes" }))?.props,
   ).not.toHaveProperty("autoFocus");
+
+  // Once the pane closes, the field no longer waits for the focus: /answers
+  // opens it with nothing focused.
+  await ui.press({ key: "dismiss" });
+  await $.command.run(ANSWERS);
+  expect(
+    (await ui.findAll({ type: "Input" })).filter((found) => found.props.autoFocus === true),
+  ).toEqual([]);
   await ui.unmount();
   await reply.unmount();
+});
+
+test("✏️ Add a note in a pane already open asks for the ring on the field, which waits for it until it lands", async ($, on) => {
+  engine(on, () => ITEMS);
+  await $.tool.call({ tool: TOOL, items: ITEMS } as never);
+  await $.turn.complete(replyDone("t0"));
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  const focused = async () =>
+    (await ui.findAll({ type: "Input" }))
+      .filter((found) => found.props.autoFocus === true)
+      .map((found) => found.key);
+  expect(await focused()).toEqual([]);
+  const reply = await $.ui.mount(REPLY);
+
+  // The kit can't move a plugin's ring, so $.ui.focus is refused here: the
+  // field keeps the focus to take as the pane draws it.
+  await reply.press({ key: "9efb08a1.Decide.3.add-note" });
+  expect(await focused()).toEqual(["9efb08a1.Decide.3.notes"]);
+
+  // /answers opens the pane for no field: a later drawing focuses nothing.
+  await $.command.run(ANSWERS);
+  expect(await focused()).toEqual([]);
+  await reply.unmount();
+  await ui.unmount();
 });
 
 const TOOL_ROW = {

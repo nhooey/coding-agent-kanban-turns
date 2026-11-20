@@ -18,7 +18,17 @@
 import { atom, read, update } from "claude-code";
 import type { EngineInterface, Register, RenderNode } from "claude-code";
 
-import { choose, lettersFor, noteFor, withNote } from "../src/answers.ts";
+import {
+  choose,
+  draftHeader,
+  hasReassess,
+  headed,
+  lettersFor,
+  noteFor,
+  reassessKept,
+  toggledReassess,
+  withNote,
+} from "../src/answers.ts";
 import {
   INPUT_SCHEMA,
   TOOL,
@@ -26,7 +36,7 @@ import {
   TOOL_DESCRIPTION,
   withInstructions,
 } from "../src/instructions.ts";
-import { itemsOf, markOf, refOf } from "../src/items.ts";
+import { CHOSEN_MARK, itemsOf, markOf, refOf } from "../src/items.ts";
 import { INDENT, codeSpans } from "../src/layout.ts";
 import { itemOfLink, linkedItems, linkedQuestions } from "../src/links.ts";
 import {
@@ -44,6 +54,7 @@ import {
   problemsOf,
   refreshed,
   seen,
+  settlementOf,
   unread,
   unseen,
   withItems,
@@ -65,9 +76,16 @@ import {
   isPlainToolRow,
   itemTitle,
   noItemsText,
+  NOT_EMPTIED_TEXT,
   noteRows,
-  submittedText,
+  notesKey,
+  notesMode,
+  notSentText,
+  sentLetters,
+  settledText,
+  submitStep,
 } from "../src/view.ts";
+import type { NotesMode } from "../src/view.ts";
 import type {
   DecideItem,
   Loaded,
@@ -76,7 +94,6 @@ import type {
 } from "../types/index.d.ts";
 import { loadSettings } from "./settings.ts";
 
-const REASSESS = "reassess";
 // The pane that lists the items, and its title. The hotkey and colours are
 // settings, in defaults/config.jsonc.
 const PANE = { id: "kanban-turns", title: "🧠 Decide" } as const;
@@ -95,7 +112,7 @@ const UNREAD: Loaded = { settings: null, effective: [], problems: [] };
 const raised = atom(
   { plugin: "coding-agent-kanban-turns", key: "raised" } as const,
   emptyRaised,
-  { shape: "raised-2" },
+  { shape: "raised-3" },
 );
 // How many refreshes have started: a `gh` answer redraws the count line only
 // while the refresh that asked is the latest.
@@ -114,9 +131,33 @@ const draft = atom(
   "",
 );
 // The item whose ✏️ Add a note under a reply opened the pane: its notes
-// field takes the focus as the pane opens. Empty for any other opening.
+// field takes the focus as the pane opens. Empty for any other opening,
+// and again once the field has the focus or the pane closes.
 const noting = atom(
   { plugin: "coding-agent-kanban-turns", key: "noting" } as const,
+  "",
+);
+// How many Submit presses there have been: each press's stamp.
+const submits = atom(
+  { plugin: "coding-agent-kanban-turns", key: "submits" } as const,
+  0,
+);
+// The stamp of the Submit under way, 0 when none is: a second press while
+// one is under way does nothing.
+const submitting = atom(
+  { plugin: "coding-agent-kanban-turns", key: "submitting" } as const,
+  0,
+);
+// Whether a main-loop turn runs, from turn.start to turn.complete: Submit
+// waits it out.
+const isTurnRunning = atom(
+  { plugin: "coding-agent-kanban-turns", key: "isTurnRunning" } as const,
+  false,
+);
+// Why the last Submit sent nothing, for the pane to say; empty when it
+// sent, or once a turn starts.
+const submitProblem = atom(
+  { plugin: "coding-agent-kanban-turns", key: "submitProblem" } as const,
   "",
 );
 // The skill's count line, `📌 Outstanding: 🚧 2 · … · 🧠 3`, from the last
@@ -129,7 +170,7 @@ const counts = atom(
 const settings = atom(
   { plugin: "coding-agent-kanban-turns", key: "settings" } as const,
   UNREAD,
-  { shape: "settings-2" },
+  { shape: "settings-3" },
 );
 
 /** The settings in effect, or none while the defaults file can't be used. */
@@ -218,7 +259,7 @@ const settle = async (
 ): Promise<void> => {
   const open = openOf(turns, window, new Set(await read($, merged)));
   await update($, counts, () => open.counts);
-  await update($, raised, (r) => refreshed(r, open.items, warnings));
+  await update($, raised, (r) => refreshed(r, open.items, open.settlements, warnings));
 };
 
 /**
@@ -281,36 +322,99 @@ const refresh = async ($: EngineInterface): Promise<void> => {
   void askMerged($, stamp, found.turns, s.counts).catch(() => undefined);
 };
 
-/** Rewrites the prompt draft with `edit`: the one way a click or a note reaches the draft. */
+/**
+ * Rewrites the prompt draft with `edit`: the one way a click, a note or
+ * Reassess reaches the draft. A draft a click starts opens with a line
+ * naming the plugin, which stays first, once, until nothing is left.
+ */
 const rewriteDraft = async (
   $: EngineInterface,
   edit: (text: string) => string,
 ): Promise<void> => {
   const box = await $.prompt.read();
-  const text = edit(box.text);
+  // The engine names the plugin, not its marketplace: the header is the name.
+  const text = headed(box.text, draftHeader($.plugin.name), edit);
   await $.prompt.fill({ text, mode: "replace" });
   await update($, draft, () => text);
 };
 
-/** Writes the draft with the item's answer for `letter`. */
+/** Writes the draft with the item's answer for `letter`, a `reassess` line kept last. */
 const answer = ($: EngineInterface, item: DecideItem, letter: string) =>
-  rewriteDraft($, (text) => choose(text, item, letter));
+  rewriteDraft($, (text) =>
+    reassessKept(text, (body) => choose(body, item, letter)),
+  );
 
-/** Writes the item's note into the draft, on a line of its own. */
+/** Writes the item's note into the draft, on a line of its own, a `reassess` line kept last. */
 const note = ($: EngineInterface, item: DecideItem, said: string) =>
-  rewriteDraft($, (text) => withNote(text, item, said));
+  rewriteDraft($, (text) =>
+    reassessKept(text, (body) => withNote(body, item, said)),
+  );
+
+/** Adds a `reassess` line at the draft's end, or takes the one there out. */
+const toggleReassess = ($: EngineInterface) =>
+  rewriteDraft($, toggledReassess);
+
+/** Why the engine didn't take a prompt it was sent, or undefined once it entered. */
+const refusalOf = ($: EngineInterface, text: string): Promise<string | undefined> =>
+  $.prompt.submit({ text, asUser: true }).then(
+    (done) => done.drop,
+    (error: unknown) => String(error),
+  );
 
 /**
- * The pane's Submit: sends the prompt box's text as the person's own, the
- * box emptied first; an empty or blank box sends nothing.
+ * Sends `text`, the box emptied first, as the person's own words. A box that
+ * can't be emptied sends nothing and leaves the draft as it was; a prompt
+ * the engine refuses goes back in the box. Either way the pane says why.
+ */
+const sendDraft = async ($: EngineInterface, text: string): Promise<void> => {
+  const emptied = await $.prompt.fill({ text: "", mode: "replace" });
+
+  if (!emptied.isFilled) {
+    await update($, submitProblem, () => NOT_EMPTIED_TEXT);
+
+    return;
+  }
+  await update($, draft, () => "");
+  const refusal = await refusalOf($, text);
+
+  if (refusal !== undefined) {
+    await $.prompt.fill({ text, mode: "replace" });
+    await update($, draft, () => text);
+  }
+  await update($, submitProblem, () =>
+    refusal === undefined ? "" : notSentText(refusal),
+  );
+};
+
+/**
+ * The pane's Submit: sends the prompt box's text as the person's own. One
+ * press at a time: a press while another is under way, or while a turn
+ * runs, does nothing, as does a box of blanks; a draft with a mention or an
+ * image stays in the box, the pane saying why.
  */
 const submitDraft = async ($: EngineInterface): Promise<void> => {
-  const text = submittedText((await $.prompt.read()).text);
+  const stamp = await update($, submits, (n) => n + 1);
+  const holder = await update($, submitting, (held) =>
+    held === 0 ? stamp : held,
+  );
 
-  if (text !== undefined) {
-    await $.prompt.fill({ text: "", mode: "replace" });
-    await update($, draft, () => "");
-    await $.prompt.submit({ text, asUser: true });
+  if (holder !== stamp) {
+    return;
+  }
+
+  try {
+    const step = submitStep(
+      (await $.prompt.read()).text,
+      await read($, isTurnRunning),
+    );
+
+    if ("refuse" in step) {
+      await update($, submitProblem, () => step.refuse);
+    } else if ("send" in step) {
+      await sendDraft($, step.send);
+    }
+  } finally {
+    await update($, submitting, (held) => (held === stamp ? 0 : held));
   }
 };
 
@@ -334,13 +438,29 @@ const reveal = async (
   await $.ui.scroll({ in: PANE.id, to, block }).catch(() => undefined);
 };
 
-/** The key of an item's notes field in the pane. */
-const notesKey = (item: DecideItem): string => `${refOf(item)}.notes`;
-
-/** ✏️ Add a note under a reply: the pane, with the keyboard, its item's notes field in sight and focused, the item above it. */
+/**
+ * ✏️ Add a note under a reply: the pane, with the keyboard, its item's
+ * notes field in sight, the item above it, and the ring on the field.
+ * The field also takes the focus as the pane draws it, until the ring is
+ * on it: a pane already open with the ring elsewhere moves it there.
+ */
 const openNotes = async ($: EngineInterface, item: DecideItem): Promise<void> => {
   await openPane($, true, refOf(item));
   await reveal($, { key: notesKey(item) }, "end");
+  const moved = await $.ui
+    .focus({ requestId: PANE.id, key: notesKey(item) })
+    .catch((error: unknown) => ({ deny: String(error) }));
+
+
+  if (moved.deny === undefined) {
+    await update($, noting, () => "");
+  }
+};
+
+/** Closes the pane; its notes field no longer waits for the focus. */
+const closePane = async ($: EngineInterface): Promise<void> => {
+  await update($, noting, () => "");
+  await $.ui.close({ id: PANE.id });
 };
 
 /** The end of a main-loop turn, or the session's start: opens the pane at its end when an item is open that the pane hasn't been opened over. */
@@ -401,6 +521,10 @@ export const register: Register = (on) => {
     });
     const session = await $.session.id();
     await update($, raised, (r) => forSession(r, session));
+    // No turn runs as the session starts, and no Submit is under way, though
+    // a reload mid-turn may have left either set.
+    await update($, isTurnRunning, () => false);
+    await update($, submitting, () => 0);
     void refresh($)
       .then(() => announce($))
       .catch(() => undefined);
@@ -431,15 +555,41 @@ export const register: Register = (on) => {
     result: "The buttons could not be drawn; the reply reads as before.",
   }));
 
+  // A main-loop turn starting: Submit waits it out, and what the last
+  // Submit said no longer applies.
+  on("turn.start", async ($, e, next) => {
+    const started = await next(e);
+
+    if (e.agentId === undefined) {
+      await update($, isTurnRunning, () => true);
+      await update($, submitProblem, () => "");
+    }
+
+    return started;
+  });
+
   on("turn.complete", async ($, e, next) => {
     const done = await next(e);
 
     if (e.agentId === undefined) {
+      await update($, isTurnRunning, () => false);
       await refresh($);
       await announce($);
     }
 
     return done;
+  });
+
+  // The person closing the pane: its notes field no longer waits for the
+  // focus. The plugin's own close, ✖, clears it itself.
+  on("ui.close", async ($, e, next) => {
+    const closed = await next(e);
+
+    if (e.id === PANE.id) {
+      await update($, noting, () => "");
+    }
+
+    return closed;
   });
 
   on("prompt.change", async ($, e, next) => {
@@ -531,24 +681,31 @@ export const register: Register = (on) => {
     }
 
     const text = await read($, draft);
+    const isBusy =
+      (await read($, isTurnRunning)) || (await read($, submitting)) !== 0;
+    const problem = await read($, submitProblem);
 
     return (
       <Box flexDirection="column">
         <Box marginBottom={1} columnGap={2}>
+          {/* A toggle: it adds `reassess` as the draft's last line, for
+              Submit to send after the answers, and takes it out again; it
+              shows as chosen while the line is there. */}
           <Button
             key="reassess"
             label="Reassess"
             plain
-            dimColor
-            onPress={() => $.prompt.submit({ text: REASSESS })}
+            dimColor={!hasReassess(text)}
+            onPress={() => toggleReassess($)}
           >
-            🔄 <Text underline>Reassess</Text>
+            {hasReassess(text) ? CHOSEN_MARK : "🔄"}{" "}
+            <Text underline>Reassess</Text>
           </Button>
           <Button
             key="submit"
             label="Submit"
             plain
-            dimColor={submittedText(text) === undefined}
+            dimColor={"skip" in submitStep(text, isBusy)}
             onPress={() => submitDraft($)}
           >
             📤 <Text underline>Submit</Text>
@@ -559,7 +716,7 @@ export const register: Register = (on) => {
             plain
             role="dismiss"
             hotkey={s.keys.dismiss}
-            onPress={() => $.ui.close({ id: PANE.id })}
+            onPress={() => closePane($)}
           >
             <Text
               weight="bold"
@@ -570,6 +727,11 @@ export const register: Register = (on) => {
             </Text>
           </Button>
         </Box>
+        {problem ? (
+          <Text key="submit-problem" wrap="wrap">
+            {problem}
+          </Text>
+        ) : null}
         {problemsOf(r) ? <Text dimColor>{problemsOf(r)}</Text> : null}
         {itemBoxes($, elements, s, r, r.items, {
           text,
@@ -649,6 +811,7 @@ const itemBoxes = (
     <Box key="kanban-items" flexDirection="column">
       {items.map((item) => {
         const isDone = isSettled(r, item);
+        const settlement = isDone ? settlementOf(r, item) : undefined;
 
         return (
           <Box
@@ -662,15 +825,15 @@ const itemBoxes = (
             {itemView(elements, s, item, {
               title: itemTitle(item, isDone),
               chosen: isDone ? [] : lettersFor(at.text, item),
+              sent: sentLetters(settlement),
+              settled: isDone ? settledText(settlement) : "",
               note: isDone ? "" : noteFor(at.text, item),
               isSettled: isDone,
-              notes: isDone
-                ? "none"
-                : !at.isPane
-                  ? "button"
-                  : at.noting === refOf(item)
-                    ? "focused"
-                    : "field",
+              notes: notesMode({
+                isSettled: isDone,
+                isPane: at.isPane,
+                isNoting: at.noting === refOf(item),
+              }),
               keyOf: (letter) => `${refOf(item)}.${letter}`,
               onPick: (letter) =>
                 isDone ? undefined : answer($, item, letter),
@@ -696,10 +859,14 @@ const itemView = (
   view: {
     title: Readonly<{ label: string; summary: string }>;
     chosen: readonly string[];
+    /** The letters the answer that settled the item picked. */
+    sent: readonly string[];
+    /** What settled the item, the line under its title; empty while open. */
+    settled: string;
     note: string;
     isSettled?: boolean;
     /** The notes: none, the field, the field taking the focus, or a button that opens the pane at it. */
-    notes: "none" | "field" | "focused" | "button";
+    notes: NotesMode;
     keyOf: (letter: string) => string;
     onPick: (letter: string) => unknown;
     onNote: (note: string) => unknown;
@@ -754,7 +921,7 @@ const itemView = (
             ? {}
             : {
                 weight: "bold" as const,
-                color: colors.title,
+                color: colors["title-label"],
                 backgroundColor: colors["title-background"],
               })}
         >
@@ -763,9 +930,19 @@ const itemView = (
         <Text key="title-gap"> </Text>
         {inline(view.title.summary, "title")}
       </Text>
+      {view.settled ? (
+        <Box key="settled-by" marginLeft={INDENT}>
+          <Text dimColor wrap="wrap">
+            {view.settled}
+          </Text>
+        </Box>
+      ) : null}
       {lines("", item.note, undefined, "note")}
       {item.options.map((option) => {
         const isChosen = view.chosen.includes(option.letter);
+        // An option the answer that settled the item picked: its own mark,
+        // at full strength in the dimmed item, never underlined.
+        const isSent = view.sent.includes(option.letter);
         // A chosen option's line is underlined, its glyph turned to ✅;
         // nothing of it, and none of its ➕ and ➖ lines, is highlighted.
         const pick = isChosen ? { underline: true } : {};
@@ -778,7 +955,7 @@ const itemView = (
         const gutter = gutterStyle(dim, key, colors);
         const press = {
           plain: true,
-          dimColor: dim,
+          dimColor: dim && !isSent,
           hover: { scope: key },
           onPress: () => view.onPick(option.letter),
         } as const;
@@ -824,7 +1001,8 @@ const itemView = (
               key,
               <Button key={key} label={option.name} {...press}>
                 <Text>
-                  {markOf(item, option.letter, isChosen)} {option.letter}.{" "}
+                  {isSent ? s.marks.sent : markOf(item, option.letter, isChosen)}{" "}
+                  {option.letter}.{" "}
                 </Text>
                 {inline(option.name, `${option.letter}-name`, {
                   ...pick,
@@ -855,9 +1033,9 @@ const itemView = (
           </Button>
         </Box>
       ) : (
-        <Box key={`${view.keyOf("notes")}-box`} marginLeft={INDENT}>
+        <Box key={`${notesKey(item)}-box`} marginLeft={INDENT}>
           <Input
-            key={view.keyOf("notes")}
+            key={notesKey(item)}
             label="✏️ "
             placeholder="Notes, or an answer in your own words"
             submitLabel="add to the draft"

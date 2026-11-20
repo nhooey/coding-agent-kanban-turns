@@ -20,6 +20,7 @@ import {
   pullRequestsOf,
   pullRequestsToAsk,
   rollUp,
+  settlementsOf,
   subjectKey,
   summaryOf,
   unsettled,
@@ -271,6 +272,17 @@ describe("openDecideItems", () => {
     ).toEqual(["9efb08a1.Decide.3"]);
   });
 
+  test("the line naming the plugin that opens a clicked draft answers nothing, and the answers under it do", () => {
+    for (const header of ["coding-agent-kanban-turns@nix-pinned:", "coding-agent-kanban-turns:"]) {
+      expect(
+        openRefs([prompt("go", FIRST), decided(FIRST), prompt(`${header}\n9efb08a1.Decide.1.A\n3. Y`)]),
+      ).toEqual(["9efb08a1.Decide.2"]);
+      expect(
+        openRefs([prompt("more", FIRST), decided(FIRST), prompt("on it"), queued(`${header}\n1. A`)]),
+      ).toEqual(["9efb08a1.Decide.2", "9efb08a1.Decide.3"]);
+    }
+  });
+
   test("a draft the pane's Submit sent is the user's own text, and answers", () => {
     expect(
       openRefs([
@@ -364,18 +376,144 @@ describe("openDecideItems", () => {
     expect(openRefs(rows)).toEqual(["b2c3d4e5.Decide.1", "b2c3d4e5.Decide.2"]);
     expect(openRefs([...rows, prompt("Decide.2: B")])).toEqual(["b2c3d4e5.Decide.1"]);
   });
+
+  test("a prompt that gives answers and ends on a reassess line applies them, then reassesses", () => {
+    for (const last of ["reassess", "Recheck.", "regen", "  reassess  "]) {
+      const rows = [
+        prompt("go", FIRST),
+        decided(FIRST),
+        pluginPrompt(SECOND, `coding-agent-kanban-turns:\n9efb08a1.Decide.1.A\n${last}\n`),
+        reply("later", [decideCall(SECOND, [1], ["Merge order for the swap"])]),
+      ];
+      expect(openRefs(rows)).toEqual(["b2c3d4e5.Decide.1"]);
+      expect(settlementsOf(turns(rows))).toEqual([
+        { ref: "9efb08a1.Decide.1", how: "answered", turn: SECOND, letters: ["A"], note: "" },
+        { ref: "9efb08a1.Decide.2", how: "reassessed" },
+        { ref: "9efb08a1.Decide.3", how: "reassessed" },
+      ]);
+    }
+  });
+
+  test("answers then a trailing reassess: answer, and then reassess, typed or submitted", () => {
+    for (const send of [prompt, (text: string, id: string) => pluginPrompt(id, text)]) {
+      const rows = [
+        prompt("go", FIRST),
+        decided(FIRST),
+        send("1. A / 3. Y\nreassess", SECOND),
+        reply("later", [decideCall(SECOND, [1], ["Merge order for the swap"])]),
+      ];
+      expect(openRefs(rows)).toEqual(["b2c3d4e5.Decide.1"]);
+      expect(settlementsOf(turns(rows)).map((s) => [s.ref, s.how])).toEqual([
+        ["9efb08a1.Decide.1", "answered"],
+        ["9efb08a1.Decide.2", "reassessed"],
+        ["9efb08a1.Decide.3", "answered"],
+      ]);
+    }
+  });
+
+  test("a trailing reassess runs only after the user's own answers", () => {
+    for (const other of [
+      prompt("Look at the build again.\nreassess", SECOND),
+      otherPluginPrompt(SECOND, "1. A\nreassess"),
+    ]) {
+      expect(
+        openRefs([
+          prompt("go", FIRST),
+          decided(FIRST),
+          other,
+          reply("later", [decideCall(SECOND, [4], SUMMARIES.slice(0, 1))]),
+        ]),
+      ).toEqual(["9efb08a1.Decide.2", "9efb08a1.Decide.3", "b2c3d4e5.Decide.4"]);
+    }
+  });
+
+  test("the pane's header line is neither an answer nor a command", () => {
+    for (const header of ["coding-agent-kanban-turns@nix-pinned:", "coding-agent-kanban-turns:"]) {
+      expect(openRefs([prompt("go", FIRST), decided(FIRST), pluginPrompt(SECOND, `${header}\n2. B`)])).toEqual([
+        "9efb08a1.Decide.1",
+        "9efb08a1.Decide.3",
+      ]);
+      expect(
+        openRefs([
+          prompt("go", FIRST),
+          decided(FIRST),
+          pluginPrompt(SECOND, `${header}\nreassess`),
+          reply("later", [decideCall(SECOND, [1], ["Merge order for the swap"])]),
+        ]),
+      ).toEqual(["b2c3d4e5.Decide.1"]);
+    }
+  });
+
+  test("a last line that only mentions reassess, or names another command, reassesses nothing", () => {
+    for (const last of ["please reassess", "reassess?", "restate", "re"]) {
+      expect(
+        openRefs([
+          prompt("go", FIRST),
+          decided(FIRST),
+          prompt(`9efb08a1.Decide.1.A\n${last}`, SECOND),
+          reply("later", [decideCall(SECOND, [4], ["Merge order for the swap"])]),
+        ]),
+      ).toEqual(["9efb08a1.Decide.2", "9efb08a1.Decide.3", "b2c3d4e5.Decide.4"]);
+    }
+  });
+});
+
+describe("how a Decide item settled", () => {
+  test("the answer that settled it: its letters, its note, and the turn it was sent in, the latest when answered again", () => {
+    const rows = [
+      prompt("go", FIRST),
+      decided(FIRST),
+      prompt("9efb08a1.Decide.1.A\n9efb08a1.Decide.2: not yet", SECOND),
+      prompt("9efb08a1.Decide.1.B: only for the loader", THIRD),
+    ];
+    expect(settlementsOf(turns(rows))).toEqual([
+      { ref: "9efb08a1.Decide.1", how: "answered", turn: THIRD, letters: ["B"], note: "only for the loader" },
+      { ref: "9efb08a1.Decide.2", how: "answered", turn: SECOND, letters: [], note: "not yet" },
+    ]);
+  });
+
+  test("an item asked again in a later turn settles as restated", () => {
+    expect(
+      settlementsOf(
+        turns([
+          prompt("go", FIRST),
+          decided(FIRST),
+          prompt("more", SECOND),
+          reply("restated", [decideCall(SECOND, [4], SUMMARIES.slice(0, 1))]),
+        ]),
+      ),
+    ).toEqual([{ ref: "9efb08a1.Decide.1", how: "restated" }]);
+  });
+
+  test("an open item has none", () => {
+    expect(settlementsOf(turns([prompt("go", FIRST), decided(FIRST)]))).toEqual([]);
+  });
 });
 
 describe("answersOfLine", () => {
   test("an answer naming its turn after it answers no item of the turn before", () => {
-    for (const line of ["Decide.2: B of 9efb08a1", "Decide.2: B,C of 9efb08a1", "Decide.2.A, C from 9efb08a1"]) {
-      expect(answersOfLine(line)).toEqual([{ turn: "9efb08a1", number: 2 }]);
+    for (const [line, letters] of [
+      ["Decide.2: B of 9efb08a1", ["B"]],
+      ["Decide.2: B,C of 9efb08a1", ["B", "C"]],
+      ["Decide.2.A, C from 9efb08a1", ["A", "C"]],
+    ] as const) {
+      expect(answersOfLine(line)).toEqual([{ turn: "9efb08a1", number: 2, letters, note: "" }]);
     }
   });
 
   test("an answer to the turn before names no turn", () => {
-    expect(answersOfLine("Decide.1: B")).toEqual([{ turn: "", number: 1 }]);
-    expect(answersOfLine("2. A, C")).toEqual([{ turn: "", number: 2 }]);
+    expect(answersOfLine("Decide.1: B")).toEqual([{ turn: "", number: 1, letters: ["B"], note: "" }]);
+    expect(answersOfLine("2. A, C")).toEqual([{ turn: "", number: 2, letters: ["A", "C"], note: "" }]);
+  });
+
+  test("an answer's letters and its note are read with it", () => {
+    expect(answersOfLine("9efb08a1.Decide.1.B: only for the loader")).toEqual([
+      { turn: "9efb08a1", number: 1, letters: ["B"], note: "only for the loader" },
+    ]);
+    expect(answersOfLine("9efb08a1.Decide.2: I'd rather wait")).toEqual([
+      { turn: "9efb08a1", number: 2, letters: [], note: "I'd rather wait" },
+    ]);
+    expect(answersOfLine("Decide.3.Y")).toEqual([{ turn: "", number: 3, letters: ["Y"], note: "" }]);
   });
 
   test("prose opening on a number answers nothing", () => {
@@ -663,11 +801,11 @@ describe("a settled Decide item", () => {
   test("numbered answers on one line", () => {
     for (const line of ["1. A / 3. Y", "1. A; 3. Y", "1. A, 3. Y", "1.A/3.Y"]) {
       expect(answersOfLine(line)).toEqual([
-        { turn: "", number: 1 },
-        { turn: "", number: 3 },
+        { turn: "", number: 1, letters: ["A"], note: "" },
+        { turn: "", number: 3, letters: ["Y"], note: "" },
       ]);
     }
-    expect(answersOfLine("2. A, C")).toEqual([{ turn: "", number: 2 }]);
+    expect(answersOfLine("2. A, C")).toEqual([{ turn: "", number: 2, letters: ["A", "C"], note: "" }]);
     expect(answersOfLine("1. A / 3. Y?")).toEqual([]);
   });
 

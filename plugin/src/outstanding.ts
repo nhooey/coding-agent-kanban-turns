@@ -20,7 +20,9 @@
 //
 // A 📌 roll-up's restatement of a settled item reopens nothing.
 
-import { itemsOf } from "./items.ts";
+import { answersOfLine } from "./answer-lines.ts";
+import type { LineAnswer } from "./answer-lines.ts";
+import { itemsOf, refOf } from "./items.ts";
 import { reportNames, reportNamesItem } from "./reports.ts";
 import {
   DECISIONS,
@@ -28,9 +30,10 @@ import {
   isTopicRule,
   reassessStart,
   sectionsOf,
+  withoutDraftHeader,
 } from "./transcript.ts";
 import type { Turn } from "./transcript.ts";
-import type { DecideItem } from "../types/index.d.ts";
+import type { DecideItem, Settlement } from "../types/index.d.ts";
 
 /** The lists that roll up into 📌, in the skill's order. */
 export const LIST_KEYS = [
@@ -216,83 +219,39 @@ export const allItems = (turns: readonly Turn[]): readonly ListItem[] =>
 
 // --- answers --------------------------------------------------------------
 
-/**
- * One answer a line of the user's gives: the item's number, and its turn, by
- * an id or a prefix of one, or empty for the turn before the answer's, whose
- * place is `at`.
- */
-export type Answer = Readonly<{ turn: string; number: number; at: number }>;
+export { answersOfLine } from "./answer-lines.ts";
+export type { LineAnswer } from "./answer-lines.ts";
 
-// What follows an item's reference in an answer: its letters after a dot,
-// `.B` or `.A,C`, a note or not after them; its letters after a colon or a
-// space, `: B` or ` A, C`, only where they end the line or another reference
-// or `of <turn>` follows, so `Decide.2: A red one` is not option A; or, after
-// a colon, words, `Decide.2: I'd rather wait`, an answer in the user's own
-// words.
-const LETTERS = String.raw`[A-Z](?:\s*,\s*[A-Z])*`;
-const AFTER_REF = String.raw`(?:\.${LETTERS}(?!\w)|(?::\s*|\s+)${LETTERS}(?=\s*$|\s+(?:of|from)\s|\s+(?:[0-9a-f]{6,8}\.)?Decide\.)|:\s*(?=\S))`;
-// `9efb08a1.Decide.2.B`, `9efb08a.Decide.2: B,C`, `9efb08a1.Decide.2: <words>`.
-const ANSWER_WITH_ID = new RegExp(
-  String.raw`\b([0-9a-f]{6,8})\.Decide\.(\d+)${AFTER_REF}`,
-  "g",
-);
-// `Decide.2.B of 9efb08a1`, `Decide.2: B,C from 9efb08a1`.
-const ANSWER_ID_AFTER = new RegExp(
-  String.raw`\bDecide\.(\d+)(?:\.|:\s*|\s+)${LETTERS}\s+(?:of|from)\s+([0-9a-f]{6,8})\b`,
-  "g",
-);
-// An answer to the turn before, naming no turn: `Decide.2.B`, `Decide.2: B`
-// or `Decide.2: <words>`. Whatever ANSWER_ID_AFTER matches is turned away
-// first, so `Decide.2: B,C of 9efb08a1` can't also pass as words after the
-// colon.
-const ANSWER_BARE = new RegExp(
-  String.raw`(?<![0-9a-f]\.)\bDecide\.(\d+)(?!(?:\.|:\s*|\s+)${LETTERS}\s+(?:of|from)\s+[0-9a-f]{6,8}\b)${AFTER_REF}(?!\s+(?:of|from)\s)`,
-  "g",
-);
-// A line of numbered answers to the turn before, `2. B`, `2. A, C`, or
-// several parted by `/`, `;` or `,`: `1. A / 3. B`. The line must hold
-// nothing else, so prose opening on a number answers nothing.
-const NUMBERED = String.raw`(\d+)[.:]\s*${LETTERS}`;
-const ANSWER_NUMBER = new RegExp(NUMBERED, "g");
-const ANSWER_NUMBERS_LINE = new RegExp(
-  String.raw`^\s*${NUMBERED}(?:\s*[/;,]\s*${NUMBERED})*\s*$`,
-);
-
-/** The answers one line of the user's gives, each once; none where the line asks a question. */
-export const answersOfLine = (
-  line: string,
-): readonly Readonly<{ turn: string; number: number }>[] => {
-  const found = line.includes("?")
-    ? []
-    : [
-        ...[...line.matchAll(ANSWER_WITH_ID)].map((m) => [m[1], m[2]]),
-        ...[...line.matchAll(ANSWER_ID_AFTER)].map((m) => [m[2], m[1]]),
-        ...[...line.matchAll(ANSWER_BARE)].map((m) => ["", m[1]]),
-        ...(ANSWER_NUMBERS_LINE.test(line)
-          ? [...line.matchAll(ANSWER_NUMBER)].map((m) => ["", m[1]])
-          : []),
-      ].map(([turn, number]) => `${turn ?? ""}\t${number ?? ""}`);
-
-  return [...new Set(found)].map((pair) => {
-    const [turn = "", number = ""] = pair.split("\t");
-
-    return { turn, number: Number(number) };
-  });
-};
+/** An answer as the turns hold it: the line's, with the place `at` of the turn a bare one answers and the id of the turn it was `sent` in. */
+export type Answer = LineAnswer & Readonly<{ at: number; sent: string }>;
 
 /**
  * Every answer the user gave: in a turn's prompt where it's the user's own
- * text, and in a message the user sent while a turn ran; a bare answer means
- * the turn before the one it's in. The first turn answers nothing.
+ * text, and in a message the user sent while a turn ran, the line naming
+ * the plugin that opens a draft its clicks started left out; a bare answer
+ * means the turn before the one it's in. The first turn answers nothing.
  */
 export const answered = (turns: readonly Turn[]): readonly Answer[] =>
   turns.flatMap((turn, n) =>
     n === 0
       ? []
       : [...(turn.isOwn ? [turn.prompt] : []), ...turn.asides]
-          .flatMap((text) => text.split("\n"))
+          .flatMap((text) => withoutDraftHeader(text).split("\n"))
           .flatMap(answersOfLine)
-          .map((answer) => ({ ...answer, at: n - 1 })),
+          .map((answer) => ({ ...answer, at: n - 1, sent: turn.id })),
+  );
+
+/** The latest answer that settles item `number` of the turn at `at`, whose id is `id`, if one does. */
+export const answerFor = (
+  answers: readonly Answer[],
+  id: string,
+  at: number,
+  number: number,
+): Answer | undefined =>
+  answers.findLast(
+    (answer) =>
+      answer.number === number &&
+      (answer.turn === "" ? answer.at === at : id !== "" && id.startsWith(answer.turn)),
   );
 
 /** Whether an answer settles item `number` of the turn at `at`, whose id is `id`. */
@@ -301,12 +260,7 @@ export const isAnswered = (
   id: string,
   at: number,
   number: number,
-): boolean =>
-  answers.some(
-    (answer) =>
-      answer.number === number &&
-      (answer.turn === "" ? answer.at === at : id !== "" && id.startsWith(answer.turn)),
-  );
+): boolean => answerFor(answers, id, at, number) !== undefined;
 
 // --- Decide items a reply's own list prints --------------------------------
 
@@ -560,6 +514,63 @@ export const countLine = (
   merged: ReadonlySet<string> = new Set(),
 ): string => countsOf(unsettled(turns, rollUp(turns, window), merged));
 
+/** How a Decide item stopped being open: by an answer, a later `reassess` turn, or a later item on its subject; undefined while it's open. */
+const settlementOf = (
+  item: DecideItem,
+  answer: Answer | undefined,
+  isBeforeReassess: boolean,
+  isRestated: boolean,
+): Settlement | undefined =>
+  answer !== undefined
+    ? {
+        ref: refOf(item),
+        how: "answered",
+        turn: answer.sent,
+        letters: answer.letters,
+        note: answer.note,
+      }
+    : isBeforeReassess
+      ? { ref: refOf(item), how: "reassessed" }
+      : isRestated
+        ? { ref: refOf(item), how: "restated" }
+        : undefined;
+
+/**
+ * Every Decide item the `kanban_options` calls raised, oldest first, and how
+ * it settled, if it did: by the latest of the user's answers to it, else by
+ * a later `reassess` turn, else by a later item on its subject. A turn that
+ * reassesses applies its own answers first, so an item it answers settles
+ * as answered.
+ */
+export const decideStates = (
+  turns: readonly Turn[],
+): readonly Readonly<{
+  item: DecideItem;
+  settlement: Settlement | undefined;
+}>[] => {
+  const start = reassessStart(turns);
+  const answers = answered(turns);
+  const raised = turns.flatMap((turn, at) =>
+    turn.calls.flatMap((input) => itemsOf(input).map((item) => ({ item, at }))),
+  );
+  const last = new Map(
+    raised
+      .map(({ item, at }, n) => ({ key: subjectKey(item.summary), at, n }))
+      .filter(({ at }) => at >= start)
+      .map(({ key, n }) => [key, n] as const),
+  );
+
+  return raised.map(({ item, at }, n) => ({
+    item,
+    settlement: settlementOf(
+      item,
+      answerFor(answers, item.turn, at, item.number),
+      at < start,
+      last.get(subjectKey(item.summary)) !== n,
+    ),
+  }));
+};
+
 /**
  * The open Decide items, oldest first: those the `kanban_options` calls
  * raised since the latest `reassess` turn, each subject's latest only, none
@@ -567,32 +578,19 @@ export const countLine = (
  */
 export const openDecideItems = (
   turns: readonly Turn[],
-): readonly DecideItem[] => {
-  const start = reassessStart(turns);
-  const answers = answered(turns);
-  const raised = turns.flatMap((turn, at) =>
-    at < start
-      ? []
-      : turn.calls.flatMap((input) =>
-          itemsOf(input).map((item) => ({ item, at })),
-        ),
-  );
-  const last = new Map(
-    raised.map(({ item }, n) => [subjectKey(item.summary), n]),
-  );
+): readonly DecideItem[] =>
+  decideStates(turns)
+    .filter((state) => state.settlement === undefined)
+    .map((state) => state.item);
 
-  return raised
-    .filter(
-      ({ item, at }, n) =>
-        last.get(subjectKey(item.summary)) === n &&
-        !isAnswered(answers, item.turn, at, item.number),
-    )
-    .map(({ item }) => item);
-};
+/** How each settled Decide item settled, oldest first. */
+export const settlementsOf = (turns: readonly Turn[]): readonly Settlement[] =>
+  decideStates(turns).flatMap((state) => state.settlement ?? []);
 
-/** What the turns leave open: the Decide items, and the count line. */
+/** What the turns leave open: the Decide items, how each settled one settled, and the count line. */
 export type Open = Readonly<{
   items: readonly DecideItem[];
+  settlements: readonly Settlement[];
   counts: string;
 }>;
 
@@ -603,5 +601,6 @@ export const openOf = (
   merged: ReadonlySet<string> = new Set(),
 ): Open => ({
   items: openDecideItems(turns),
+  settlements: settlementsOf(turns),
   counts: countLine(turns, window, merged),
 });

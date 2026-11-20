@@ -22,6 +22,7 @@
 // mod's prompt, a report and a notification are not the user's own, and
 // answer nothing.
 
+import { answersOfLine } from "./answer-lines.ts";
 import { PLUGIN, TOOL_CALLED } from "./instructions.ts";
 
 /**
@@ -146,6 +147,17 @@ const pluginText = (record: TranscriptRecord): string | undefined => {
 /** A prompt's text: a mod's as it sent it, not as the engine words it round. */
 const promptOf = (record: TranscriptRecord): string =>
   pluginText(record) ?? textOf(contentOf(record));
+
+// The line a draft the plugin's clicks started opens with: the plugin's
+// name, its marketplace after `@` where the engine gave one, and a colon,
+// alone on the first line.
+const DRAFT_HEADER = new RegExp(
+  String.raw`^${PLUGIN.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:@[\w.-]+)?:\r?\n`,
+);
+
+/** A message's text without the line naming the plugin that a draft its clicks started opens with, so that line is never read as an answer or a note. */
+export const withoutDraftHeader = (text: string): string =>
+  text.replace(DRAFT_HEADER, "");
 
 /** Whether a record opens a turn. */
 export const isPrompt = (record: TranscriptRecord): boolean =>
@@ -488,18 +500,53 @@ const commandWords = (prompt: string): readonly string[] => {
       : words;
 };
 
-/** The command a prompt runs, `reassess` or `open`, by its first word, bare or after the skill's slash command. */
-export const commandOf = (prompt: string): string | undefined => {
-  const first = (commandWords(prompt)[0] ?? "").replace(/[.,;:!]+$/, "");
+/** The command a word names, its trailing `.,;:!` dropped, where it's only letters. */
+const commandOfWord = (word: string): string | undefined => {
+  const bare = word.trim().replace(/[.,;:!]+$/, "");
 
-  return /^\p{L}+$/u.test(first) ? commandNamed(first) : undefined;
+  return /^\p{L}+$/u.test(bare) ? commandNamed(bare) : undefined;
+};
+
+/** Whether a line is only a word naming `reassess`: one of its names or a prefix no other command's name shares, any case, trailing `.,;:!` allowed. */
+export const isReassessLine = (line: string): boolean =>
+  commandOfWord(line) === "reassess";
+
+/**
+ * Whether a prompt holds answers and ends on a line naming `reassess`
+ * alone, as a draft the pane's Reassess button ended does: a line before
+ * the last that isn't blank gives an answer.
+ */
+const endsOnReassess = (text: string): boolean => {
+  const lines = text.split("\n").filter((line) => line.trim() !== "");
+
+  return (
+    isReassessLine(lines.at(-1) ?? "") &&
+    lines.slice(0, -1).some((line) => answersOfLine(line).length > 0)
+  );
+};
+
+/**
+ * The command a prompt runs, `reassess` or `open`: by its first word, bare
+ * or after the skill's slash command; else `reassess` where the prompt
+ * holds answers and ends on a line naming it alone, its answers counting
+ * too. The line naming the plugin that opens a draft its clicks started is
+ * left out first. `open` never runs from the last line.
+ */
+export const commandOf = (prompt: string): string | undefined => {
+  const text = withoutDraftHeader(prompt);
+
+  return (
+    commandOfWord(commandWords(text)[0] ?? "") ??
+    (endsOnReassess(text) ? "reassess" : undefined)
+  );
 };
 
 /**
  * The place of the latest `reassess` turn, whose lists replace every item
  * before it; else 0. Only the user's own prompt is one, this plugin's
- * Reassess among them: an agent's, another session's, a task's or another
- * mod's message opening on "Recheck" is not.
+ * prompts among them: an agent's, another session's, a task's or another
+ * mod's message opening on "Recheck" is not. A turn that ends on `reassess`
+ * after its answers still settles the items they answer.
  */
 export const reassessStart = (turns: readonly Turn[]): number =>
   Math.max(

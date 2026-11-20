@@ -38,6 +38,22 @@ export type DecideItem = Readonly<{
 }>;
 
 /**
+ * How a Decide item stopped being open: the user's answer to it, the letters
+ * and note it gave and the id of the turn it was sent in; a later
+ * `reassess` turn; or a later item on its subject, the item asked again.
+ */
+export type Settlement = Readonly<
+  | {
+      ref: string;
+      how: "answered";
+      turn: string;
+      letters: readonly string[];
+      note: string;
+    }
+  | { ref: string; how: "reassessed" | "restated" }
+>;
+
+/**
  * Every Decide item raised in this session, oldest first: the pane lists
  * them all, and a reply draws its own under its text. An item stays once
  * raised; one no longer open is settled, drawn dimmed, its buttons dead.
@@ -49,6 +65,8 @@ export type Raised = Readonly<{
   items: readonly DecideItem[];
   /** Raised refs the last refresh didn't find open. */
   settledRefs: readonly string[];
+  /** How each item the last refresh found settled settled, by its ref. */
+  settlements: readonly Settlement[];
   /** Refs raised by the last main-loop turn's end, so the pane opens by itself only for a new one. */
   seenRefs: readonly string[];
   /** Why the last refresh couldn't read the transcript, for the pane to say; empty when it could. */
@@ -75,9 +93,10 @@ export type Settings = Readonly<{
   counts: Readonly<{ turns: number; "gh-timeout-ms": number }>;
   keys: Readonly<{ dismiss: string }>;
   notes: Readonly<{ rows: number }>;
+  marks: Readonly<{ sent: string }>;
   colors: Readonly<{
     border: string;
-    title: string;
+    "title-label": string;
     "title-background": string;
     code: string;
     hover: string;
@@ -104,6 +123,10 @@ declare module "claude-code" {
       raised: Shaped<Raised>;
       draft: string;
       noting: string;
+      submits: number;
+      submitting: number;
+      isTurnRunning: boolean;
+      submitProblem: string;
       counts: string;
       merged: readonly string[];
       refreshes: number;
