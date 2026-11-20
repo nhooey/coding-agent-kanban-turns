@@ -3,11 +3,17 @@ title: Each item that blocks other work names the items it frees, by reference
 state: approved
 kind: implementation
 part-of: kanban-next-chunk
+needs: [protocol-spec-data, protocol-prose-fragments]
+touches: [plugin/spec/kanban.yaml, plugin/spec/fragments/, plugin/spec/cases/, plugin/src/transcript.ts, plugin/src/instructions.ts, plugin/test/]
 ---
 
 # Each item that blocks other work names the items it frees, by reference
 
-- A shared rule: an item's last line may be `Frees: <ref>, <ref>`, each ref an item of this or an earlier turn. The skill's Todo items already say "what it frees" in words; this makes it a reference the scripts can read.
-- `outstanding.py` reads the line into a `frees` list on each item, and the plugin's transcript reader does the same with the same tests.
-- `kanban_options` takes an optional `frees` on each Decide item.
-- The change comes with a pull request to coding-agent-skills making the same change to the skill, as `AGENTS.md` says of the shared rules.
+- **The rule is in the spec.** `plugin/spec/kanban.yaml` gives the line's grammar: an item's last line may be `Frees: <ref>, <ref>`, each ref an item of this or an earlier turn ([protocol-spec-data](../../plugin-sole-source/open/protocol-spec-data.md)).
+- **The prose says when to write it.** A prose fragment tells the agent to end an item that blocks other work with its `Frees:` line, in place of saying what it frees in words ([protocol-prose-fragments](../../plugin-sole-source/open/protocol-prose-fragments.md)), so the `prompt.context` instructions and the derived skill both carry it.
+- **The core reads it.** The plugin's transcript reader reads the line into a `frees` list on each item, by the spec's grammar.
+- **`kanban_options` takes an optional `frees`** on each Decide item.
+
+No pull request goes to coding-agent-skills: the spec is the only statement of the rule.
+
+Checks: golden cases with `Frees:` lines on items of several lists, giving each item's `frees`, and one with a ref to an unknown item; the assembled instructions hold the fragment.
