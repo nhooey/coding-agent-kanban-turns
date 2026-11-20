@@ -1,8 +1,8 @@
 ---
 title: Submit works as reviewed, a Reassess toggle adds a reassess line, the draft names the plugin, and settled items show their answer
-state: in-progress
+state: implemented
 kind: implementation
-owner: pane-submit-review-fixes
+implemented-by: "#33"
 touches: [plugin/hooks/register.tsx, plugin/src/answers.ts, plugin/src/view.ts, plugin/plugin-tests/]
 ---
 
