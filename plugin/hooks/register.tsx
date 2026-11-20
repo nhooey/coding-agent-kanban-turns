@@ -80,7 +80,9 @@ import {
   noteRows,
   notesKey,
   notesMode,
+  notPutBackText,
   notSentText,
+  putBackText,
   sentLetters,
   settledText,
   submitStep,
@@ -148,14 +150,15 @@ const submitting = atom(
   { plugin: "coding-agent-kanban-turns", key: "submitting" } as const,
   0,
 );
-// Whether a main-loop turn runs, from turn.start to turn.complete: Submit
-// waits it out.
-const isTurnRunning = atom(
-  { plugin: "coding-agent-kanban-turns", key: "isTurnRunning" } as const,
-  false,
+// The id of the main loop's running turn, from its turn.start to its own
+// turn.complete, empty while none runs: Submit waits it out. Only the end
+// of the turn it names clears it, so a late end of an earlier turn doesn't.
+const runningTurn = atom(
+  { plugin: "coding-agent-kanban-turns", key: "runningTurn" } as const,
+  "",
 );
 // Why the last Submit sent nothing, for the pane to say; empty when it
-// sent, or once a turn starts.
+// sent, once a turn starts, or as the session starts.
 const submitProblem = atom(
   { plugin: "coding-agent-kanban-turns", key: "submitProblem" } as const,
   "",
@@ -362,6 +365,32 @@ const refusalOf = ($: EngineInterface, text: string): Promise<string | undefined
   );
 
 /**
+ * Puts a draft the engine refused back in the box Submit emptied, after
+ * whatever the person typed there meanwhile, and says why it wasn't sent.
+ * A box that can't take it back leaves the draft in what the pane says.
+ */
+const putBack = async (
+  $: EngineInterface,
+  text: string,
+  refusal: string,
+): Promise<void> => {
+  const box = (await $.prompt.read().catch(() => ({ text: "" }))).text;
+  const added = putBackText(box, text);
+  const put = await $.prompt
+    .fill({ text: added, mode: "append" })
+    .catch(() => ({ isFilled: false }));
+
+  if (put.isFilled) {
+    await update($, draft, () => `${box}${added}`);
+  }
+  await update($, submitProblem, () =>
+    put.isFilled
+      ? notSentText(refusal, box !== "")
+      : notPutBackText(refusal, text),
+  );
+};
+
+/**
  * Sends `text`, the box emptied first, as the person's own words. A box that
  * can't be emptied sends nothing and leaves the draft as it was; a prompt
  * the engine refuses goes back in the box. Either way the pane says why.
@@ -378,19 +407,19 @@ const sendDraft = async ($: EngineInterface, text: string): Promise<void> => {
   const refusal = await refusalOf($, text);
 
   if (refusal !== undefined) {
-    await $.prompt.fill({ text, mode: "replace" });
-    await update($, draft, () => text);
+    await putBack($, text, refusal);
+
+    return;
   }
-  await update($, submitProblem, () =>
-    refusal === undefined ? "" : notSentText(refusal),
-  );
+  await update($, submitProblem, () => "");
 };
 
 /**
  * The pane's Submit: sends the prompt box's text as the person's own. One
  * press at a time: a press while another is under way, or while a turn
- * runs, does nothing, as does a box of blanks; a draft with a mention or an
- * image stays in the box, the pane saying why.
+ * runs, does nothing, as does a box of blanks or of the line naming the
+ * plugin alone; a draft with a file mention, pasted text or an image stays
+ * in the box, the pane saying why.
  */
 const submitDraft = async ($: EngineInterface): Promise<void> => {
   const stamp = await update($, submits, (n) => n + 1);
@@ -405,7 +434,7 @@ const submitDraft = async ($: EngineInterface): Promise<void> => {
   try {
     const step = submitStep(
       (await $.prompt.read()).text,
-      await read($, isTurnRunning),
+      (await read($, runningTurn)) !== "",
     );
 
     if ("refuse" in step) {
@@ -450,7 +479,6 @@ const openNotes = async ($: EngineInterface, item: DecideItem): Promise<void> =>
   const moved = await $.ui
     .focus({ requestId: PANE.id, key: notesKey(item) })
     .catch((error: unknown) => ({ deny: String(error) }));
-
 
   if (moved.deny === undefined) {
     await update($, noting, () => "");
@@ -502,6 +530,13 @@ const showItem = async ($: EngineInterface, href: string): Promise<void> => {
 
 export const register: Register = (on) => {
   on("session.start", async ($, e, next) => {
+    // No turn runs as the session starts, no Submit is under way and none
+    // has a problem to say, though a reload mid-turn or mid-Submit may have
+    // left them set. Cleared before the hook awaits anything else, so a
+    // turn.start or a Submit that lands while it registers stays.
+    await update($, runningTurn, () => "");
+    await update($, submitting, () => 0);
+    await update($, submitProblem, () => "");
     const started = await next(e);
     await $.command.register({
       name: "answers",
@@ -521,10 +556,6 @@ export const register: Register = (on) => {
     });
     const session = await $.session.id();
     await update($, raised, (r) => forSession(r, session));
-    // No turn runs as the session starts, and no Submit is under way, though
-    // a reload mid-turn may have left either set.
-    await update($, isTurnRunning, () => false);
-    await update($, submitting, () => 0);
     void refresh($)
       .then(() => announce($))
       .catch(() => undefined);
@@ -561,18 +592,20 @@ export const register: Register = (on) => {
     const started = await next(e);
 
     if (e.agentId === undefined) {
-      await update($, isTurnRunning, () => true);
+      await update($, runningTurn, () => e.turnId);
       await update($, submitProblem, () => "");
     }
 
     return started;
   });
 
+  // A main-loop turn ending: it clears the running turn only where that is
+  // this turn, so an earlier turn's late end leaves a later one running.
   on("turn.complete", async ($, e, next) => {
     const done = await next(e);
 
     if (e.agentId === undefined) {
-      await update($, isTurnRunning, () => false);
+      await update($, runningTurn, (held) => (held === e.turnId ? "" : held));
       await refresh($);
       await announce($);
     }
@@ -682,15 +715,15 @@ export const register: Register = (on) => {
 
     const text = await read($, draft);
     const isBusy =
-      (await read($, isTurnRunning)) || (await read($, submitting)) !== 0;
+      (await read($, runningTurn)) !== "" || (await read($, submitting)) !== 0;
     const problem = await read($, submitProblem);
 
     return (
       <Box flexDirection="column">
         <Box marginBottom={1} columnGap={2}>
           {/* A toggle: it adds `reassess` as the draft's last line, for
-              Submit to send after the answers, and takes it out again; it
-              shows as chosen while the line is there. */}
+              Submit to send after any answers, or alone, and takes it out
+              again; it shows as chosen while the line is there. */}
           <Button
             key="reassess"
             label="Reassess"

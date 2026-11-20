@@ -125,7 +125,7 @@ declare module "claude-code" {
       noting: string;
       submits: number;
       submitting: number;
-      isTurnRunning: boolean;
+      runningTurn: string;
       submitProblem: string;
       counts: string;
       merged: readonly string[];

@@ -417,30 +417,29 @@ describe("reassessStart", () => {
     expect(reassessStart(turnsOf([human("00000001", "go"), human("00000002", "open")]))).toBe(0);
   });
 
-  test("is a turn whose prompt ends on a reassess line, after its answers", () => {
-    const turns = turnsOf([
-      human("00000001", "go"),
-      human("00000002", "coding-agent-kanban-turns:\n9efb08a1.Decide.1.A\nreassess\n\n"),
-    ]);
-    expect(reassessStart(turns)).toBe(1);
+  test("is a turn whose prompt ends on a reassess line, with or without answers", () => {
+    for (const prompt of ["coding-agent-kanban-turns:\n9efb08a1.Decide.1.A\nreassess\n\n", "Look at the build again.\nreassess"]) {
+      expect(reassessStart(turnsOf([human("00000001", "go"), human("00000002", prompt)]))).toBe(1);
+    }
   });
 });
 
-describe("a command after the answers", () => {
-  test("a prompt that holds answers and ends on a line naming reassess alone reassesses", () => {
+describe("a command on the last line", () => {
+  test("a prompt whose last non-blank line names reassess alone reassesses, after any answers", () => {
     for (const prompt of [
       "1. A / 3. Y\nreassess",
       "9efb08a1.Decide.1.A\nRecalc!\n",
       "9efb08a1.Decide.1.A\n9efb08a1.Decide.2: not yet\n  regen  \n\n",
+      "Look at the build again.\nreassess",
+      "go\nreassess",
+      "The agent reported.\n\nrecheck.\n",
     ]) {
       expect(commandOf(prompt)).toBe("reassess");
     }
   });
 
-  test("a trailing reassess with no answer before it, more on its line, or a question runs nothing", () => {
+  test("a trailing reassess with more on its line, or a question, runs nothing", () => {
     for (const prompt of [
-      "Look at the build again.\nreassess",
-      "go\nreassess",
       "9efb08a1.Decide.1.A\nplease reassess",
       "9efb08a1.Decide.1.A\nreassess?",
       "9efb08a1.Decide.1.A\nre",
@@ -452,6 +451,7 @@ describe("a command after the answers", () => {
   test("only reassess runs from the last line: a trailing open runs nothing", () => {
     for (const name of ["open", "restate", "pending"]) {
       expect(commandOf(`9efb08a1.Decide.1.A\n${name}`)).toBeUndefined();
+      expect(commandOf(`Look at the build again.\n${name}`)).toBeUndefined();
     }
   });
 
@@ -466,11 +466,12 @@ describe("a command after the answers", () => {
       expect(commandOf(`${header}\n2. B\nreassess\n`)).toBe("reassess");
       expect(commandOf(`${header}\n2. B`)).toBeUndefined();
     }
-    // Another plugin's header line is its first word, which names nothing.
-    expect(commandOf("other-mod@market:\nreassess")).toBeUndefined();
+    // Another plugin's header line stays: it is the first word, which names
+    // nothing, so `restate` after it runs nothing either.
+    expect(commandOf("other-mod@market:\nrestate")).toBeUndefined();
   });
 
-  test("a turn that isn't the user's own, though it ends on reassess after answers, reassesses nothing", () => {
+  test("a turn that isn't the user's own, though it ends on reassess, reassesses nothing", () => {
     const turns = turnsOf([
       human("00000001", "go"),
       { ...human("00000002", "The mod sent:\n1. A\nreassess"), turnOrigin: "system", pluginPrompt: { name: "mod", text: "1. A\nreassess" } },

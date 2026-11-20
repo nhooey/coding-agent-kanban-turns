@@ -12,14 +12,17 @@ import {
   answersOfLine,
   countLine,
   decideItemsOfText,
+  decideStates,
   itemsOfText,
   mergedOfResponse,
   mergedQuery,
   openDecideItems,
+  openItemsIn,
   openOf,
   pullRequestsOf,
   pullRequestsToAsk,
   rollUp,
+  settlementsIn,
   settlementsOf,
   subjectKey,
   summaryOf,
@@ -411,9 +414,22 @@ describe("openDecideItems", () => {
     }
   });
 
-  test("a trailing reassess runs only after the user's own answers", () => {
+  test("a trailing reassess runs without answers too", () => {
+    for (const text of ["Look at the build again.\nreassess", "The agent reported.\n\nrecheck.\n"]) {
+      expect(
+        openRefs([
+          prompt("go", FIRST),
+          decided(FIRST),
+          prompt(text, SECOND),
+          reply("later", [decideCall(SECOND, [1], ["Merge order for the swap"])]),
+        ]),
+      ).toEqual(["b2c3d4e5.Decide.1"]);
+    }
+  });
+
+  test("a trailing open or another mod's trailing reassess runs nothing", () => {
     for (const other of [
-      prompt("Look at the build again.\nreassess", SECOND),
+      prompt("Look at the build again.\nopen", SECOND),
       otherPluginPrompt(SECOND, "1. A\nreassess"),
     ]) {
       expect(
@@ -1013,5 +1029,27 @@ describe("openOf", () => {
   test("the count line leaves out the Review items whose pull requests merged", () => {
     const found = [turn(FIRST, "go", REVIEW_REPLY)];
     expect(openOf(found, WINDOW, new Set(["nhooey/kanban#21"])).counts).toBe("📌 Outstanding: 🔍 2");
+  });
+
+  test("its items and settlements are the open and settled ones of one reading", () => {
+    const found = turns([prompt("go", FIRST), decided(FIRST), prompt("1. A", SECOND)]);
+    const open = openOf(found, WINDOW);
+    expect(open.items).toEqual(openDecideItems(found));
+    expect(open.settlements).toEqual(settlementsOf(found));
+  });
+});
+
+describe("openItemsIn and settlementsIn", () => {
+  test("split the items' states into the open items and how the others settled, in order", () => {
+    const states = decideStates(turns([prompt("go", FIRST), decided(FIRST), prompt("1. A", SECOND)]));
+    expect(openItemsIn(states).map((item) => item.ref)).toEqual(["9efb08a1.Decide.2", "9efb08a1.Decide.3"]);
+    expect(settlementsIn(states)).toEqual([
+      { ref: "9efb08a1.Decide.1", how: "answered", turn: SECOND, letters: ["A"], note: "" },
+    ]);
+  });
+
+  test("are empty for no states", () => {
+    expect(openItemsIn([])).toEqual([]);
+    expect(settlementsIn([])).toEqual([]);
   });
 });

@@ -535,6 +535,12 @@ const settlementOf = (
         ? { ref: refOf(item), how: "restated" }
         : undefined;
 
+/** A Decide item a `kanban_options` call raised, and how it settled, if it did. */
+export type DecideState = Readonly<{
+  item: DecideItem;
+  settlement: Settlement | undefined;
+}>;
+
 /**
  * Every Decide item the `kanban_options` calls raised, oldest first, and how
  * it settled, if it did: by the latest of the user's answers to it, else by
@@ -542,12 +548,7 @@ const settlementOf = (
  * reassesses applies its own answers first, so an item it answers settles
  * as answered.
  */
-export const decideStates = (
-  turns: readonly Turn[],
-): readonly Readonly<{
-  item: DecideItem;
-  settlement: Settlement | undefined;
-}>[] => {
+export const decideStates = (turns: readonly Turn[]): readonly DecideState[] => {
   const start = reassessStart(turns);
   const answers = answered(turns);
   const raised = turns.flatMap((turn, at) =>
@@ -578,14 +579,24 @@ export const decideStates = (
  */
 export const openDecideItems = (
   turns: readonly Turn[],
+): readonly DecideItem[] => openItemsIn(decideStates(turns));
+
+/** The items among `states` that haven't settled, in their order. */
+export const openItemsIn = (
+  states: readonly DecideState[],
 ): readonly DecideItem[] =>
-  decideStates(turns)
+  states
     .filter((state) => state.settlement === undefined)
     .map((state) => state.item);
 
 /** How each settled Decide item settled, oldest first. */
 export const settlementsOf = (turns: readonly Turn[]): readonly Settlement[] =>
-  decideStates(turns).flatMap((state) => state.settlement ?? []);
+  settlementsIn(decideStates(turns));
+
+/** How each of `states` that settled did, in their order. */
+export const settlementsIn = (
+  states: readonly DecideState[],
+): readonly Settlement[] => states.flatMap((state) => state.settlement ?? []);
 
 /** What the turns leave open: the Decide items, how each settled one settled, and the count line. */
 export type Open = Readonly<{
@@ -594,13 +605,17 @@ export type Open = Readonly<{
   counts: string;
 }>;
 
-/** What the turns leave open: the Decide items, and the count line over the last `window` turns given the pull requests that merged. */
+/** What the turns leave open: the Decide items and the settlements, from one reading of the items' states, and the count line over the last `window` turns given the pull requests that merged. */
 export const openOf = (
   turns: readonly Turn[],
   window: number,
   merged: ReadonlySet<string> = new Set(),
-): Open => ({
-  items: openDecideItems(turns),
-  settlements: settlementsOf(turns),
-  counts: countLine(turns, window, merged),
-});
+): Open => {
+  const states = decideStates(turns);
+
+  return {
+    items: openItemsIn(states),
+    settlements: settlementsIn(states),
+    counts: countLine(turns, window, merged),
+  };
+};
