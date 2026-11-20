@@ -21,9 +21,16 @@ Enter the dev shell with `nix develop` (or direnv); it links `plugin/node_module
 - `typecheck`: type-check the core and its tests (`npm run typecheck`).
 - `typecheck-plugin`: type-check the hooks against the engine's API, which Claude Code lays in `plugin/.claude-plugin/types/` when it loads the plugin.
 - `plugin-test`: `claude plugin validate` and the engine-driven tests; needs the `claude` CLI.
-- `check`: `nix flake check`: formatting (treefmt), `typecheck` and `tests`. A build has no engine, so `typecheck-plugin` and `plugin-test` run only in the dev shell; run them before a pull request that touches `plugin/hooks/` or `plugin/plugin-tests/`.
+- `plugin-build`: build the plugin as Claude Code loads it (`packages.plugin`: the manifest, `defaults/`, `hooks/`, `src/` and `types/`) and link it to `result-plugin`.
+- `check`: `nix flake check`: formatting (treefmt), `typecheck`, `tests` and the plugin's build. A build has no engine, so `typecheck-plugin` and `plugin-test` run only in the dev shell; run them before a pull request that touches `plugin/hooks/` or `plugin/plugin-tests/`.
 
 `menu` lists the dev shell's other commands.
+
+To run a change in Claude Code:
+
+- Every session runs the Nix-pinned install, `coding-agent-kanban-turns@nix-pinned`.
+- This repository's dev session overrides it with the local build: `claude --plugin-dir result-plugin --continue`.
+- After a change, run `plugin-build`, then `/reload-plugins` in that session. A new file reaches the build only once `git add` has staged it.
 
 ## Style
 

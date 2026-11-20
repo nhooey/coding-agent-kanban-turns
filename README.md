@@ -18,7 +18,7 @@ Answer `y` to add the marketplace, then choose a scope. From a shell:
 claude plugin install coding-agent-kanban-turns --marketplace nhooey/coding-agent-kanban-turns
 ```
 
-With Nix, the flake's `plugin` package (also `default`) is the plugin's directory as Claude Code loads it, without the tests or the npm files: `nix build github:nhooey/coding-agent-kanban-turns#plugin`. It's built with [agent-plugins-nixpkgs](https://github.com/nhooey/agent-plugins-nixpkgs)' `lib.mkClaudePlugin`, so that repository can pass it through for a nix-darwin configuration to list in `services.agent-plugins.plugins`.
+With Nix, the flake's `plugin` package (also `default`) is the plugin's directory as Claude Code loads it, without the tests or the npm files: `nix build github:nhooey/coding-agent-kanban-turns#plugin`. It's built with [agent-plugins-nixpkgs](https://github.com/nhooey/agent-plugins-nixpkgs)' `flakeModules.claudePlugin`, so that repository can pass it through for a nix-darwin configuration to list in `services.agent-plugins.plugins`.
 
 The plugin reads the open items from the session's transcript itself, with no Python and no file from the kanban skill's repository; see [Where the items come from](#where-the-items-come-from).
 
@@ -108,10 +108,10 @@ At each refresh the plugin reads the session's whole transcript file and works o
 
 ## Developing
 
-See [`AGENTS.md`](AGENTS.md) for the dev shell's commands and what `nix flake check` runs. To try the plugin from a checkout without installing it:
+See [`AGENTS.md`](AGENTS.md) for the dev shell's commands and what `nix flake check` runs. To try the plugin from a checkout without installing it, build it with the dev shell's `plugin-build` and load the build:
 
 ```bash
-claude --plugin-dir plugin
+claude --plugin-dir result-plugin
 ```
 
 | File                                                               | Holds                                                                                                   |
