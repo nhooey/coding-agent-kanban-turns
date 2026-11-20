@@ -4,7 +4,7 @@ state: approved
 kind: implementation
 part-of: pane-every-list
 needs: [items-of-every-list, answers-grouped-by-turn-and-list, pane-ui-harmonize, pane-state-reducer]
-touches: [plugin/hooks/register.tsx, plugin/src/view.ts, plugin/src/items.ts, plugin/defaults/config.yaml, plugin/plugin-tests/]
+touches: [plugin/hooks/register.tsx, plugin/src/pane/view.ts, plugin/src/items/items.ts, plugin/defaults/config.yaml, plugin/test/engine/]
 ---
 
 # Each item's box, in the pane and in its reply, carries its list's actions
@@ -15,4 +15,4 @@ touches: [plugin/hooks/register.tsx, plugin/src/view.ts, plugin/src/items.ts, pl
 - **Done boxes.** A settled item is Done, in the UI's words: its box is dimmed, says what made it Done, and keeps the answer that settled it marked, and its actions still write the draft, as a Done Decide item's options do.
 - **The words are data.** Each list's actions and words are one table in the core, with the labels in `plugin/defaults/config.yaml` where a user may rename them.
 
-Checks: an engine test in `plugin/plugin-tests/` per list that has actions, pressing each and reading the draft, one for a Note-only list, one pressing an action on a Done item, one reading a reply whose Todo list is drawn as boxes in its place, and one finding a turn's boxes inside one outline, in the pane and in the reply.
+Checks: an engine test in `plugin/test/engine/` per list that has actions, pressing each and reading the draft, one for a Note-only list, one pressing an action on a Done item, one reading a reply whose Todo list is drawn as boxes in its place, and one finding a turn's boxes inside one outline, in the pane and in the reply.

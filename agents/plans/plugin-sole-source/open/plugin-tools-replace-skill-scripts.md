@@ -4,7 +4,7 @@ state: approved
 kind: implementation
 part-of: plugin-sole-source
 needs: [protocol-spec-data, protocol-golden-cases]
-touches: [plugin/src/, plugin/hooks/register.tsx, plugin/src/instructions.ts, plugin/plugin-tests/, plugin/test/]
+touches: [plugin/src/, plugin/hooks/register.tsx, plugin/src/protocol/instructions.ts, plugin/test/engine/, plugin/test/unit/]
 ---
 
 # The plugin's kanban_outstanding and kanban_lint tools, and its turn.complete reply lint, do what the skill's scripts did
@@ -18,5 +18,5 @@ touches: [plugin/src/, plugin/hooks/register.tsx, plugin/src/instructions.ts, pl
 Checks:
 
 - the lint expectations in the golden cases ([protocol-golden-cases](protocol-golden-cases.md)) pass;
-- an engine test in `plugin/plugin-tests/` for each tool and for the `turn.complete` lint;
+- an engine test in `plugin/test/engine/` for each tool and for the `turn.complete` lint;
 - `typecheck-plugin` and `plugin-test` pass.

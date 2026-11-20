@@ -2,7 +2,7 @@
 title: The pane's header row and footer stay in sight while its items scroll
 state: approved
 kind: end-state
-touches: [plugin/hooks/register.tsx, plugin/plugin-tests/, README.md]
+touches: [plugin/hooks/register.tsx, plugin/test/engine/, README.md]
 ---
 
 # The pane's header row and footer stay in sight while its items scroll
@@ -32,4 +32,4 @@ The engine scrolls the pane's whole tree, so the global buttons move away as the
 
 [pane-windowed-render](../pane-every-list/open/pane-windowed-render.md) reads the same `SiteScroll` to draw only the items in or near the window. With a fixed header and footer, its window is the scrolled body alone, and the two rows sit outside its slice.
 
-Checks: once the engine feature ships, an engine test in `plugin/plugin-tests/` scrolls a pane taller than its site and finds the header row and the footer drawn at every offset; the README's line that the header row scrolls away with the rest says it stays.
+Checks: once the engine feature ships, an engine test in `plugin/test/engine/` scrolls a pane taller than its site and finds the header row and the footer drawn at every offset; the README's line that the header row scrolls away with the rest says it stays.

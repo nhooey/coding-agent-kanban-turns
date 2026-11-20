@@ -20,9 +20,7 @@
 # `outstanding` section, or a `pane.hints`, `colors.title`,
 # `colors.expand` or `colors.close-x` setting, which the plugin no longer
 # reads, is left out with a warning instead, and the rest of your file is
-# used. A config.jsonc of yours is still read while there's no config.yaml
-# beside it, as strictly, a key written twice refusing it too;
-# /answers-config, and nothing else, warns to convert it.
+# used. No other file of yours is read: a config.jsonc is not.
 
 # The count line above the prompt, such as `📌 Outstanding: 🚧 2 · 🧠 3`,
 # which the plugin works out from this session's transcript.

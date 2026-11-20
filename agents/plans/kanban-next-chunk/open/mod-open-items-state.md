@@ -4,7 +4,7 @@ state: proposed
 kind: implementation
 part-of: kanban-next-chunk
 needs: [kanban-mod-reads-transcript, protocol-spec-data, kanban-cli-adapter]
-touches: [plugin/spec/kanban.yaml, plugin/src/items.ts, plugin/cli/, plugin/hooks/register.tsx, plugin/types/index.d.ts, plugin/defaults/]
+touches: [plugin/spec/kanban.yaml, plugin/src/items/items.ts, plugin/cli/, plugin/hooks/register.tsx, plugin/types/index.d.ts, plugin/defaults/]
 ---
 
 # The plugin keeps every open item as state, and next-chunk and the review queue read it from there

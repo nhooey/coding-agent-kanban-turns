@@ -1,14 +1,15 @@
 // The differential test's oracle for reading a transcript: Claude Code's
 // JSONL records read straight into turns whose prompt is the user's own or
 // not, `isOwn`, with no neutral turn between. The adapter in
-// src/claude-code-transcript.ts and the core reading its neutral turns must
-// give what this gives; test/neutral-turns.test.ts compares them.
+// src/transcript/claude-code.ts and the core reading its neutral turns must
+// give what this gives; test/unit/transcript/neutral-turns.test.ts compares
+// them.
 //
 // Temporary: the oracle and its test are deleted once `protocol-spec-data`
 // is rebased onto the neutral turns.
 
-import { PLUGIN, TOOL_CALLED } from "../../src/instructions.ts";
-import { commandOf } from "../../src/transcript.ts";
+import { PLUGIN, TOOL_CALLED } from "../../src/protocol/instructions.ts";
+import { commandOf } from "../../src/transcript/turns.ts";
 
 /** One turn as the oracle reads it: `isOwn` where the neutral turn has an owner. */
 export type Turn = Readonly<{

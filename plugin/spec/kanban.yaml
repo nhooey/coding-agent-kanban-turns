@@ -1,7 +1,7 @@
 # The kanban turn-response protocol's checkable rules: the same for every
-# user, so no settings file overrides them. tools/compile-spec.ts reads this
+# user, so no settings file overrides them. tools/spec/compile.ts reads this
 # file under YAML 1.2's core schema, checks it against kanban.schema.yaml
-# and for consistency, and writes src/spec.ts, the module the core reads,
+# and for consistency, and writes src/protocol/spec.ts, the module the core reads,
 # and kanban.json, a copy for readers that aren't TypeScript. After a change
 # here, run `spec-build` and commit all three; `nix flake check` fails while
 # they differ.

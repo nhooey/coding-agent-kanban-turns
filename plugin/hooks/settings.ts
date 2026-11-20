@@ -1,15 +1,14 @@
 // Reads the two settings files, the shipped defaults in the plugin's folder and
-// the user's own, and hands their text to the pure merge in src/config.ts.
-// The user's own is the first of its names that's there: config.yaml, else
-// an old config.jsonc, which src/config.ts reads with a warning.
+// the user's own, and hands their text to the pure merge in src/config/config.ts.
+// The user's own is config.yaml, under $XDG_CONFIG_HOME or ~/.config.
 //
 // Function declarations, not arrows: `claude plugin validate` follows `$`
 // past an import only into a declaration.
 
 import type { EngineInterface } from "claude-code";
 
-import { DEFAULTS_FILE, loaded, userConfigPaths } from "../src/config.ts";
-import type { ConfigFile } from "../src/config.ts";
+import { DEFAULTS_FILE, loaded, userConfigPaths } from "../src/config/config.ts";
+import type { ConfigFile } from "../src/config/config.ts";
 import type { Loaded } from "../types/index.d.ts";
 
 /** A file's text, or none when it isn't there. */
