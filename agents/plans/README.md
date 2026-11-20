@@ -6,11 +6,12 @@
 
 None.
 
-## Ready (3)
+## Ready (4)
 
 - [Kanban items stay in the reply, with the Decide buttons under it and in the pane](kanban-answers-in-transcript/open/kanban-answers-in-transcript.md) `kanban-answers-in-transcript`, part of [The kanban turns mod lives in its own repository, in TypeScript only, beside the kanban skill](kanban-answers-in-transcript/open/kanban-mod-own-repository.md)
 - [The kanban turns mod lives in its own repository, in TypeScript only, beside the kanban skill](kanban-answers-in-transcript/open/kanban-mod-own-repository.md) `kanban-mod-own-repository`
 - [Each item that blocks other work names the items it frees, by reference](kanban-next-chunk/open/kanban-items-name-what-they-free.md) `kanban-items-name-what-they-free`, part of [next-chunk shows the open items that free the most work, a chunk at a time, until none are open](kanban-next-chunk/open/kanban-next-chunk.md)
+- [The kanban plugin ships the kanban turn responses skill, so a repository needs no skills-devshell copy of it](kanban-plugin-ships-skill/open/kanban-plugin-ships-skill.md) `kanban-plugin-ships-skill`
 
 ## Blocked (0)
 
