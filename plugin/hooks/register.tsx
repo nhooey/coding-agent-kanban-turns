@@ -2,17 +2,18 @@
 // lists every item raised in the session, oldest first, newest at the
 // bottom, each in its own box, and the same boxes under the reply that
 // raised them. The pane opens by itself, without the keyboard, at session
-// start when items are open and when a reply raises a new one; the skill's
-// count line above the prompt, with a 🪟 ↗ button, and /answers open it
-// with the keyboard. A click writes the item's reference, on a line of its
-// own, into the prompt draft and never sends it; Reassess alone sends a
-// prompt, the skill's `reassess` command. A settled item stays, dimmed, its
-// buttons dead.
+// start when items are open and when a reply raises a new one; 🖥️ Kanban
+// and the skill's count line above the prompt, and /answers, open it with
+// the keyboard. A click writes the item's reference, on a line of its own,
+// into the prompt draft and never sends it; only the pane's Submit, which
+// sends the draft, and its Reassess, the skill's `reassess` command, send a
+// prompt. A settled item stays, dimmed, its buttons dead.
 //
 // An item is drawn as the skill writes it: its summary, its note, then each
 // option as `glyph letter. name: consequence` with its ➕ and ➖ lines indented
-// under it, inside a rounded border. Only the option the draft picks gets a
-// background; a bar in the column left of an option lights under the pointer.
+// under it, inside a rounded border. The option the draft picks is marked
+// ✅ and underlined; a bar in the column left of an option lights under the
+// pointer, and stays lit in another colour once the item is settled.
 
 import { atom, read, update } from "claude-code";
 import type { EngineInterface, Register, RenderNode } from "claude-code";
@@ -60,9 +61,12 @@ import {
   answersText,
   configText,
   drewText,
+  gutterStyle,
   isPlainToolRow,
   itemTitle,
   noItemsText,
+  noteRows,
+  submittedText,
 } from "../src/view.ts";
 import type {
   DecideItem,
@@ -77,7 +81,8 @@ const REASSESS = "reassess";
 // settings, in defaults/config.jsonc.
 const PANE = { id: "kanban-turns", title: "🧠 Decide" } as const;
 // The column left of an option's lines that lights while the pointer is over
-// the option: it comes out of the option's indent, so its text stays put.
+// the option, or stays lit once its item is settled: it comes out of the
+// option's indent, so its text stays put.
 const GUTTER = 1;
 // The most bytes one `$.fs.read` returns: the transcript is read in ranges
 // this long.
@@ -106,6 +111,12 @@ const merged = atom(
 );
 const draft = atom(
   { plugin: "coding-agent-kanban-turns", key: "draft" } as const,
+  "",
+);
+// The item whose ✏️ Add a note under a reply opened the pane: its notes
+// field takes the focus as the pane opens. Empty for any other opening.
+const noting = atom(
+  { plugin: "coding-agent-kanban-turns", key: "noting" } as const,
   "",
 );
 // The skill's count line, `📌 Outstanding: 🚧 2 · … · 🧠 3`, from the last
@@ -289,18 +300,47 @@ const answer = ($: EngineInterface, item: DecideItem, letter: string) =>
 const note = ($: EngineInterface, item: DecideItem, said: string) =>
   rewriteDraft($, (text) => withNote(text, item, said));
 
-/** Opens the pane: with the keyboard in it when the person asked for it, else beside the prompt, which keeps the keys. */
-const openPane = ($: EngineInterface, isAsked: boolean) =>
-  $.ui.open({ ...PANE, ...(isAsked ? { focus: true as const } : {}) });
+/**
+ * The pane's Submit: sends the prompt box's text as the person's own, the
+ * box emptied first; an empty or blank box sends nothing.
+ */
+const submitDraft = async ($: EngineInterface): Promise<void> => {
+  const text = submittedText((await $.prompt.read()).text);
 
-/** Scrolls the pane to `to`, an item's box by its ref or its end; a pane not drawn yet stays as it is. */
+  if (text !== undefined) {
+    await $.prompt.fill({ text: "", mode: "replace" });
+    await update($, draft, () => "");
+    await $.prompt.submit({ text, asUser: true });
+  }
+};
+
+/**
+ * Opens the pane: with the keyboard in it when the person asked for it, else
+ * beside the prompt, which keeps the keys. `notes` names the item whose notes
+ * field takes the focus, when its ✏️ Add a note opened the pane.
+ */
+const openPane = async ($: EngineInterface, isAsked: boolean, notes = "") => {
+  await update($, noting, () => notes);
+
+  return $.ui.open({ ...PANE, ...(isAsked ? { focus: true as const } : {}) });
+};
+
+/** Scrolls the pane to `to`, an element by its key or its end, landing at `block`; a pane not drawn yet stays as it is. */
 const reveal = async (
   $: EngineInterface,
   to: { key: string } | "end",
+  block: "start" | "end" = "start",
 ): Promise<void> => {
-  await $.ui
-    .scroll({ in: PANE.id, to, block: "start" })
-    .catch(() => undefined);
+  await $.ui.scroll({ in: PANE.id, to, block }).catch(() => undefined);
+};
+
+/** The key of an item's notes field in the pane. */
+const notesKey = (item: DecideItem): string => `${refOf(item)}.notes`;
+
+/** ✏️ Add a note under a reply: the pane, with the keyboard, its item's notes field in sight and focused, the item above it. */
+const openNotes = async ($: EngineInterface, item: DecideItem): Promise<void> => {
+  await openPane($, true, refOf(item));
+  await reveal($, { key: notesKey(item) }, "end");
 };
 
 /** The end of a main-loop turn, or the session's start: opens the pane at its end when an item is open that the pane hasn't been opened over. */
@@ -409,15 +449,16 @@ export const register: Register = (on) => {
     return changed;
   });
 
-  // Above the prompt: the skill's count line, then 🪟 ↗, both opening the
-  // pane with the keyboard. Nothing when nothing is open. Claude
-  // Code stacks each plugin's drawing here itself, so another plugin's band,
-  // such as the usage mod's agents tree, is drawn beside this one.
+  // Above the prompt: 🖥️ Kanban, then a faint ` · ` and the skill's count
+  // line, both opening the pane with the keyboard; 🖥️ Kanban alone when
+  // nothing is open. Claude Code stacks each plugin's drawing here itself,
+  // so another plugin's band, such as the usage mod's agents tree, is drawn
+  // beside this one.
   on("ui.render", { component: "AbovePrompt" }, async ($, e, next) => {
     const s = await settingsNow($);
     const line = await read($, counts);
 
-    if (e.props.hasSurvey || s === null || line === "") {
+    if (e.props.hasSurvey || s === null) {
       return next(e);
     }
 
@@ -425,13 +466,20 @@ export const register: Register = (on) => {
     const open = () => openPane($, true);
 
     return (
-      <Box columnGap={1}>
-        <Button key="counts" label={line} plain dimColor onPress={open}>
-          {line}
+      <Box>
+        <Button key="kanban" label="Open the Decide pane" plain onPress={open}>
+          🖥️ <Text color={s.colors.kanban}>Kanban</Text>
         </Button>
-        <Button key="open-pane" label="Open the Decide pane" plain onPress={open}>
-          🪟 <Text color={s.colors.expand}>↗</Text>
-        </Button>
+        {line === "" ? null : (
+          <Text key="divider" dimColor>
+            {" · "}
+          </Text>
+        )}
+        {line === "" ? null : (
+          <Button key="counts" label={line} plain dimColor onPress={open}>
+            {line}
+          </Button>
+        )}
       </Box>
     );
   });
@@ -461,19 +509,17 @@ export const register: Register = (on) => {
         />
         {s === null
           ? null
-          : itemBoxes(
-              $,
-              elements,
-              s,
-              r,
-              linkedItems(r.items, linked.hrefs),
-              await read($, draft),
-            )}
+          : itemBoxes($, elements, s, r, linkedItems(r.items, linked.hrefs), {
+              text: await read($, draft),
+              isPane: false,
+              noting: "",
+            })}
       </Box>
     );
   });
 
-  // The pane: Reassess and ❌ on top, then every raised item, oldest first.
+  // The pane: Reassess, Submit and ✖ on top, then every raised item, oldest
+  // first.
   on("ui.render", { component: "Pane", requestId: PANE.id }, async ($, e) => {
     const r = await read($, raised);
     const elements = $.ui.resolve(e);
@@ -483,6 +529,8 @@ export const register: Register = (on) => {
     if (r.items.length === 0 || s === null) {
       return <Text dimColor>{noItemsText(problemsOf(r))}</Text>;
     }
+
+    const text = await read($, draft);
 
     return (
       <Box flexDirection="column">
@@ -497,17 +545,37 @@ export const register: Register = (on) => {
             🔄 <Text underline>Reassess</Text>
           </Button>
           <Button
-            key="dismiss"
-            label="❌"
+            key="submit"
+            label="Submit"
             plain
-            dimColor
+            dimColor={submittedText(text) === undefined}
+            onPress={() => submitDraft($)}
+          >
+            📤 <Text underline>Submit</Text>
+          </Button>
+          <Button
+            key="dismiss"
+            label="Close the pane"
+            plain
             role="dismiss"
             hotkey={s.keys.dismiss}
             onPress={() => $.ui.close({ id: PANE.id })}
-          />
+          >
+            <Text
+              weight="bold"
+              color={s.colors["close-x"]}
+              backgroundColor={s.colors.close}
+            >
+              {" ✖ "}
+            </Text>
+          </Button>
         </Box>
         {problemsOf(r) ? <Text dimColor>{problemsOf(r)}</Text> : null}
-        {itemBoxes($, elements, s, r, r.items, await read($, draft))}
+        {itemBoxes($, elements, s, r, r.items, {
+          text,
+          isPane: true,
+          noting: await read($, noting),
+        })}
       </Box>
     );
   });
@@ -560,14 +628,20 @@ type Elements = Pick<
   "Box" | "Button" | "Text" | "Input"
 >;
 
-/** Each item in its own rounded box, keyed by its ref, a settled one dimmed with its buttons dead: the pane's drawing and a reply's alike. */
+/**
+ * Each item in its own rounded box, keyed by its ref, a settled one dimmed
+ * with its buttons dead: the pane's drawing and a reply's alike, but for
+ * the notes. In the pane an open item has its notes field, `noting`'s
+ * taking the focus; under a reply, which can't take the keyboard, a ✏️ Add
+ * a note button opens the pane at that field.
+ */
 const itemBoxes = (
   $: EngineInterface,
   elements: Elements,
   s: Settings,
   r: Raised,
   items: readonly DecideItem[],
-  text: string,
+  at: Readonly<{ text: string; isPane: boolean; noting: string }>,
 ) => {
   const { Box } = elements;
 
@@ -585,15 +659,23 @@ const itemBoxes = (
             borderDimColor={isDone}
             paddingX={1}
           >
-            {itemView(elements, s.colors, item, {
+            {itemView(elements, s, item, {
               title: itemTitle(item, isDone),
-              chosen: isDone ? [] : lettersFor(text, item),
-              note: isDone ? "" : noteFor(text, item),
+              chosen: isDone ? [] : lettersFor(at.text, item),
+              note: isDone ? "" : noteFor(at.text, item),
               isSettled: isDone,
+              notes: isDone
+                ? "none"
+                : !at.isPane
+                  ? "button"
+                  : at.noting === refOf(item)
+                    ? "focused"
+                    : "field",
               keyOf: (letter) => `${refOf(item)}.${letter}`,
               onPick: (letter) =>
                 isDone ? undefined : answer($, item, letter),
               onNote: (said) => (isDone ? undefined : note($, item, said)),
+              onOpenNotes: () => openNotes($, item),
             })}
           </Box>
         );
@@ -609,19 +691,23 @@ const itemBoxes = (
  */
 const itemView = (
   elements: Elements,
-  colors: Settings["colors"],
+  s: Settings,
   item: DecideItem,
   view: {
-    title: string;
+    title: Readonly<{ label: string; summary: string }>;
     chosen: readonly string[];
     note: string;
     isSettled?: boolean;
+    /** The notes: none, the field, the field taking the focus, or a button that opens the pane at it. */
+    notes: "none" | "field" | "focused" | "button";
     keyOf: (letter: string) => string;
     onPick: (letter: string) => unknown;
     onNote: (note: string) => unknown;
+    onOpenNotes: () => unknown;
   },
 ) => {
   const { Box, Button, Input, Text } = elements;
+  const { colors } = s;
   const dim = view.isSettled === true;
   const inline = (
     line: string,
@@ -658,13 +744,24 @@ const itemView = (
 
   return (
     <Box flexDirection="column">
-      <Text
-        bold={!dim}
-        dimColor={dim}
-        color={dim ? undefined : colors.title}
-        wrap="wrap"
-      >
-        {inline(view.title, "title")}
+      {/* The label bold on its background, the summary plain after it on
+          the same line; a settled item's label is dimmed with the rest,
+          with no background. */}
+      <Text dimColor={dim} wrap="wrap">
+        <Text
+          key="title-label"
+          {...(dim
+            ? {}
+            : {
+                weight: "bold" as const,
+                color: colors.title,
+                backgroundColor: colors["title-background"],
+              })}
+        >
+          {view.title.label}
+        </Text>
+        <Text key="title-gap"> </Text>
+        {inline(view.title.summary, "title")}
       </Text>
       {lines("", item.note, undefined, "note")}
       {item.options.map((option) => {
@@ -676,8 +773,9 @@ const itemView = (
         // A Button holds only text, so each of the option's lines is a button
         // of its own that picks it. They share a hover group, so the pointer
         // on any of them lights the gutter beside every one: a bar the
-        // option's height. A settled option's gutter stays dark.
-        const hover = { scope: key, backgroundColor: colors.hover } as const;
+        // option's height. A settled option's gutter stays lit in the
+        // settled colour instead, and never hovers.
+        const gutter = gutterStyle(dim, key, colors);
         const press = {
           plain: true,
           dimColor: dim,
@@ -692,9 +790,9 @@ const itemView = (
               key={`${rowKey}-gutter`}
               width={GUTTER}
               flexShrink={0}
-              {...(dim ? {} : { hover })}
+              {...gutter}
             >
-              <Text {...(dim ? {} : { hover })}> </Text>
+              <Text {...gutter}> </Text>
             </Box>
             {content}
           </Box>
@@ -744,13 +842,27 @@ const itemView = (
           </Box>
         );
       })}
-      {dim ? null : (
+      {view.notes === "none" ? null : view.notes === "button" ? (
+        <Box key={`${view.keyOf("add-note")}-box`} marginLeft={INDENT}>
+          <Button
+            key={view.keyOf("add-note")}
+            label="Add a note"
+            plain
+            dimColor
+            onPress={() => view.onOpenNotes()}
+          >
+            ✏️ <Text underline>Add a note</Text>
+          </Button>
+        </Box>
+      ) : (
         <Box key={`${view.keyOf("notes")}-box`} marginLeft={INDENT}>
           <Input
             key={view.keyOf("notes")}
             label="✏️ "
             placeholder="Notes, or an answer in your own words"
             submitLabel="add to the draft"
+            rows={noteRows(s.notes.rows)}
+            {...(view.notes === "focused" ? { autoFocus: true as const } : {})}
             value={view.note}
             onSubmit={(said) => view.onNote(said)}
           />

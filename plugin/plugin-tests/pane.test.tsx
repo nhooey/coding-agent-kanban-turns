@@ -110,12 +110,17 @@ const LATER = {
 const DEFAULTS = JSON.stringify({
   counts: { turns: 20, "gh-timeout-ms": 20000 },
   keys: { dismiss: "q" },
+  notes: { rows: 3 },
   colors: {
     border: "promptBorder",
-    title: "claude",
+    title: "inverseText",
+    "title-background": "claude",
     code: "permission",
     hover: "suggestion",
-    expand: "claude",
+    settled: "ide",
+    close: "error",
+    "close-x": "inverseText",
+    kanban: "claude",
   },
 });
 
@@ -231,6 +236,7 @@ const engine = (
   const state = {
     box: "",
     sent: [] as string[],
+    asUser: [] as boolean[],
     isPaneOpen: false,
     opens: [] as boolean[],
     runs: [] as (readonly string[])[],
@@ -317,10 +323,10 @@ const engine = (
   });
   on("prompt.submit", (_, e) => {
     state.sent.push(e.text);
+    state.asUser.push(e.origin.kind === "plugin" && e.origin.asUser === true);
 
     return { text: e.text };
-  });
-  on("turn.complete", (_, e) => ({ text: e.answer }));
+  });  on("turn.complete", (_, e) => ({ text: e.answer }));
   on("command.register", (_, e) => ({ value: { command: e.name } }));
   on("tool.register", (_, e) => ({
     value: { tool: `mcp__${PLUGIN}__${e.name}` },
@@ -346,11 +352,15 @@ type Drawing = {
   }) => Promise<readonly { text: string }[]>;
 };
 
-/** The items' titles, in the order drawn: a title's Text holds a Text per code span, which matches too, so each shows once. */
+/**
+ * The items' title lines, in the order drawn, each as `label · summary`: a
+ * title line's Text holds the label's Text, a space and the summary's, so
+ * only the whole line has a summary after its label.
+ */
 const titles = async (ui: Drawing) =>
-  (await ui.findAll({ type: "Text", text: /^🧠 Decide\./ }))
-    .map((found) => found.text)
-    .filter((text, n, all) => text !== all[n - 1]);
+  (await ui.findAll({ type: "Text", text: /^ 🧠 Decide\.\d+  \S/ })).map(
+    (found) => found.text.trim().replace(/^(🧠 Decide\.\d+)\s+/, "$1 · "),
+  );
 
 for (const surface of ["terminal", "desktop"] as const) {
   test(`the pane lists every item and its options build the draft, on ${surface}`, async ($, on) => {
@@ -393,12 +403,25 @@ for (const surface of ["terminal", "desktop"] as const) {
   });
 }
 
-test("/answers opens the pane with the keyboard, and ❌ closes it", async ($, on) => {
+test("/answers opens the pane with the keyboard, and ✖ on its background closes it", async ($, on) => {
   const state = engine(on, () => ITEMS);
   await $.command.run(ANSWERS);
   expect(state.isPaneOpen).toBe(true);
   expect(state.opens).toEqual([true]);
   const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+
+  // ✖ with a space each side, all of it the button: bold, in the close-x
+  // colour on the close colour.
+  const close = await ui.find({ type: "Button", key: "dismiss" });
+  expect(close?.text).toBe(" ✖ ");
+  expect(close?.props).toMatchObject({ role: "dismiss", hotkey: "q" });
+  expect((await ui.find({ type: "Text", text: /^ ✖ $/ }))?.props).toMatchObject({
+    weight: "bold",
+    color: "inverseText",
+    backgroundColor: "error",
+  });
+  expect(JSON.stringify(await ui.drawn())).not.toContain("❌");
+
   await ui.press({ key: "dismiss" });
   expect(state.isPaneOpen).toBe(false);
   await ui.unmount();
@@ -481,21 +504,32 @@ test("the session's start opens the pane without the keyboard when items are ope
   expect(state.opens).toEqual([false]);
 });
 
-test("above the prompt: the count line and 🪟 ↗, each opening the pane with the keyboard", async ($, on) => {
+test("above the prompt: 🖥️ Kanban, a faint divider and the count line, each opening the pane with the keyboard", async ($, on) => {
   const state = engine(on, () => ITEMS);
   await $.turn.complete(replyDone("t1"));
   state.isPaneOpen = false;
   const line = await $.ui.mount({ ...ABOVE_PROMPT, surface: "terminal" });
 
+  // The button, the divider and the count line, in that order.
+  expect((await line.find({ type: "Button", key: "kanban" }))?.text).toBe(
+    "🖥️ Kanban",
+  );
+  expect((await line.find({ type: "Text", text: /^Kanban$/ }))?.props).toMatchObject({
+    color: "claude",
+  });
+  const divider = await line.find({ type: "Text", text: /^ · $/ });
+  expect(divider?.props).toMatchObject({ dimColor: true });
   expect((await line.find({ type: "Button", key: "counts" }))?.text).toBe(
     COUNTS,
   );
   const drawn = JSON.stringify(await line.drawn());
-  expect(drawn).toContain("🪟");
-  expect(drawn).toContain("↗");
+  expect(drawn.indexOf("Kanban")).toBeLessThan(drawn.indexOf(" · "));
+  expect(drawn.indexOf(" · ")).toBeLessThan(drawn.indexOf(COUNTS));
+  expect(drawn).not.toContain("🪟");
+  expect(drawn).not.toContain("↗");
   expect(drawn).not.toContain("Which cache to keep");
 
-  await line.press({ key: "open-pane" });
+  await line.press({ key: "kanban" });
   expect(state.isPaneOpen).toBe(true);
   state.isPaneOpen = false;
   await line.press({ key: "counts" });
@@ -757,13 +791,33 @@ for (const [why, gh] of [
   });
 }
 
-test("without a count line nothing is drawn above the prompt", async ($, on) => {
-  engine(on, () => ITEMS, () => "");
+test("without a count line 🖥️ Kanban is drawn above the prompt alone, and still opens the pane", async ($, on) => {
+  const state = engine(on, () => ITEMS, () => "");
   await $.turn.complete(replyDone("t1"));
   const line = await $.ui.mount({ ...ABOVE_PROMPT, surface: "terminal" });
 
   expect(await line.find({ type: "Button", key: "counts" })).toBeUndefined();
-  expect(await line.find({ type: "Button", key: "open-pane" })).toBeUndefined();
+  expect(await line.find({ type: "Text", text: /^ · $/ })).toBeUndefined();
+  expect((await line.find({ type: "Button", key: "kanban" }))?.text).toBe(
+    "🖥️ Kanban",
+  );
+  state.isPaneOpen = false;
+  await line.press({ key: "kanban" });
+  expect(state.isPaneOpen).toBe(true);
+  await line.unmount();
+});
+
+test("with a survey up nothing is drawn above the prompt", async ($, on) => {
+  engine(on, () => ITEMS);
+  await $.turn.complete(replyDone("t1"));
+  const line = await $.ui.mount({
+    ...ABOVE_PROMPT,
+    props: { ...ABOVE_PROMPT.props, hasSurvey: true },
+    surface: "terminal",
+  });
+
+  expect(await line.find({ type: "Button", key: "kanban" })).toBeUndefined();
+  expect(await line.find({ type: "Button", key: "counts" })).toBeUndefined();
   await line.unmount();
 });
 
@@ -856,23 +910,34 @@ test("a reply draws its items under its text, a settled one dimmed", async ($, o
   // The reply's text first, then its two items, in its order.
   const drawn = JSON.stringify(await reply.drawn());
   expect(drawn.indexOf("Some work.")).toBeGreaterThan(-1);
-  expect(drawn.indexOf("🧠 Decide.1 · Which cache to keep")).toBeGreaterThan(
+  expect(drawn.indexOf(" 🧠 Decide.1 ")).toBeGreaterThan(
     drawn.indexOf("Some work."),
   );
   expect(await titles(reply)).toEqual([
     "🧠 Decide.1 · Which cache to keep",
     "🧠 Decide.3 · Ship tonight?",
   ]);
+  // The title's label is drawn as the pane draws it: bold on its background.
+  const label = async (n: number) =>
+    (await reply.find({ type: "Text", text: new RegExp(`^ 🧠 Decide\\.${n} $`) }))?.props;
+  expect(await label(1)).toMatchObject({
+    weight: "bold",
+    color: "inverseText",
+    backgroundColor: "claude",
+  });
   await reply.press({ key: "9efb08a1.Decide.3.N" });
   expect(state.box).toBe("9efb08a1.Decide.3.N\n");
 
-  // Item 1 is answered elsewhere: the next refresh no longer lists it.
+  // Item 1 is answered elsewhere: the next refresh no longer lists it, and
+  // its label loses its background.
   open.splice(0, 1);
   await $.turn.complete(replyDone("t1"));
   expect(await titles(reply)).toEqual([
     "🧠 Decide.1 · Which cache to keep (settled)",
     "🧠 Decide.3 · Ship tonight?",
   ]);
+  expect(await label(1)).not.toHaveProperty("backgroundColor");
+  expect(await label(3)).toMatchObject({ backgroundColor: "claude" });
   await reply.press({ key: "9efb08a1.Decide.1.A" });
   expect(state.box).toBe("9efb08a1.Decide.3.N\n");
   await reply.unmount();
@@ -916,6 +981,136 @@ test("Reassess submits the reassess command and leaves the pane open", async ($,
   expect(state.box).toBe("");
   expect(state.isPaneOpen).toBe(true);
   await ui.unmount();
+});
+
+test("Submit sends the draft as the user's own and empties the box; an empty box sends nothing", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+
+  // Empty: drawn dim, and a press sends nothing.
+  expect((await ui.find({ type: "Button", key: "submit" }))?.props).toMatchObject({
+    dimColor: true,
+  });
+  await ui.press({ key: "submit" });
+  state.box = "  \n";
+  await ui.press({ key: "submit" });
+  expect(state.sent).toEqual([]);
+  expect(state.box).toBe("  \n");
+
+  // A draft: drawn at full strength, sent whole, the box emptied.
+  state.box = "";
+  await ui.press({ key: "9efb08a1.Decide.1.B" });
+  expect((await ui.find({ type: "Button", key: "submit" }))?.props).toMatchObject({
+    dimColor: false,
+  });
+  await ui.press({ key: "submit" });
+  expect(state.sent).toEqual(["9efb08a1.Decide.1.B\n"]);
+  expect(state.asUser).toEqual([true]);
+  expect(state.box).toBe("");
+  expect(state.isPaneOpen).toBe(true);
+  await ui.unmount();
+});
+
+test("an answer Submit sent settles its item at the next refresh", async ($, on) => {
+  const later: TranscriptRecord[] = [];
+  const state = engine(on, () => ITEMS, listsText, () => later);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  await ui.press({ key: "9efb08a1.Decide.1.A" });
+  await ui.press({ key: "submit" });
+
+  // The engine records the sent draft as this plugin's prompt.
+  later.push(pluginPrompt("b2c3d4e5", state.sent[0] ?? ""), assistant("On it."));
+  await $.turn.complete(replyDone("t2"));
+  const line = await $.ui.mount({ ...ABOVE_PROMPT, surface: "terminal" });
+
+  expect(await titles(ui)).toEqual([
+    "🧠 Decide.1 · Which cache to keep (settled)",
+    "🧠 Decide.2 · Cleanups to start",
+    "🧠 Decide.3 · Ship tonight?",
+  ]);
+  expect(await countsOn(line)).toBe("📌 Outstanding: 🚧 1 · 🧠 2");
+  await line.unmount();
+  await ui.unmount();
+});
+
+test("a settled item's lines have the settled bar beside them, and no hover bar", async ($, on) => {
+  const open: unknown[] = [
+    {
+      ...ITEMS[0],
+      options: [
+        { letter: "A", name: "Disk", pros: ["Survives restarts."], cons: ["Disk use."] },
+        { letter: "B", name: "Memory" },
+      ],
+    },
+    ITEMS[2],
+  ];
+  engine(on, () => open);
+  await $.command.run(ANSWERS);
+  open.splice(0, 1);
+  await $.turn.complete(replyDone("t1"));
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+
+  const gutter = async (key: string) =>
+    (await ui.find({ type: "Box", key: `${key}-gutter` }))?.props;
+  // Every line of the settled item's options: each option, ➕ and ➖ line.
+  for (const key of [
+    "9efb08a1.Decide.1.A",
+    "9efb08a1.Decide.1.A-pro-0",
+    "9efb08a1.Decide.1.A-con-0",
+    "9efb08a1.Decide.1.B",
+  ]) {
+    expect(await gutter(key)).toMatchObject({ backgroundColor: "ide" });
+    expect(await gutter(key)).not.toHaveProperty("hover");
+  }
+  // The open item's bar lights only under the pointer, and the settled
+  // item's never does.
+  const drawn = JSON.stringify(await ui.drawn());
+  expect(drawn).toContain('"scope":"9efb08a1.Decide.3.Y","backgroundColor":"suggestion"');
+  expect(drawn).not.toContain('"scope":"9efb08a1.Decide.1.A","backgroundColor"');
+  expect(await gutter("9efb08a1.Decide.3.Y")).not.toHaveProperty("backgroundColor");
+  await ui.unmount();
+});
+
+test("the pane's notes field is several rows tall, from the setting", async ($, on) => {
+  engine(on, () => ITEMS);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+
+  expect((await ui.find({ type: "Input", key: "9efb08a1.Decide.1.notes" }))?.props).toMatchObject({
+    rows: 3,
+  });
+  expect(await ui.find({ type: "Button", key: "9efb08a1.Decide.1.add-note" })).toBeUndefined();
+  await ui.unmount();
+});
+
+test("under a reply, ✏️ Add a note opens the pane with the keyboard at the item's notes field", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  await $.tool.call({ tool: TOOL, items: ITEMS } as never);
+  await $.turn.complete(replyDone("t0"));
+  state.isPaneOpen = false;
+  const reply = await $.ui.mount(REPLY);
+
+  // A reply can't take the keyboard: a button in place of the field.
+  expect(await reply.find({ type: "Input", key: "9efb08a1.Decide.3.notes" })).toBeUndefined();
+  expect((await reply.find({ type: "Button", key: "9efb08a1.Decide.3.add-note" }))?.text).toBe(
+    "✏️ Add a note",
+  );
+  await reply.press({ key: "9efb08a1.Decide.3.add-note" });
+  expect(state.isPaneOpen).toBe(true);
+  expect(state.opens).toEqual([false, true]);
+
+  // In the pane, which the kit can't scroll, that item's field takes the focus, and no other.
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  expect((await ui.find({ type: "Input", key: "9efb08a1.Decide.3.notes" }))?.props).toMatchObject({
+    autoFocus: true,
+  });
+  expect(
+    (await ui.find({ type: "Input", key: "9efb08a1.Decide.1.notes" }))?.props,
+  ).not.toHaveProperty("autoFocus");
+  await ui.unmount();
+  await reply.unmount();
 });
 
 const TOOL_ROW = {

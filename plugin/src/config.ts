@@ -18,36 +18,64 @@ type Shape = "string" | "number" | { readonly [key: string]: Shape };
 export const SETTINGS_SHAPE: Shape = {
   counts: { turns: "number", "gh-timeout-ms": "number" },
   keys: { dismiss: "string" },
+  notes: { rows: "number" },
   colors: {
     border: "string",
     title: "string",
+    "title-background": "string",
     code: "string",
     hover: "string",
-    expand: "string",
+    settled: "string",
+    close: "string",
+    "close-x": "string",
+    kanban: "string",
   },
 };
 
-/** The top-level sections the plugin no longer reads, each with what to set instead. */
+/** The sections and settings the plugin no longer reads, by dotted key, each with what to set instead. */
 export const RETIRED: Readonly<Record<string, string>> = {
   outstanding:
     "the plugin reads the transcript itself; counts.turns sets how many turns the count line reads",
+  "colors.expand":
+    "the ↗ beside the count line is gone; colors.kanban colours the 🖥️ Kanban button that opens the pane",
 };
 
-/** The file's value without the sections the plugin no longer reads. */
-export const withoutRetired = (value: Json): Json =>
-  isMap(value)
-    ? Object.fromEntries(
-        Object.entries(value).filter(([key]) => !(key in RETIRED)),
-      )
-    : value;
+/** The value at a dotted key's path, or undefined where there is none. */
+const at = (value: Json | undefined, path: readonly string[]): Json | undefined =>
+  path.reduce<Json | undefined>(
+    (inner, key) => (isMap(inner) ? inner[key] : undefined),
+    value,
+  );
 
-/** A warning for each section the plugin no longer reads that the file still holds. */
+/** The value without the setting at `path`, every section above it kept. */
+const without = (value: Json, path: readonly string[]): Json => {
+  const [key = "", ...rest] = path;
+
+  return !isMap(value) || !(key in value)
+    ? value
+    : Object.fromEntries(
+        Object.entries(value).flatMap(([name, inner]): [string, Json][] =>
+          name !== key
+            ? [[name, inner]]
+            : rest.length === 0
+              ? []
+              : [[name, without(inner, rest)]],
+        ),
+      );
+};
+
+/** The file's value without the sections and settings the plugin no longer reads. */
+export const withoutRetired = (value: Json): Json =>
+  Object.keys(RETIRED).reduce(
+    (kept, key) => without(kept, key.split(".")),
+    value,
+  );
+
+/** A warning for each section or setting the plugin no longer reads that the file still holds. */
 export const retiredIn = (value: Json): readonly string[] =>
-  isMap(value)
-    ? Object.keys(value)
-        .filter((key) => key in RETIRED)
-        .map((key) => `${key} is no longer read and is left out: ${RETIRED[key] ?? ""}`)
-    : [];
+  Object.entries(RETIRED)
+    .filter(([key]) => at(value, key.split(".")) !== undefined)
+    .map(([key, instead]) => `${key} is no longer read and is left out: ${instead}`);
 
 /** The folder under $XDG_CONFIG_HOME, or ~/.config, the user's file sits in. */
 export const APP = "coding-agent-kanban-turns";
