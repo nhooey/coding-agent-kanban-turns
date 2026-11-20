@@ -165,6 +165,12 @@ export const withoutRead = (
 ): readonly Settlement[] =>
   sent.filter((settled) => !read.some((done) => done.ref === settled.ref));
 
+/** The answers Submit sent once a new Submit sends `moved`: each takes the place of one held for its ref, at the end. */
+export const withHeld = (
+  sent: readonly Settlement[],
+  moved: readonly Settlement[],
+): readonly Settlement[] => [...withoutRead(sent, moved), ...moved];
+
 /**
  * Whether a Submit that went through closes the pane: with `isEnabled`, the
  * `pane.close-when-all-submitted` setting, once the answers `sent`, this

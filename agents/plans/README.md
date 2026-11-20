@@ -2,15 +2,14 @@
 
 <!-- Written by plans.py overview; edit the nodes, not this file. -->
 
-## In progress (0)
+## In progress (1)
 
-None.
+- [The pane's state is one value that a pure step function moves, and the hooks only dispatch events and run the effects it returns](pane-every-list/open/pane-state-reducer.md) `pane-state-reducer`, part of [The pane and the boxes under replies hold every list's items, grouped by turn, list and state, filtered, and answered in grouped references](pane-every-list/open/pane-every-list.md), pane-state-reducer
 
-## Ready (6)
+## Ready (5)
 
 - [The pane's header row and footer stay in sight while its items scroll](open/pane-controls-stay-visible.md) `pane-controls-stay-visible`
 - [The pane and the boxes under replies hold every list's items, grouped by turn, list and state, filtered, and answered in grouped references](pane-every-list/open/pane-every-list.md) `pane-every-list`
-- [The pane's state is one value that a pure step function moves, and the hooks only dispatch events and run the effects it returns](pane-every-list/open/pane-state-reducer.md) `pane-state-reducer`, part of [The pane and the boxes under replies hold every list's items, grouped by turn, list and state, filtered, and answered in grouped references](pane-every-list/open/pane-every-list.md)
 - [The plugin is the only source of the kanban turn-response protocol, and carries a skill derived from it, built deterministically](plugin-sole-source/open/plugin-sole-source.md) `plugin-sole-source`
 - [Golden cases, as YAML, give transcripts with their expected open items, count line and lint findings](plugin-sole-source/open/protocol-golden-cases.md) `protocol-golden-cases`, part of [The plugin is the only source of the kanban turn-response protocol, and carries a skill derived from it, built deterministically](plugin-sole-source/open/plugin-sole-source.md)
 - [The protocol's prose rules are Markdown fragments, and the prompt.context instructions and a derived SKILL.md are assembled from them](plugin-sole-source/open/protocol-prose-fragments.md) `protocol-prose-fragments`, part of [The plugin is the only source of the kanban turn-response protocol, and carries a skill derived from it, built deterministically](plugin-sole-source/open/plugin-sole-source.md)

@@ -60,6 +60,16 @@ export const notPutBackText = (why: string, draft: string): string =>
   `Not sent, and the prompt box couldn't take the draft back: ${why}\nThe draft, to copy:\n${draft}`;
 
 /**
+ * What the pane says when a step of Submit failed with `why`: once it has
+ * read a `draft`, the draft itself, since the failed step may have emptied
+ * the box, and may or may not have sent it.
+ */
+export const failedText = (why: string, draft?: string): string =>
+  draft === undefined
+    ? `Submit failed: ${why}`
+    : `Submit failed, the draft perhaps not sent and the prompt box perhaps emptied: ${why}\nThe draft, to copy:\n${draft}`;
+
+/**
  * What a refused draft goes back into the box with, by `append`: the draft
  * alone into the box Submit emptied, else on a line of its own after what
  * the person typed while the submit was pending.

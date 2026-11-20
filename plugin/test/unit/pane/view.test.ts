@@ -21,6 +21,7 @@ import {
   needsEnter,
   noteRows,
   notPutBackText,
+  failedText,
   notSentText,
   notesKey,
   putBackText,
@@ -214,6 +215,13 @@ describe("the pane's Submit", () => {
   test("gives the draft itself when the box couldn't take it back", () => {
     expect(notPutBackText("a hook refused it", "9efb08a1.Decide.1.B\n")).toBe(
       "Not sent, and the prompt box couldn't take the draft back: a hook refused it\nThe draft, to copy:\n9efb08a1.Decide.1.B\n",
+    );
+  });
+
+  test("says why Submit failed, with the draft once it has one, as the box may have lost it", () => {
+    expect(failedText("boom")).toBe("Submit failed: boom");
+    expect(failedText("boom", "9efb08a1.Decide.1.B\n")).toBe(
+      "Submit failed, the draft perhaps not sent and the prompt box perhaps emptied: boom\nThe draft, to copy:\n9efb08a1.Decide.1.B\n",
     );
   });
 

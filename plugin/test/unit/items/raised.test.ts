@@ -20,6 +20,7 @@ import {
   unseen,
   withItems,
   withSent,
+  withHeld,
   withoutRead,
 } from "../../../src/items/raised.ts";
 import type { DecideItem, Raised } from "../../../types/index.d.ts";
@@ -228,6 +229,13 @@ describe("the answers Submit sent, Done before the turn's end reads them", () =>
     const later = { ref: "9efb08a1.Decide.3", how: "sent", letters: ["Y"], note: "" } as const;
     expect(withoutRead([first!, second!, later], [first!, second!])).toEqual([later]);
     expect(withoutRead([first!], [])).toEqual([first]);
+  });
+
+  test("a new Submit's answer takes the place of one held for its ref, at the end", () => {
+    const [first, second] = sentOf(draft, raised);
+    const again = { ref: "9efb08a1.Decide.1", how: "sent", letters: ["B"], note: "" } as const;
+    expect(withHeld([first!, second!], [again])).toEqual([second, again]);
+    expect(withHeld([], [first!])).toEqual([first]);
   });
 
   test("make nothing Done for an item not raised", () => {
