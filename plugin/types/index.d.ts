@@ -74,12 +74,17 @@ export type Json =
 export type Settings = Readonly<{
   counts: Readonly<{ turns: number; "gh-timeout-ms": number }>;
   keys: Readonly<{ dismiss: string }>;
+  notes: Readonly<{ rows: number }>;
   colors: Readonly<{
     border: string;
     title: string;
+    "title-background": string;
     code: string;
     hover: string;
-    expand: string;
+    settled: string;
+    close: string;
+    "close-x": string;
+    kanban: string;
   }>;
 }>;
 
@@ -98,6 +103,7 @@ declare module "claude-code" {
     "coding-agent-kanban-turns": {
       raised: Shaped<Raised>;
       draft: string;
+      noting: string;
       counts: string;
       merged: readonly string[];
       refreshes: number;

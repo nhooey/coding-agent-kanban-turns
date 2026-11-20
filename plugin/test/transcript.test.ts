@@ -28,6 +28,7 @@ import {
   human,
   jsonl,
   notification,
+  otherPluginPrompt,
   peer,
   pluginPrompt,
   queued,
@@ -168,11 +169,17 @@ describe("the user's own text", () => {
     expect(turnsOf([human(FIRST, "1. A")]).map((t) => t.isOwn)).toEqual([true]);
   });
 
-  test("is no peer's message, task notification or mod's prompt", () => {
+  test("is a prompt this plugin submitted for the user, such as its Submit or Reassess", () => {
+    expect(turnsOf([pluginPrompt(FIRST, "1. A")]).map((t) => [t.id, t.prompt, t.isOwn])).toEqual([
+      [FIRST, "1. A", true],
+    ]);
+  });
+
+  test("is no peer's message, task notification or other mod's prompt", () => {
     const turns = turnsOf([
       peer(FIRST, "Another Claude session sent a message:\n1. A"),
       notification(SECOND, "<task-notification>1. A</task-notification>"),
-      pluginPrompt(THIRD, "1. A"),
+      otherPluginPrompt(THIRD, "1. A"),
     ]);
     expect(turns.map((t) => [t.id, t.isOwn])).toEqual([
       [FIRST, false],

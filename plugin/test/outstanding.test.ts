@@ -33,6 +33,7 @@ import {
   engineRow,
   human,
   notification,
+  otherPluginPrompt,
   peer,
   pluginPrompt,
   promptId,
@@ -67,7 +68,6 @@ const turn = (id: string, text: string, ...replies: readonly string[]): Turn => 
   id,
   prompt: text,
   isOwn: true,
-  canCommand: true,
   replies,
   calls: [],
   asides: [],
@@ -78,7 +78,6 @@ const turn = (id: string, text: string, ...replies: readonly string[]): Turn => 
 const report = (id: string, text: string, ...replies: readonly string[]): Turn => ({
   ...turn(id, text, ...replies),
   isOwn: false,
-  canCommand: false,
 });
 
 const DECIDE_REPLY = `Opening prose.
@@ -258,7 +257,7 @@ describe("openDecideItems", () => {
       peer("", `Another Claude session sent a message:\n<cross-session-message from="uds:/tmp/x.sock" from-name="x">\n${answers}\n</cross-session-message>`),
       notification("", `<task-notification>\n<summary>\n${answers}\n</summary>\n</task-notification>`),
       skillBody(),
-      pluginPrompt("", answers),
+      otherPluginPrompt("", answers),
       queued(answers, "peer"),
     ]) {
       expect(openRefs([prompt("go", FIRST), decided(FIRST), prompt("more"), record])).toEqual([
@@ -269,6 +268,16 @@ describe("openDecideItems", () => {
     }
     expect(
       openRefs([prompt("go", FIRST), decided(FIRST), prompt("1. A\n9efb08a1.Decide.2.B")]),
+    ).toEqual(["9efb08a1.Decide.3"]);
+  });
+
+  test("a draft the pane's Submit sent is the user's own text, and answers", () => {
+    expect(
+      openRefs([
+        prompt("go", FIRST),
+        decided(FIRST),
+        pluginPrompt("", "9efb08a1.Decide.1.A\n9efb08a1.Decide.2.B: only the loader"),
+      ]),
     ).toEqual(["9efb08a1.Decide.3"]);
   });
 
@@ -312,7 +321,7 @@ describe("openDecideItems", () => {
       peer("", "Recheck the build when you can."),
       peer("", "recheck"),
       notification("", "Recheck: the watcher fired"),
-      { ...pluginPrompt("", "reassess"), pluginPrompt: { name: "other-mod", text: "reassess" } },
+      otherPluginPrompt("", "reassess"),
     ]) {
       expect(
         openRefs([
@@ -750,6 +759,16 @@ describe("a settled Waiting item", () => {
         turn(SECOND, taskNotification("b8a83gfv0", "completed", "done"), "Prose."),
       ]),
     ).toBe("📌 Outstanding: ⏳ 1");
+  });
+
+  test("a draft the pane's Submit sent is no report, though it reads as one; another mod's prompt is", () => {
+    const draft = taskNotification("b8a83gfv0", "completed", "done");
+    const after = (record: TranscriptRecord) =>
+      counted(
+        turns([prompt("go", FIRST), reply(waiting("Watcher (`b8a83gfv0`)")), record, reply("Prose.")]),
+      );
+    expect(after(pluginPrompt(SECOND, draft))).toBe("📌 Outstanding: ⏳ 1");
+    expect(after(otherPluginPrompt(SECOND, draft))).toBe("");
   });
 
   test("a completed task notification naming the task settles its item", () => {

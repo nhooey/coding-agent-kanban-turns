@@ -14,8 +14,8 @@
 // value of the wrong type, refuses your whole file: the plugin uses these
 // defaults and says why in the pane and in /answers-config, which lists
 // every setting in effect and the file it came from. An `outstanding`
-// section, which the plugin no longer reads, is left out with a warning
-// instead, and the rest of your file is used.
+// section or a `colors.expand` setting, which the plugin no longer reads,
+// is left out with a warning instead, and the rest of your file is used.
 {
   // The count line above the prompt, such as `📌 Outstanding: 🚧 2 · 🧠 3`,
   // which the plugin works out from this session's transcript.
@@ -35,8 +35,16 @@
   // The pane's hotkeys, pressed while the pane holds the keyboard (as it
   // opens from /answers or the line above the prompt, or after a click).
   "keys": {
-    // ❌: close the pane.
+    // ✖: close the pane.
     "dismiss": "q"
+  },
+
+  // The ✏️ notes field under each open item in the pane.
+  "notes": {
+    // How many lines tall the field is, so a long note wraps inside it
+    // and stays in sight; a longer one scrolls within. Less than 1 is
+    // drawn as 1.
+    "rows": 3
   },
 
   // The colours each part is drawn in, by the name of a colour in Claude
@@ -44,15 +52,26 @@
   "colors": {
     // The rounded border round an item.
     "border": "promptBorder",
-    // The item's title line.
-    "title": "claude",
+    // The label that opens an item's title line, `🧠 Decide.1`, drawn bold
+    // on title-background; the summary after it is plain text.
+    "title": "inverseText",
+    // The background of that label, while the item is open; a settled
+    // item's label is dimmed, on no background.
+    "title-background": "claude",
     // Code spans in a summary, note or option.
     "code": "permission",
     // The bar in the column left of an option, lit down the option's
     // full height while the pointer is over any of its lines.
     "hover": "suggestion",
-    // The ↗ arrow beside 🪟 after the count line above the prompt, the
-    // button that opens the pane.
-    "expand": "claude"
+    // The bar in the same column beside each of a settled item's option,
+    // ➕ and ➖ lines, which stays lit; a settled item lights no hover bar.
+    "settled": "ide",
+    // The background of the ✖ button that closes the pane.
+    "close": "error",
+    // The ✖ itself, on that background.
+    "close-x": "inverseText",
+    // The word Kanban in the 🖥️ Kanban button before the count line above
+    // the prompt, which opens the pane.
+    "kanban": "claude"
   }
 }

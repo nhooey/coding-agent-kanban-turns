@@ -16,8 +16,11 @@
 // notification one of its reports. A prompt record the file repeats, as a
 // continuation does, folds its replies into the first.
 //
-// Only a prompt the user typed is their own text: a report, a notification
-// and a mod's prompt are not, and answer nothing.
+// The user's own text is a prompt they typed, or one this plugin submitted
+// for them, such as the pane's Submit sending their draft or its Reassess:
+// it answers items, may run `reassess`, and is never a report. Another
+// mod's prompt, a report and a notification are not the user's own, and
+// answer nothing.
 
 import { PLUGIN, TOOL_CALLED } from "./instructions.ts";
 
@@ -31,8 +34,6 @@ export type Turn = Readonly<{
   id: string;
   prompt: string;
   isOwn: boolean;
-  /** Whether the prompt may be a command, such as `reassess`: the user's own, or this plugin's Reassess. */
-  canCommand: boolean;
   replies: readonly string[];
   calls: readonly unknown[];
   asides: readonly string[];
@@ -154,14 +155,14 @@ export const isPrompt = (record: TranscriptRecord): boolean =>
   record.isCompactSummary !== true &&
   !COMMAND_OUTPUT.test(promptOf(record));
 
-/** Whether a prompt is the user's own text: typed by them, no mod's prompt. */
+/**
+ * Whether a prompt is the user's own text: typed by them, or submitted by
+ * this plugin, as the engine names it in `pluginPrompt`; no other mod's.
+ */
 export const isOwnPrompt = (record: TranscriptRecord): boolean =>
-  record.turnOrigin === "human" && pluginText(record) === undefined;
-
-/** Whether a prompt may be a command: the user's own, or one this plugin submitted, as the engine names it in `pluginPrompt`. */
-export const canCommand = (record: TranscriptRecord): boolean =>
-  isOwnPrompt(record) ||
-  (pluginText(record) !== undefined && field(record.pluginPrompt, "name") === PLUGIN);
+  pluginText(record) === undefined
+    ? record.turnOrigin === "human"
+    : field(record.pluginPrompt, "name") === PLUGIN;
 
 /** A message sent while a turn ran, the user's or a report, or undefined where the record is none. */
 export const queuedOf = (record: TranscriptRecord): Queued | undefined => {
@@ -208,7 +209,6 @@ const opened = (record: TranscriptRecord): Opened => {
       id: promptId.slice(0, ID_LENGTH),
       prompt: promptOf(record),
       isOwn: isOwnPrompt(record),
-      canCommand: canCommand(record),
       replies: [],
       calls: [],
       asides: [],
@@ -497,14 +497,14 @@ export const commandOf = (prompt: string): string | undefined => {
 
 /**
  * The place of the latest `reassess` turn, whose lists replace every item
- * before it; else 0. Only the user's prompt or this plugin's Reassess is one:
- * an agent's, another session's or a task's message opening on "Recheck"
- * is not.
+ * before it; else 0. Only the user's own prompt is one, this plugin's
+ * Reassess among them: an agent's, another session's, a task's or another
+ * mod's message opening on "Recheck" is not.
  */
 export const reassessStart = (turns: readonly Turn[]): number =>
   Math.max(
     turns.findLastIndex(
-      (turn) => turn.canCommand && commandOf(turn.prompt) === "reassess",
+      (turn) => turn.isOwn && commandOf(turn.prompt) === "reassess",
     ),
     0,
   );

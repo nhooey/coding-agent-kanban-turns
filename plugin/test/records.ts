@@ -2,7 +2,7 @@
 // to a session's JSONL file, trimmed to the fields that matter and with
 // made-up content.
 
-import { TOOL_CALLED } from "../src/instructions.ts";
+import { PLUGIN, TOOL_CALLED } from "../src/instructions.ts";
 import type { TranscriptRecord } from "../src/transcript.ts";
 
 /** A whole prompt id from the 8 characters a turn id holds; empty stays empty. */
@@ -55,16 +55,28 @@ export const notification = (id: string, text: string): TranscriptRecord =>
     text,
   );
 
-/** A prompt a mod submitted, as the engine records it: its text in `pluginPrompt`, the engine's words round it in the message. */
-export const pluginPrompt = (id: string, text: string): TranscriptRecord =>
+/**
+ * A prompt a mod submitted, this plugin unless `name` says another, as the
+ * engine records it: its text in `pluginPrompt`, the engine's words round it
+ * in the message.
+ */
+export const pluginPrompt = (
+  id: string,
+  text: string,
+  name = PLUGIN,
+): TranscriptRecord =>
   user(
     {
       promptId: promptId(id),
       turnOrigin: "system",
-      pluginPrompt: { name: "coding-agent-kanban-turns", text },
+      pluginPrompt: { name, text },
     },
-    `The coding-agent-kanban-tur… plugin sent a message:\n${text}\n\nThis is how Claude Code surfaces a prompt a plugin submits between turns — it starts this turn in the user's place. Address the message above.`,
+    `The ${name.slice(0, 23)}… plugin sent a message:\n${text}\n\nThis is how Claude Code surfaces a prompt a plugin submits between turns — it starts this turn in the user's place. Address the message above.`,
   );
+
+/** Another mod's prompt, which is never the user's own text. */
+export const otherPluginPrompt = (id: string, text: string): TranscriptRecord =>
+  pluginPrompt(id, text, "other-mod");
 
 /** A compaction's summary, recorded with the turn's own origin. */
 export const compactSummary = (id: string): TranscriptRecord =>

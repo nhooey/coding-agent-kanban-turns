@@ -9,9 +9,12 @@ import {
   answersText,
   configText,
   drewText,
+  gutterStyle,
   isPlainToolRow,
   itemTitle,
   noItemsText,
+  noteRows,
+  submittedText,
 } from "../src/view.ts";
 import type { DecideItem, Raised } from "../types/index.d.ts";
 
@@ -85,9 +88,15 @@ describe("the tool's result", () => {
 });
 
 describe("an item's title", () => {
-  test("is the item's number and summary, marked when settled", () => {
-    expect(itemTitle(radio, false)).toBe("🧠 Decide.1 · Which cache to keep");
-    expect(itemTitle(radio, true)).toBe("🧠 Decide.1 · Which cache to keep (settled)");
+  test("is a label of its list and number, padded for its background, then its summary, marked when settled", () => {
+    expect(itemTitle(radio, false)).toEqual({
+      label: " 🧠 Decide.1 ",
+      summary: "Which cache to keep",
+    });
+    expect(itemTitle(radio, true)).toEqual({
+      label: " 🧠 Decide.1 ",
+      summary: "Which cache to keep (settled)",
+    });
   });
 });
 
@@ -109,5 +118,42 @@ describe("a plain tool row", () => {
     expect(isPlainToolRow({ isExpanded: false, isErrored: false })).toBe(true);
     expect(isPlainToolRow({ isExpanded: true, isErrored: false })).toBe(false);
     expect(isPlainToolRow({ isExpanded: false, isErrored: true })).toBe(false);
+  });
+});
+
+describe("the pane's Submit", () => {
+  test("sends the draft as it is", () => {
+    expect(submittedText("9efb08a1.Decide.1.A\n")).toBe("9efb08a1.Decide.1.A\n");
+  });
+
+  test("sends nothing for an empty or blank draft", () => {
+    expect(submittedText("")).toBeUndefined();
+    expect(submittedText("  \n\t")).toBeUndefined();
+  });
+});
+
+describe("the notes field's rows", () => {
+  test("are the setting's whole number, at least 1", () => {
+    expect(noteRows(3)).toBe(3);
+    expect(noteRows(2.7)).toBe(2);
+    expect(noteRows(0)).toBe(1);
+    expect(noteRows(-4)).toBe(1);
+    expect(noteRows(Number.NaN)).toBe(1);
+  });
+});
+
+describe("the column left of an option", () => {
+  const colors = { hover: "suggestion", settled: "ide" };
+
+  test("lights in the hover colour under the pointer while the item is open", () => {
+    expect(gutterStyle(false, "9efb08a1.Decide.1.A", colors)).toEqual({
+      hover: { scope: "9efb08a1.Decide.1.A", backgroundColor: "suggestion" },
+    });
+  });
+
+  test("stays lit in the settled colour, and never hovers, once the item is settled", () => {
+    expect(gutterStyle(true, "9efb08a1.Decide.1.A", colors)).toEqual({
+      backgroundColor: "ide",
+    });
   });
 });
