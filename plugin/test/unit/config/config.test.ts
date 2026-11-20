@@ -9,7 +9,6 @@ import type { YAMLMap } from "yaml";
 
 import {
   DEFAULTS_FILE,
-  SETTINGS_SHAPE,
   leaves,
   loaded,
   mergedOver,
@@ -19,6 +18,7 @@ import {
   userConfigPath,
   withoutRetired,
 } from "../../../src/config/config.ts";
+import { SETTINGS_SHAPE } from "../../fixtures/settings-shape.ts";
 
 const defaultsText = readFileSync(
   new URL(`../../../${DEFAULTS_FILE}`, import.meta.url),
@@ -383,7 +383,15 @@ describe("the user's file over the defaults", () => {
   test("a broken defaults file leaves no settings at all", () => {
     const got = loaded({ path: "d", text: '{"keys": {}}' }, undefined);
     expect(got.settings).toBeNull();
-    expect(got.problems).toContain("d: counts is missing");
+    expect(got.problems).toEqual(["d: keys holds no settings"]);
+  });
+
+  test("a defaults file with a null default leaves no settings, and the user's file unchecked", () => {
+    const got = loaded({ path: "d", text: '{"keys": {"dismiss": "q"}, "counts": {"turns": null}}' }, user('{"keys": {"x": "y"}}'));
+    expect(got.settings).toBeNull();
+    expect(got.problems).toEqual([
+      "d: counts.turns is null, so its default gives it no type; write a string, a number, or true or false, or name its section's type in KINDS in src/config/config.ts",
+    ]);
   });
 });
 

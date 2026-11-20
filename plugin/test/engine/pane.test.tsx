@@ -271,6 +271,8 @@ const engine = (
     registering: undefined as (() => Promise<void>) | undefined,
     // The user's settings files, by name, in their folder; none by default.
     userFiles: {} as Record<string, string>,
+    // Whether the plugin's own defaults file is gone from its folder.
+    isDefaultsMissing: false,
     isRingMovable: false,
     focus: [] as string[],
   };
@@ -340,12 +342,15 @@ const engine = (
   on("session.start", (_, e) => ({ cwd: e.cwd }));
   on("env.get", () => ({ value: "/home/neil" }));
   // A user settings file is there only where `userFiles` holds it, so by
-  // default the shipped defaults are what's in effect.
+  // default the shipped defaults are what's in effect; the defaults file is
+  // there unless `isDefaultsMissing`.
   on("fs.exists", (_, e) => ({
-    value: e.path.startsWith(USER_FOLDER) ? userFile(e.path) !== undefined : true,
+    value: e.path.startsWith(USER_FOLDER)
+      ? userFile(e.path) !== undefined
+      : !(state.isDefaultsMissing && e.path.endsWith("/defaults/config.yaml")),
   }));
   // A test has no files, so the defaults file reads as this; the Node tests
-  // (test/unit/config/config.test.ts) hold the real one to the shape. The transcript is
+  // (test/unit/config/) hold the real one to the fixture's shape. The transcript is
   // read as bytes, by the range asked for.
   on("fs.read", async (_, e) => {
     if (e.path !== TRANSCRIPT) {
@@ -567,6 +572,27 @@ test("a user's config.yaml is read", async ($, on) => {
     `keys.dismiss = \\"x\\"  # user: ${USER_FOLDER}config.yaml`,
   );
   expect(shown).not.toContain("Not used");
+});
+
+test("with no defaults file, no settings are used, and /answers, the pane and /answers-config say it's missing", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  state.isDefaultsMissing = true;
+  state.userFiles = { "config.yaml": "keys:\n  dismiss: x\n" };
+  const missing = "/defaults/config.yaml: is missing";
+
+  const answered = (await $.command.run(ANSWERS)).text ?? "";
+  expect(answered).toMatch(/^No open Decide items: .*\/defaults\/config\.yaml: is missing\.$/);
+  // The user's sound file gives no problem of its own.
+  expect(answered).not.toContain(USER_FOLDER);
+
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  const drawn = JSON.stringify(await ui.drawn());
+  expect(drawn).toContain(missing);
+  expect(drawn).not.toContain(USER_FOLDER);
+  await ui.unmount();
+
+  const config = (await $.command.run({ ...ANSWERS, command: "answers-config" })).text ?? "";
+  expect(config.split("\n")).toEqual([expect.stringMatching(/^Not used: .*\/defaults\/config\.yaml: is missing$/)]);
 });
 
 test("a user's config.jsonc is not read: the defaults are in effect", async ($, on) => {
