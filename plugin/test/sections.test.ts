@@ -9,6 +9,7 @@ import {
   doneHeader,
   doneKey,
   doneLine,
+  firstUnansweredIn,
   lineKey,
   paneStops,
   relativeIndex,
@@ -95,6 +96,19 @@ describe("the pane's sections", () => {
   });
 });
 
+describe("where /answers scrolls", () => {
+  const sections = turnSections([older1, older2, newer1], (i) => i === older1, TURNS);
+
+  test("to the first open item the draft doesn't answer, newest turn first, as the pane draws them", () => {
+    expect(firstUnansweredIn(sections, "")).toBe(newer1);
+    expect(firstUnansweredIn(sections, "b2c3d4e5.Decide.1.A")).toBe(older2);
+  });
+
+  test("to none when the draft answers every open item, a Done one never counted", () => {
+    expect(firstUnansweredIn(sections, "b2c3d4e5.Decide.1.A\n9efb08a1.Decide.2.B")).toBeUndefined();
+  });
+});
+
 describe("the Done section and its lines", () => {
   test("the header is a toggle naming the count, its glyph saying whether it's open", () => {
     expect(doneHeader(2, false)).toBe("▸ Done (2)");
@@ -161,6 +175,13 @@ describe("the stops j and k move between", () => {
     expect(steppedStop(stops, "b2c3d4e5.Decide.1.A", -1)).toBeUndefined();
     expect(steppedStop(stops, "9efb08a1.done", 1)).toBeUndefined();
     expect(steppedStop([], "", 1)).toBeUndefined();
+  });
+
+  test("are an open item's notes field when it has no options", () => {
+    const words = { ...item("9efb08a1", 4, "What to call it"), options: [] };
+    expect(paneStops(turnSections([words], () => false, TURNS), []).map((s) => s.key)).toEqual([
+      "9efb08a1.Decide.4.notes",
+    ]);
   });
 
   test("don't take an item whose number only starts with another's", () => {

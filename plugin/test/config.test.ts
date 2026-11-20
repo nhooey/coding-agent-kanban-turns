@@ -1,5 +1,5 @@
 // The settings: the shipped defaults file is complete and sound, and the
-// user's file merges over it as defaults/config.jsonc says.
+// user's file merges over it as defaults/config.yaml says.
 
 import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
@@ -8,14 +8,14 @@ import { expect } from "expect";
 import {
   DEFAULTS_FILE,
   SETTINGS_SHAPE,
-  jsonOf,
   leaves,
   loaded,
   mergedOver,
   parseJsonc,
+  parseYaml,
   problemsIn,
   retiredIn,
-  userConfigPath,
+  userConfigPaths,
   withoutRetired,
 } from "../src/config.ts";
 
@@ -23,12 +23,15 @@ const defaultsText = readFileSync(
   new URL(`../${DEFAULTS_FILE}`, import.meta.url),
   "utf8",
 );
-const defaults = { path: "defaults/config.jsonc", text: defaultsText };
-const user = (text: string) => ({ path: "~/.config/x/config.jsonc", text });
+const defaults = { path: "defaults/config.yaml", text: defaultsText };
+const user = (text: string) => ({ path: "~/.config/x/config.yaml", text });
+const legacy = (text: string) => ({ path: "~/.config/x/config.jsonc", text });
 
 describe("the shipped defaults file", () => {
-  test("parses, and holds every setting the shape names and no other", () => {
-    const parsed = parseJsonc(defaultsText);
+  test("is YAML, and holds every setting the shape names and no other", () => {
+    expect(DEFAULTS_FILE).toBe("defaults/config.yaml");
+    const parsed = parseYaml(defaultsText);
+    expect(parsed).toHaveProperty("value");
     expect("value" in parsed && problemsIn(SETTINGS_SHAPE, parsed.value, false)).toEqual([]);
   });
 
@@ -36,8 +39,8 @@ describe("the shipped defaults file", () => {
     const lines = defaultsText.split("\n");
     const uncommented = lines
       .map((line, n) => ({ line, above: lines[n - 1] ?? "" }))
-      .filter(({ line }) => /^\s*"[^"]+":/.test(line))
-      .filter(({ above }) => !/^\s*\/\//.test(above))
+      .filter(({ line }) => /^\s*[\w-]+:/.test(line))
+      .filter(({ above }) => !/^\s*#/.test(above))
       .map(({ line }) => line.trim());
     expect(uncommented).toEqual([]);
   });
@@ -47,7 +50,7 @@ describe("the shipped defaults file", () => {
     expect(got.problems).toEqual([]);
     expect(got.settings?.keys.dismiss).toBe("q");
     expect(got.effective).toContain(
-      'keys.dismiss = "q"  # defaults: defaults/config.jsonc',
+      'keys.dismiss = "q"  # defaults: defaults/config.yaml',
     );
   });
 
@@ -56,31 +59,37 @@ describe("the shipped defaults file", () => {
       loaded(defaults, undefined).settings,
     );
   });
+
+  test("with a user file of comments alone, gives exactly the defaults", () => {
+    const got = loaded(defaults, user("# nothing set yet\n"));
+    expect(got.problems).toEqual([]);
+    expect(got.settings).toEqual(loaded(defaults, undefined).settings);
+  });
 });
 
 describe("the user's file over the defaults", () => {
   test("changes only the keys it names, and says where each came from", () => {
-    const got = loaded(defaults, user('{"keys": {"dismiss": "x"}, "colors": {"kanban": "red"}, // mine\n}'));
+    const got = loaded(defaults, user("keys:\n  dismiss: x\ncolors:\n  kanban: red # mine\n"));
     expect(got.problems).toEqual([]);
     expect(got.settings?.keys).toMatchObject({ dismiss: "x", next: "j" });
     expect(got.settings?.colors.kanban).toBe("red");
     expect(got.settings?.colors["title-label"]).toBe("inverseText");
-    expect(got.effective).toContain('keys.dismiss = "x"  # user: ~/.config/x/config.jsonc');
-    expect(got.effective).toContain('colors.title-label = "inverseText"  # defaults: defaults/config.jsonc');
+    expect(got.effective).toContain('keys.dismiss = "x"  # user: ~/.config/x/config.yaml');
+    expect(got.effective).toContain('colors.title-label = "inverseText"  # defaults: defaults/config.yaml');
   });
 
   test("an unknown key refuses the file, which leaves the defaults in effect", () => {
     const got = loaded(defaults, user('{"keys": {"prev": "h"}}'));
     expect(got.settings?.keys.dismiss).toBe("q");
     expect(got.problems).toEqual([
-      "~/.config/x/config.jsonc: keys.prev is no setting; the keys here are dismiss, next, previous, submit, reassess",
+      "~/.config/x/config.yaml: keys.prev is no setting; the keys here are dismiss, next, previous, submit, reassess, help",
     ]);
   });
 
   test("a value of the wrong type refuses the file", () => {
     const got = loaded(defaults, user('{"counts": {"turns": "all"}}'));
     expect(got.problems).toEqual([
-      "~/.config/x/config.jsonc: counts.turns is string, not a number",
+      "~/.config/x/config.yaml: counts.turns is string, not a number",
     ]);
   });
 
@@ -91,7 +100,7 @@ describe("the user's file over the defaults", () => {
     expect(got.settings?.colors.hover).toBe("claude");
     expect(got.settings?.colors["title-label"]).toBe("inverseText");
     expect(loaded(defaults, user('{"colors": {"hover": 3}}')).problems).toEqual([
-      "~/.config/x/config.jsonc: colors.hover is number, not a string",
+      "~/.config/x/config.yaml: colors.hover is number, not a string",
     ]);
   });
 
@@ -103,7 +112,7 @@ describe("the user's file over the defaults", () => {
     expect(got.settings?.keys.dismiss).toBe("x");
     expect(got.settings).not.toHaveProperty("outstanding");
     expect(got.problems).toEqual([
-      "~/.config/x/config.jsonc: outstanding is no longer read and is left out: the plugin reads the transcript itself; counts.turns sets how many turns the count line reads",
+      "~/.config/x/config.yaml: outstanding is no longer read and is left out: the plugin reads the transcript itself; counts.turns sets how many turns the count line reads",
     ]);
     expect(got.effective.some((line) => line.startsWith("outstanding."))).toBe(false);
   });
@@ -113,7 +122,7 @@ describe("the user's file over the defaults", () => {
     expect(got.settings?.colors.border).toBe("warning");
     expect(got.settings?.colors).not.toHaveProperty("expand");
     expect(got.problems).toEqual([
-      "~/.config/x/config.jsonc: colors.expand is no longer read and is left out: the ↗ beside the count line is gone; colors.kanban colours the 🖥️ Kanban button that opens the pane",
+      "~/.config/x/config.yaml: colors.expand is no longer read and is left out: the ↗ beside the count line is gone; colors.kanban colours the 🖥️ Kanban button that opens the pane",
     ]);
   });
 
@@ -123,7 +132,7 @@ describe("the user's file over the defaults", () => {
     expect(got.settings?.colors["title-label"]).toBe("inverseText");
     expect(got.settings?.colors["title-background"]).toBe("claude");
     expect(got.problems).toEqual([
-      "~/.config/x/config.jsonc: colors.title is no longer read and is left out: an item's title is now a label on a background, then the summary in plain text; colors.title-label and colors.title-background colour the label",
+      "~/.config/x/config.yaml: colors.title is no longer read and is left out: an item's title is now a label on a background, then the summary in plain text; colors.title-label and colors.title-background colour the label",
     ]);
   });
 
@@ -140,7 +149,7 @@ describe("the user's file over the defaults", () => {
     expect(got.settings?.colors.settled).toBe("permission");
     expect(got.settings?.colors.close).toBe("warning");
     expect(loaded(defaults, user('{"colors": {"settled": true}}')).problems).toEqual([
-      "~/.config/x/config.jsonc: colors.settled is boolean, not a string",
+      "~/.config/x/config.yaml: colors.settled is boolean, not a string",
     ]);
   });
 
@@ -151,15 +160,40 @@ describe("the user's file over the defaults", () => {
       previous: "k",
       submit: "s",
       reassess: "r",
+      help: "h",
     });
     expect(loaded(defaults, user('{"keys": {"submit": "x"}}')).settings?.keys.submit).toBe("x");
   });
 
-  test("whether the pane draws its hint row is a setting, a boolean", () => {
-    expect(loaded(defaults, undefined).settings?.pane).toEqual({ hints: true });
-    expect(loaded(defaults, user('{"pane": {"hints": false}}')).settings?.pane.hints).toBe(false);
-    expect(loaded(defaults, user('{"pane": {"hints": "no"}}')).problems).toEqual([
-      "~/.config/x/config.jsonc: pane.hints is string, not a boolean",
+  test("a key the engine wouldn't take as a hotkey refuses the file, since it would blank the pane", () => {
+    expect(loaded(defaults, user('{"keys": {"help": "?"}}')).problems).toEqual([
+      '~/.config/x/config.yaml: keys.help is "?", not one lowercase letter or digit, as the pane\'s keys must be',
+    ]);
+    expect(loaded(defaults, user('{"keys": {"submit": "S"}}')).settings?.keys.submit).toBe("s");
+    expect(loaded(defaults, user('{"keys": {"submit": 3}}')).problems).toEqual([
+      "~/.config/x/config.yaml: keys.submit is number, not one lowercase letter or digit, as the pane's keys must be",
+    ]);
+  });
+
+  test("two buttons on one key refuse the file, which binds it to a default's key or its own", () => {
+    const clash = loaded(defaults, user('{"keys": {"submit": "j"}}'));
+    expect(clash.settings?.keys.submit).toBe("s");
+    expect(clash.problems).toEqual([
+      '~/.config/x/config.yaml: keys.next and keys.submit are both "j"; each key presses one button',
+    ]);
+    expect(clash.effective).toContain('keys.submit = "s"  # defaults: defaults/config.yaml');
+    // Swapping two keys clashes with neither.
+    const swapped = loaded(defaults, user('{"keys": {"next": "k", "previous": "j"}}'));
+    expect(swapped.problems).toEqual([]);
+    expect(swapped.settings?.keys.next).toBe("k");
+  });
+
+  test("a pane section, whose hint row is gone, is left out with a warning", () => {
+    const got = loaded(defaults, user('{"pane": {"hints": false}, "keys": {"help": "o"}}'));
+    expect(got.settings).not.toHaveProperty("pane");
+    expect(got.settings?.keys.help).toBe("o");
+    expect(got.problems).toEqual([
+      "~/.config/x/config.yaml: pane is no longer read and is left out: the pane draws no hint row; its ? Keys button, or keys.help, opens a panel listing every key",
     ]);
   });
 
@@ -168,7 +202,7 @@ describe("the user's file over the defaults", () => {
     expect(got.settings?.colors.close).toBe("warning");
     expect(got.settings?.colors).not.toHaveProperty("close-x");
     expect(got.problems).toEqual([
-      "~/.config/x/config.jsonc: colors.close-x is no longer read and is left out: the ✖ is drawn in colors.close, on no background, as every button is",
+      "~/.config/x/config.yaml: colors.close-x is no longer read and is left out: the ✖ is drawn in colors.close, on no background, as every button is",
     ]);
   });
 
@@ -176,7 +210,7 @@ describe("the user's file over the defaults", () => {
     expect(loaded(defaults, undefined).settings?.notes).toEqual({ rows: 3 });
     expect(loaded(defaults, user('{"notes": {"rows": 5}}')).settings?.notes.rows).toBe(5);
     expect(loaded(defaults, user('{"notes": {"rows": "many"}}')).problems).toEqual([
-      "~/.config/x/config.jsonc: notes.rows is string, not a number",
+      "~/.config/x/config.yaml: notes.rows is string, not a number",
     ]);
   });
 
@@ -190,8 +224,59 @@ describe("the user's file over the defaults", () => {
     expect(loaded(defaults, undefined).settings?.counts).toEqual({ turns: 20, "gh-timeout-ms": 20000 });
   });
 
-  test("a file that isn't JSONC is named with why", () => {
-    expect(loaded(defaults, user("{")).problems[0]).toMatch(/^~\/\.config\/x\/config\.jsonc: /);
+  test("a file that isn't YAML is named with why", () => {
+    expect(loaded(defaults, user("{")).problems[0]).toMatch(/^~\/\.config\/x\/config\.yaml: /);
+  });
+
+  test("an implicitly typed scalar keeps the type the defaults give its key, or refuses the file", () => {
+    // YAML 1.2's core schema: `on` and `yes` are strings, `1.10` is a number.
+    const strings = loaded(defaults, user("colors:\n  kanban: on\nmarks:\n  sent: yes\n"));
+    expect(strings.problems).toEqual([]);
+    expect(strings.settings?.colors.kanban).toBe("on");
+    expect(strings.settings?.marks.sent).toBe("yes");
+    expect(loaded(defaults, user("colors:\n  kanban: 1.10\n")).problems).toEqual([
+      "~/.config/x/config.yaml: colors.kanban is number, not a string",
+    ]);
+    expect(loaded(defaults, user("notes:\n  rows: on\n")).problems).toEqual([
+      "~/.config/x/config.yaml: notes.rows is string, not a number",
+    ]);
+  });
+
+  test("a key written twice refuses the file", () => {
+    const got = loaded(defaults, user("keys:\n  dismiss: x\n  dismiss: y\n"));
+    expect(got.settings?.keys.dismiss).toBe("q");
+    expect(got.problems).toEqual([
+      "~/.config/x/config.yaml: Map keys must be unique at line 3, column 3",
+    ]);
+  });
+
+  test("a tag outside the core schema refuses the file", () => {
+    expect(loaded(defaults, user("keys:\n  dismiss: !!binary eA==\n")).problems).toEqual([
+      "~/.config/x/config.yaml: Unresolved tag: tag:yaml.org,2002:binary at line 2, column 12",
+    ]);
+  });
+
+  test("more than one document refuses the file", () => {
+    expect(loaded(defaults, user("keys: {}\n---\nkeys: {}\n")).problems).toEqual([
+      "~/.config/x/config.yaml: holds 2 YAML documents, not one",
+    ]);
+  });
+
+  test("a config.jsonc, read when there's no config.yaml, is used with a warning to convert it", () => {
+    const got = loaded(defaults, legacy('{"keys": {"dismiss": "x"}, /* mine */ "notes": {"rows": 5,},\n// end\n}'));
+    expect(got.settings?.keys.dismiss).toBe("x");
+    expect(got.settings?.notes.rows).toBe(5);
+    expect(got.effective).toContain('keys.dismiss = "x"  # user: ~/.config/x/config.jsonc');
+    expect(got.problems).toEqual([
+      "~/.config/x/config.jsonc: JSONC is read only while there's no config.yaml beside it; convert this file to config.yaml",
+    ]);
+  });
+
+  test("a config.jsonc that isn't JSONC is named with why, beside the warning", () => {
+    expect(loaded(defaults, legacy('{"keys": {"dismiss" "x"}}')).problems).toEqual([
+      "~/.config/x/config.jsonc: JSONC is read only while there's no config.yaml beside it; convert this file to config.yaml",
+      "~/.config/x/config.jsonc: ColonExpected at offset 20",
+    ]);
   });
 
   test("a broken defaults file leaves no settings at all", () => {
@@ -212,11 +297,17 @@ describe("the pieces", () => {
     expect(retiredIn(null)).toEqual([]);
   });
 
-  test("comments and trailing commas go; strings keep theirs", () => {
-    expect(JSON.parse(jsonOf('{"a": "// no", /* x */ "b": [1,],\n// c\n}'))).toEqual({
-      a: "// no",
-      b: [1],
+  test("JSONC: comments and trailing commas go; strings keep theirs", () => {
+    expect(parseJsonc('{"a": "// no", /* x */ "b": [1,],\n// c\n}')).toEqual({
+      value: { a: "// no", b: [1] },
     });
+    expect(parseJsonc("")).toEqual({ error: "ValueExpected at offset 0" });
+  });
+
+  test("YAML: a document's value, an empty one as an empty section, and JSON as YAML reads it", () => {
+    expect(parseYaml("a:\n  b: [1, x]\n")).toEqual({ value: { a: { b: [1, "x"] } } });
+    expect(parseYaml("")).toEqual({ value: {} });
+    expect(parseYaml('{"a": 1}')).toEqual({ value: { a: 1 } });
   });
 
   test("maps merge key by key, and lists and scalars replace", () => {
@@ -233,13 +324,15 @@ describe("the pieces", () => {
     ]);
   });
 
-  test("the user's file is under XDG_CONFIG_HOME, else ~/.config", () => {
-    expect(userConfigPath({ xdgConfigHome: "/x", home: "/h" })).toBe(
+  test("the user's file is under XDG_CONFIG_HOME, else ~/.config, config.yaml before config.jsonc", () => {
+    expect(userConfigPaths({ xdgConfigHome: "/x", home: "/h" })).toEqual([
+      "/x/coding-agent-kanban-turns/config.yaml",
       "/x/coding-agent-kanban-turns/config.jsonc",
-    );
-    expect(userConfigPath({ home: "/h" })).toBe(
+    ]);
+    expect(userConfigPaths({ home: "/h" })).toEqual([
+      "/h/.config/coding-agent-kanban-turns/config.yaml",
       "/h/.config/coding-agent-kanban-turns/config.jsonc",
-    );
-    expect(userConfigPath({})).toBeUndefined();
+    ]);
+    expect(userConfigPaths({})).toEqual([]);
   });
 });

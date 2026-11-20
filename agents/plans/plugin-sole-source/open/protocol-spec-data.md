@@ -15,7 +15,7 @@ touches: [plugin/spec/, plugin/src/transcript.ts, plugin/src/outstanding.ts, plu
   - each list's settling words;
   - the pieces of the reference grammar, `<turn>.<List>.<n>[.<letters>][: note]`: the turn id's length and alphabet, the list names, the letter ranges;
   - the header underline and topic underline characters, and the separator line.
-- **Separate from user preferences.** The spec is the protocol, the same for every user, and no settings file overrides it. The settings file ([yaml-data-and-settings](yaml-data-and-settings.md)) keeps holding only preferences, such as keys and layout.
+- **Separate from user preferences.** The spec is the protocol, the same for every user, and no settings file overrides it. The settings file ([yaml-data-and-settings](../closed/yaml-data-and-settings.md)) keeps holding only preferences, such as keys and layout.
 - **One YAML file, read strictly.** The spec is `plugin/spec/kanban.yaml`, with its schema beside it. A build step reads it with a well-known YAML library under the YAML 1.2 core schema, so no value is typed implicitly (no `no` read as false, no `1.10` read as a number), refuses duplicate keys, and validates it against the schema.
 - **Generated, typed and readonly.** The build step writes two files, committed beside their source, each with a header naming it:
   - a TypeScript module in `plugin/src/` exporting the spec as one `as const`, deeply readonly value with its type;

@@ -14,7 +14,7 @@ import {
   gutterStyle,
   answeredText,
   draftSummary,
-  hintText,
+  keyRows,
   isPlainToolRow,
   itemTitle,
   noItemsText,
@@ -83,8 +83,8 @@ describe("/answers's reply", () => {
 
 describe("/answers-config's reply", () => {
   test("lists the settings in effect, then what wasn't used", () => {
-    expect(configText(["keys.dismiss = q", "colors.title = claude"], ["bad.jsonc: parse error"])).toBe(
-      "keys.dismiss = q\ncolors.title = claude\nNot used: bad.jsonc: parse error",
+    expect(configText(["keys.dismiss = q", "colors.title = claude"], ["bad.yaml: parse error"])).toBe(
+      "keys.dismiss = q\ncolors.title = claude\nNot used: bad.yaml: parse error",
     );
   });
 
@@ -333,10 +333,24 @@ describe("how much of what's open the draft answers", () => {
   });
 });
 
-describe("the hint row", () => {
-  test("names each key the pane takes, by the settings", () => {
-    expect(
-      hintText({ dismiss: "q", next: "j", previous: "k", submit: "s", reassess: "r" }),
-    ).toBe("j/k item · ↑/↓ option · enter pick · s submit · r reassess · q close · esc back to the prompt");
+describe("the keys panel", () => {
+  const keys = { dismiss: "q", next: "j", previous: "k", submit: "s", reassess: "r", help: "?" };
+
+  test("lists each key the pane takes and what it does, then the engine's", () => {
+    expect(keyRows(keys)).toEqual([
+      { key: "j", does: "↓ Next: the next item, or Done header" },
+      { key: "k", does: "↑ Previous: the item before" },
+      { key: "s", does: "📤 Submit: send the draft" },
+      { key: "r", does: "🔄 Reassess: add or take out the reassess line" },
+      { key: "?", does: "? Keys: open or close this panel" },
+      { key: "q", does: "✖ Close: close the pane" },
+      { key: "↑ ↓ tab", does: "move between options and fields" },
+      { key: "enter", does: "pick the option the ring is on" },
+      { key: "esc", does: "give the keyboard back to the prompt" },
+    ]);
+  });
+
+  test("shows a rebound key as rebound", () => {
+    expect(keyRows({ ...keys, submit: "x" })[2]).toEqual({ key: "x", does: "📤 Submit: send the draft" });
   });
 });

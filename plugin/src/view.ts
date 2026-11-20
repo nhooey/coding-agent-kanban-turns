@@ -1,7 +1,7 @@
 // What the hooks draw, worked out apart from drawing it: the text of the
 // commands, the tool's result and an item's title, what Submit does with
 // the draft and what the footer says it will send, how much of what's open
-// the draft answers, the hint row, how an item's notes are drawn, and
+// the draft answers, the keys panel's rows, how an item's notes are drawn, and
 // whether the tool's row is plain enough to be drawn as nothing, the
 // buttons going under the reply instead.
 
@@ -236,17 +236,26 @@ export const answeredText = (answered: number, open: number): string =>
 export const pickedText = (picked: number): string =>
   picked > 0 ? `✏️ ${picked} picked` : "";
 
-/** The pane's hint row: each key it takes while it has the keyboard, by the settings. */
-export const hintText = (keys: Settings["keys"]): string =>
-  [
-    `${keys.next}/${keys.previous} item`,
-    "↑/↓ option",
-    "enter pick",
-    `${keys.submit} submit`,
-    `${keys.reassess} reassess`,
-    `${keys.dismiss} close`,
-    "esc back to the prompt",
-  ].join(" · ");
+/** One row of the pane's keys panel: a key, and what it does. */
+export type KeyRow = Readonly<{ key: string; does: string }>;
+
+/**
+ * The pane's keys panel, opened by `? Keys`: each key the pane takes while
+ * it holds the keyboard and what it does, the pane's own read from the
+ * `keys` settings, so a rebound key shows as rebound, then the keys
+ * Claude Code moves the focus ring and the keyboard with.
+ */
+export const keyRows = (keys: Settings["keys"]): readonly KeyRow[] => [
+  { key: keys.next, does: "↓ Next: the next item, or Done header" },
+  { key: keys.previous, does: "↑ Previous: the item before" },
+  { key: keys.submit, does: "📤 Submit: send the draft" },
+  { key: keys.reassess, does: "🔄 Reassess: add or take out the reassess line" },
+  { key: keys.help, does: "? Keys: open or close this panel" },
+  { key: keys.dismiss, does: "✖ Close: close the pane" },
+  { key: "↑ ↓ tab", does: "move between options and fields" },
+  { key: "enter", does: "pick the option the ring is on" },
+  { key: "esc", does: "give the keyboard back to the prompt" },
+];
 
 /** What the engine says of a tool row or its result line. */
 export type ToolRow = Readonly<{

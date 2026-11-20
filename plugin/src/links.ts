@@ -62,16 +62,47 @@ export const itemOfLink = (
       )
     : -1;
 
-// A numbered item's bold summary, alone on its line, one line at a time.
-const SUMMARY_ONE = new RegExp(SUMMARY_LINE.source);
+// A list item's bold summary, alone on its line at the line's start, one
+// line at a time: a numbered bold line indented under an option is the
+// option's.
+const SUMMARY_ONE = /^(\d+\.\s+)\*\*(.+?)\*\*([ \t]*)$/;
 
-/** Whether a line ends the list above it: a blank line, the next header, the 📌 roll-up, or a topic header or its rule. */
+// An option, `🔘 A. **Disk**`: its letter and its bold name.
+const OPTION = /(?:^|\s)([A-Z])\.\s+\*\*(.+?)\*\*/;
+
+/** The letter and plain name of each option written in a block of lines. */
+const optionsIn = (block: readonly string[]): readonly string[] =>
+  block.flatMap((line) => {
+    const found = OPTION.exec(line);
+
+    return found === null ? [] : [`${found[1]}. ${plainSummary(found[2] ?? "")}`];
+  });
+
+/** Whether a block of a list's lines writes each of the item's options, by letter and name. */
+const hasOptionsOf = (item: DecideItem, block: readonly string[]): boolean => {
+  const written = optionsIn(block);
+
+  return item.options.every((option) =>
+    written.includes(`${option.letter}. ${plainSummary(option.name)}`),
+  );
+};
+
+/** A list header's underline: a line of `▔` alone. */
+const isUnderline = (line: string): boolean =>
+  line.trim() !== "" && [...line.trim()].every((c) => c === "▔");
+
+/**
+ * Whether a line ends the list above it: a blank line, the next header, the
+ * 📌 roll-up, a topic header or its rule, or prose at the line's start that
+ * is no item's summary, the list's items being indented under theirs.
+ */
 const endsList = (line: string, following: string): boolean =>
   line.trim() === "" ||
   HEADER.test(line) ||
   PIN.test(line) ||
   isTopicRule(line) ||
-  isTopicRule(following);
+  isTopicRule(following) ||
+  (/^\S/.test(line) && !SUMMARY_ONE.test(line) && !isUnderline(line));
 
 /** Whether a line is the header of a Decide list. */
 const isDecideHeader = (line: string): boolean =>
@@ -82,7 +113,9 @@ const isDecideHeader = (line: string): boolean =>
  * stand in its place: the list's header, its rule and every line of its
  * items cut out. Undefined unless the list is found intact: exactly one
  * Decide list before any 📌 roll-up, whose summary lines name `items`, every
- * one and no other, in their order.
+ * one and no other, in their order, each item's lines writing each of its
+ * options by letter and name, so a list an earlier reply wrote for an item
+ * since restated with other options is drawn as written.
  */
 export const decideListCut = (
   text: string,
@@ -91,24 +124,32 @@ export const decideListCut = (
   const lines = text.split("\n");
   const pinned = lines.findIndex((line) => PIN.test(line));
   const ownLines = pinned < 0 ? lines : lines.slice(0, pinned);
-  const headers = ownLines.flatMap((line, n) => (isDecideHeader(line) ? [n] : []));
+  const headers = ownLines.flatMap((line, n) =>
+    isDecideHeader(line) ? [n] : [],
+  );
   const start = headers.length === 1 ? (headers[0] ?? -1) : -1;
   const length = lines
     .slice(start + 1)
     .findIndex((line, n) => endsList(line, lines[start + n + 2] ?? ""));
   const end = length < 0 ? lines.length : start + 1 + length;
-  const summaries = lines
-    .slice(start + 1, end)
-    .flatMap((line) => {
-      const summary = SUMMARY_ONE.exec(line)?.[2];
-
-      return summary === undefined ? [] : [plainSummary(summary)];
-    });
+  const list = lines.slice(start + 1, end);
+  const starts = list.flatMap((line, n) =>
+    SUMMARY_ONE.test(line) ? [n] : [],
+  );
+  const blocks = starts.map((at, n) => list.slice(at, starts[n + 1]));
   const isIntact =
     start >= 0 &&
     items.length > 0 &&
-    summaries.length === items.length &&
-    items.every((item, n) => plainSummary(item.summary) === summaries[n]);
+    blocks.length === items.length &&
+    items.every((item, n) => {
+      const block = blocks[n] ?? [];
+      const summary = SUMMARY_ONE.exec(block[0] ?? "")?.[2] ?? "";
+
+      return (
+        plainSummary(item.summary) === plainSummary(summary) &&
+        hasOptionsOf(item, block)
+      );
+    });
 
   return isIntact
     ? {

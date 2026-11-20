@@ -67,14 +67,20 @@
       };
 
       perSystem =
-        { config, pkgs, ... }:
+        {
+          config,
+          lib,
+          pkgs,
+          ...
+        }:
         let
           # The one Node: the plugin's node_modules are built with it, and the
           # dev shell and the checks run it.
           nodejs = pkgs.nodejs_26;
 
-          # plugin/'s npm dependencies (TypeScript, Node's types, Jest's
-          # expect), each fetched by the integrity hash its
+          # plugin/'s npm dependencies (the YAML and JSONC parsers, and for
+          # development TypeScript, Node's types and Jest's expect), each
+          # fetched by the integrity hash its
           # package-lock.json records: no `npm ci`, and no hash to keep
           # beside the lock. Built from the two files alone, so an edit
           # elsewhere in plugin/ rebuilds nothing.
@@ -84,8 +90,21 @@
             inherit nodejs;
           };
 
+          # The parsers the plugin runs, yaml and jsonc-parser, each bundled
+          # into one ES module file with its licence beside it, for
+          # plugin/vendor/: the engine loads a hooks module's `claude-code`
+          # import and the plugin's own files, as plugin-authoring's
+          # reference says, so each library goes in as a file of the
+          # plugin's. The build, the checks and the dev shell all lay these
+          # same files.
+          pluginVendor = pkgs.runCommand "coding-agent-kanban-turns-vendor" {
+            nativeBuildInputs = [ pkgs.esbuild ];
+            nodeModules = "${pluginNodeModules}/node_modules";
+          } (builtins.readFile ./nix/bundle-vendor.sh);
+
           # Runs one of plugin/package.json's scripts in a writable copy of
-          # plugin/, with the flake's node_modules linked in.
+          # plugin/, with the flake's node_modules linked in and the bundled
+          # parsers laid in vendor/.
           pluginCheck =
             name: script:
             pkgs.runCommand "coding-agent-kanban-turns-${name}"
@@ -98,6 +117,7 @@
                 chmod -R u+w plugin
                 cd plugin
                 ln -s ${pluginNodeModules}/node_modules node_modules
+                cp ${pluginVendor}/* vendor/
                 export HOME="$TMPDIR/home"
                 npm run --silent ${script}
                 touch $out
@@ -105,12 +125,13 @@
         in
         {
           # The plugin as Claude Code loads it: plugin/ with only what runs,
-          # its manifest, hooks, pure core, shipped defaults and the types the
-          # manifest names. The tests, the engine-driven tests, the tools and
-          # the npm files stay out, since every npm dependency is for
-          # development. agent-plugins-nixpkgs installs this through its
-          # nix-darwin module, and a `--plugin-dir result-plugin` session
-          # loads it after `plugin-build`.
+          # its manifest, hooks, pure core, shipped defaults, the types the
+          # manifest names and vendor/'s parsers' types. The tests, the
+          # engine-driven tests, the tools and the npm files stay out: the
+          # parsers it runs are bundled into vendor/ below, and every other
+          # npm dependency is for development. agent-plugins-nixpkgs installs
+          # this through its nix-darwin module, and a `--plugin-dir
+          # result-plugin` session loads it after `plugin-build`.
           agent-plugins.claudePlugin = {
             enable = true;
             src = ./plugin;
@@ -120,9 +141,20 @@
               "hooks"
               "src"
               "types"
+              "vendor"
             ];
           };
 
+          # The module's build, with the bundled parsers laid in vendor/.
+          # The module has no option for a step after the copy, so this is
+          # its own builder, mkClaudePlugin, called with the module's
+          # settings and that step as `postPatch`.
+          packages.plugin = lib.mkForce (
+            inputs.agent-plugins-nixpkgs.lib.mkClaudePlugin pkgs {
+              inherit (config.agent-plugins.claudePlugin) src include;
+              postPatch = "cp ${pluginVendor}/* vendor/";
+            }
+          );
           packages.default = config.packages.plugin;
 
           # Repo-specific packages and commands, merged onto the modules'.
@@ -136,8 +168,13 @@
                 name = "PLUGIN_NODE_MODULES";
                 value = "${pluginNodeModules}/node_modules";
               }
+              {
+                name = "PLUGIN_VENDOR";
+                value = "${pluginVendor}";
+              }
             ];
             devshell.startup.link-node-modules.text = builtins.readFile ./nix/link-node-modules.sh;
+            devshell.startup.lay-vendor.text = builtins.readFile ./nix/lay-vendor.sh;
             commands = [
               {
                 category = "test";

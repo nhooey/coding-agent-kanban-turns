@@ -4,6 +4,7 @@
 // expands; and the stops the pane's j and k keys move the focus ring
 // between. No `$`, no I/O.
 
+import { isAnswered } from "./answers.ts";
 import { refOf } from "./items.ts";
 import type { DecideItem } from "../types/index.d.ts";
 
@@ -80,6 +81,15 @@ export const turnSections = (
       done: ofTurn(turn).filter(isDone),
     }));
 };
+
+/** Where /answers scrolls: the first open item the draft doesn't answer, in the pane's order, newest turn first. */
+export const firstUnansweredIn = (
+  sections: readonly TurnSection[],
+  draft: string,
+): DecideItem | undefined =>
+  sections
+    .flatMap((section) => section.open)
+    .find((item) => !isAnswered(draft, item));
 
 /** The header of a turn's Done items: a toggle, `▸ Done (2)` while collapsed, `▾ Done (2)` while expanded. */
 export const doneHeader = (count: number, isExpanded: boolean): string =>

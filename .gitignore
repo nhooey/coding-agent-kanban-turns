@@ -3,6 +3,9 @@
 plugin/.claude-plugin/types/
 # A directory from npm, or the dev shell's link into the Nix store.
 plugin/node_modules
+# The parsers the flake bundles, which the dev shell lays beside their types.
+/plugin/vendor/*.js
+/plugin/vendor/*.LICENSE
 
 # Nix: build outputs, and the dev shell's state. `plugin-build` links the
 # plugin a `--plugin-dir result-plugin` session loads to /result-plugin.

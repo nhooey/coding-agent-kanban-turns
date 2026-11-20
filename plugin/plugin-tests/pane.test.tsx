@@ -109,11 +109,11 @@ const LATER = {
   summary: "Which loader to keep",
 } as const;
 
-// The settings the tests draw with: defaults/config.jsonc's values.
+// The settings the tests draw with: defaults/config.yaml's values, as JSON,
+// which YAML reads too.
 const DEFAULTS = JSON.stringify({
   counts: { turns: 20, "gh-timeout-ms": 20000 },
-  keys: { dismiss: "q", next: "j", previous: "k", submit: "s", reassess: "r" },
-  pane: { hints: true },
+  keys: { dismiss: "q", next: "j", previous: "k", submit: "s", reassess: "r", help: "h" },
   notes: { rows: 3 },
   marks: { sent: "☑️" },
   colors: {
@@ -208,6 +208,10 @@ const replyRecord = (
 // Where the engine says the session's transcript is.
 const TRANSCRIPT = "/home/neil/.claude/projects/-work/session-1.jsonl";
 
+// The folder the user's settings file is in, as $XDG_CONFIG_HOME and $HOME,
+// which the engine below both answers with /home/neil, lead to.
+const USER_FOLDER = "/home/neil/coding-agent-kanban-turns/";
+
 /** The base64 of bytes, as `$.fs.read` gives them. */
 const base64Of = (bytes: Uint8Array): string =>
   btoa(Array.from(bytes, (byte) => String.fromCharCode(byte)).join(""));
@@ -256,12 +260,20 @@ const engine = (
     typedMeanwhile: "",
     // What the next submit waits on before the engine answers it, once.
     holdSubmit: undefined as (() => Promise<void>) | undefined,
+    // What the next read of the transcript waits on before it answers, once.
+    holdRead: undefined as (() => Promise<void>) | undefined,
     // What each command registration waits on, as the session starts.
     registering: undefined as (() => Promise<void>) | undefined,
-    userConfig: undefined as string | undefined,
+    // The user's settings files, by name, in their folder; none by default.
+    userFiles: {} as Record<string, string>,
     isRingMovable: false,
     focus: [] as string[],
   };
+  /** The user's settings file at `path`, by its name, when `path` is in their folder. */
+  const userFile = (path: string): string | undefined =>
+    path.startsWith(USER_FOLDER)
+      ? state.userFiles[path.slice(USER_FOLDER.length)]
+      : undefined;
   // The pane's focus ring as the engine moves it for the person: nothing
   // beneath the plugins answers, unless a test lets it land, keeping each
   // element it lands on.
@@ -319,23 +331,21 @@ const engine = (
   on("session.cwd", () => ({ value: "/work" }));
   on("session.start", (_, e) => ({ cwd: e.cwd }));
   on("env.get", () => ({ value: "/home/neil" }));
-  // No user settings file is there unless a test writes one, so the shipped
-  // defaults are what's in effect.
-  const isUserConfig = (path: string) =>
-    path.endsWith("/coding-agent-kanban-turns/config.jsonc");
+  // A user settings file is there only where `userFiles` holds it, so by
+  // default the shipped defaults are what's in effect.
   on("fs.exists", (_, e) => ({
-    value: !isUserConfig(e.path) || state.userConfig !== undefined,
+    value: e.path.startsWith(USER_FOLDER) ? userFile(e.path) !== undefined : true,
   }));
   // A test has no files, so the defaults file reads as this; the Node tests
   // (test/config.test.ts) hold the real one to the shape. The transcript is
   // read as bytes, by the range asked for.
-  on("fs.read", (_, e) => {
-    if (isUserConfig(e.path)) {
-      return { value: state.userConfig ?? "" };
-    }
+  on("fs.read", async (_, e) => {
     if (e.path !== TRANSCRIPT) {
-      return { value: DEFAULTS };
+      return { value: userFile(e.path) ?? DEFAULTS };
     }
+    const hold = state.holdRead;
+    state.holdRead = undefined;
+    await hold?.();
     const offset = e.offset ?? 0;
     const bytes = transcript().slice(offset, offset + (e.length ?? Infinity));
 
@@ -434,18 +444,19 @@ const turnHeaders = async (ui: Drawing) =>
 
 /**
  * The Done items' one-line rows, in the order drawn, once their sections
- * are open, each as `label  text`: the label a Button keyed
- * `<ref>.line-label`, the text, which wraps under its own start, one keyed
- * `<ref>.line`.
+ * are open, each as `label  text`: a Box keyed `<ref>.line-hang` holding
+ * the label, then the text, which wraps under its own start.
  */
-const doneLines = async (ui: Drawing) => {
-  const buttons = await ui.findAll({ type: "Button", text: /^/ });
-  const byKey = new Map(buttons.map((found) => [found.key, found.text]));
+const doneLines = async (ui: Drawing) =>
+  (await ui.findAll({ type: "Box", text: /^🧠 Decide\.\d+/ }))
+    .filter((found) => found.key?.endsWith(".line-hang"))
+    .map((found) => found.text.replace(/^(🧠 Decide\.\d+)/, "$1  "));
 
-  return buttons
-    .filter((found) => /^🧠 Decide\.\d+$/.test(found.text))
-    .map((found) => `${found.text}  ${byKey.get(found.key?.replace(/-label$/, ""))}`);
-};
+/** What a line's lead says, `🔘 A. ` or `➕ `, by the line's key: the lead is plain text in a Box keyed `<key>-hang-lead`. */
+const leadOf = async (
+  ui: { find: (q: { type: "Box"; key: string }) => Promise<{ text: string } | undefined> },
+  key: string,
+) => (await ui.find({ type: "Box", key: `${key}-hang-lead` }))?.text;
 
 /** Opens every Done section of the pane, by the Done headers drawn. */
 const openDone = async (ui: Pressable) => {
@@ -534,6 +545,37 @@ test("/answers-config lists each setting in effect and its file", async ($, on) 
   expect(JSON.stringify(shown)).toContain('keys.dismiss = \\"q\\"  # defaults: ');
 });
 
+test("a user's config.yaml is read, and wins over a config.jsonc beside it", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  state.userFiles = {
+    "config.yaml": "keys:\n  dismiss: x # mine\n",
+    "config.jsonc": '{"keys": {"dismiss": "z"}}',
+  };
+  const shown = JSON.stringify(
+    await $.command.run({ ...ANSWERS, command: "answers-config" }),
+  );
+
+  expect(shown).toContain(
+    `keys.dismiss = \\"x\\"  # user: ${USER_FOLDER}config.yaml`,
+  );
+  expect(shown).not.toContain("Not used");
+});
+
+test("a user's config.jsonc with no config.yaml is read, with a warning to convert it", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  state.userFiles = { "config.jsonc": '{"keys": {"dismiss": "z"}, // mine\n}' };
+  const shown = JSON.stringify(
+    await $.command.run({ ...ANSWERS, command: "answers-config" }),
+  );
+
+  expect(shown).toContain(
+    `keys.dismiss = \\"z\\"  # user: ${USER_FOLDER}config.jsonc`,
+  );
+  expect(shown).toContain(
+    `${USER_FOLDER}config.jsonc: JSONC is read only while there's no config.yaml beside it; convert this file to config.yaml`,
+  );
+});
+
 test("the pane keeps every item raised, newest turn first, a Done one in its turn's collapsed Done section", async ($, on) => {
   const later: TranscriptRecord[] = [];
   const state = engine(on, () => ITEMS, listsText, () => later);
@@ -589,8 +631,8 @@ test("the pane keeps every item raised, newest turn first, a Done one in its tur
   expect(await titles(ui)).toContain("🧠 Decide.1 · Which cache to keep (done)");
   await ui.press({ key: "9efb08a1.Decide.1.B" });
   expect(state.box).toBe(`${HEADER}9efb08a1.Decide.1.B\n`);
-  expect((await ui.find({ type: "Button", key: "9efb08a1.Decide.1.B-mark" }))?.text).toBe("✅ B. ");
-  expect((await ui.find({ type: "Button", key: "9efb08a1.Decide.1.A-mark" }))?.text).toBe("☑️ A. ");
+  expect(await leadOf(ui, "9efb08a1.Decide.1.B")).toBe("✅ B. ");
+  expect(await leadOf(ui, "9efb08a1.Decide.1.A")).toBe("☑️ A. ");
   expect((await ui.find({ type: "Button", key: "9efb08a1.Decide.1.B" }))?.props["dimColor"]).not.toBe(true);
   expect(await titles(ui)).toContain("🧠 Decide.1 · Which cache to keep (done)");
   await ui.press({ key: "9efb08a1.Decide.1.B" });
@@ -661,32 +703,98 @@ test("the footer says what Submit will send, beside Reassess and Submit", async 
   await ui.unmount();
 });
 
-test("the pane's keys are its buttons' hotkeys, and the hint row names them unless a setting hides it", async ($, on) => {
+test("every key the pane takes is a setting: each button's hotkey, rebound by the user's file", async ($, on) => {
   const state = engine(on, () => ITEMS);
   await $.command.run(ANSWERS);
   const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
-  const hotkey = async (key: string) =>
-    (await ui.find({ type: "Button", key }))?.props["hotkey"];
+  const hotkeys = async () =>
+    Object.fromEntries(
+      await Promise.all(
+        ["previous", "next", "keys", "dismiss", "reassess", "submit"].map(async (key) => [
+          key,
+          (await ui.find({ type: "Button", key }))?.props["hotkey"],
+        ]),
+      ),
+    );
 
-  expect(await hotkey("previous")).toBe("k");
-  expect(await hotkey("next")).toBe("j");
-  expect(await hotkey("dismiss")).toBe("q");
-  expect(await hotkey("reassess")).toBe("r");
-  expect(await hotkey("submit")).toBe("s");
-  // Options keep no letter hotkeys.
-  expect(await hotkey("9efb08a1.Decide.1.A")).toBeUndefined();
-  const hints = () => ui.find({ type: "Text", text: /^j\/k item · / });
-  expect((await hints())?.props).toMatchObject({ dimColor: true });
-  expect((await hints())?.text).toBe(
-    "j/k item · ↑/↓ option · enter pick · s submit · r reassess · q close · esc back to the prompt",
-  );
+  expect(await hotkeys()).toEqual({
+    previous: "k",
+    next: "j",
+    keys: "h",
+    dismiss: "q",
+    reassess: "r",
+    submit: "s",
+  });
+  // Options keep no hotkeys.
+  expect((await ui.find({ type: "Button", key: "9efb08a1.Decide.1.A" }))?.props["hotkey"]).toBeUndefined();
 
-  // Each key is a setting; hints off takes the row away.
-  state.userConfig = '{"keys": {"submit": "x"}, "pane": {"hints": false}}';
+  // Each one rebound in the user's file takes effect, and the keys panel
+  // lists the rebound key.
+  state.userFiles = {
+    "config.yaml":
+      "keys:\n  dismiss: x\n  next: n\n  previous: p\n  submit: u\n  reassess: e\n  help: o\n",
+  };
   await $.command.run(ANSWERS);
-  expect(await hotkey("submit")).toBe("x");
-  expect(await hints()).toBeUndefined();
+  expect(await hotkeys()).toEqual({
+    previous: "p",
+    next: "n",
+    keys: "o",
+    dismiss: "x",
+    reassess: "e",
+    submit: "u",
+  });
+  await ui.press({ key: "keys" });
+  const row = async (n: number) => (await ui.find({ type: "Box", key: `keys-${n}-hang` }))?.text;
+  expect(await row(0)).toBe("n↓ Next: the next item, or Done header");
+  expect(await row(1)).toBe("p↑ Previous: the item before");
+  expect(await row(2)).toBe("u📤 Submit: send the draft");
+  expect(await row(3)).toBe("e🔄 Reassess: add or take out the reassess line");
+  expect(await row(4)).toBe("o? Keys: open or close this panel");
+  expect(await row(5)).toBe("x✖ Close: close the pane");
   await ui.unmount();
+});
+
+test("the pane draws no hint row", async ($, on) => {
+  engine(on, () => ITEMS);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+
+  const drawn = JSON.stringify(await ui.drawn());
+  expect(drawn).not.toContain("j/k item");
+  expect(drawn).not.toContain("esc back to the prompt");
+  expect(await ui.find({ type: "Box", key: "keys-panel" })).toBeUndefined();
+  await ui.unmount();
+});
+
+test("? Keys opens a panel under the header listing every key, and a second press closes it", async ($, on) => {
+  engine(on, () => ITEMS);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+
+  expect((await ui.find({ type: "Button", key: "keys" }))?.text).toBe("? Keys");
+  // Closed, the panel draws nothing.
+  expect(await ui.find({ type: "Box", key: "keys-panel" })).toBeUndefined();
+
+  await ui.press({ key: "keys" });
+  const panel = await ui.find({ type: "Box", key: "keys-panel" });
+  expect(panel?.text).toContain("s📤 Submit: send the draft");
+  expect(panel?.text).toContain("h? Keys: open or close this panel");
+  expect(panel?.text).toContain("escgive the keyboard back to the prompt");
+  // Under the header, above the items.
+  const drawn = JSON.stringify(await ui.drawn());
+  expect(drawn.indexOf("keys-panel")).toBeGreaterThan(drawn.indexOf("header-controls"));
+  expect(drawn.indexOf("keys-panel")).toBeLessThan(drawn.indexOf("9efb08a1.Decide.1"));
+
+  await ui.press({ key: "keys" });
+  expect(await ui.find({ type: "Box", key: "keys-panel" })).toBeUndefined();
+
+  // Closing the pane closes the panel too.
+  await ui.press({ key: "keys" });
+  await ui.press({ key: "dismiss" });
+  await ui.unmount();
+  const again = await $.ui.mount({ ...PANE, surface: "terminal" });
+  expect(await again.find({ type: "Box", key: "keys-panel" })).toBeUndefined();
+  await again.unmount();
 });
 
 test("↓ Next and ↑ Previous follow the focus ring, dim at either end of the items and the Done header", async ($, on) => {
@@ -848,7 +956,7 @@ test("an answer in a later prompt settles its item, in the pane and the count li
     expect(
       (await drawing.findAll({ type: "Text", text: /^Answered in / })).map((found) => found.text),
     ).toEqual(["Answered in b2c3d4e5: A", "Answered in b2c3d4e5: B"]);
-    expect((await drawing.find({ type: "Button", key: "9efb08a1.Decide.1.A-mark" }))?.text).toBe("☑️ A. ");
+    expect(await leadOf(drawing, "9efb08a1.Decide.1.A")).toBe("☑️ A. ");
     const sent = await drawing.find({ type: "Button", key: "9efb08a1.Decide.1.A" });
     expect(sent?.text).toBe("Disk");
     expect(sent?.props["dimColor"]).not.toBe(true);
@@ -1186,8 +1294,11 @@ test("a long option, its ➕ line, a title and a Done line wrap under their text
     expect(await box(drawing, "9efb08a1.Decide.1.A-hang-text")).toMatchObject({ flexGrow: 1, flexShrink: 1 });
     expect(await box(drawing, "9efb08a1.Decide.1.A-pro-0-hang-lead")).toMatchObject({ width: 3, flexShrink: 0 });
     expect(await box(drawing, "9efb08a1.Decide.1.title-hang-lead")).toMatchObject({ width: 14, flexShrink: 0 });
-    expect((await drawing.find({ type: "Button", key: "9efb08a1.Decide.1.A-mark" }))?.text).toBe("🔘 A. ");
-    expect((await drawing.find({ type: "Button", key: "9efb08a1.Decide.1.A-pro-0-mark" }))?.text).toBe("➕ ");
+    expect(await leadOf(drawing, "9efb08a1.Decide.1.A")).toBe("🔘 A. ");
+    expect(await leadOf(drawing, "9efb08a1.Decide.1.A-pro-0")).toBe("➕ ");
+    // One button per line: the lead is plain text, the line's text the one
+    // focus stop that picks.
+    expect(await drawing.find({ type: "Button", key: "9efb08a1.Decide.1.A-mark" })).toBeUndefined();
   }
 
   // A Done line's label is its lead, the summary and what made it Done
@@ -1371,6 +1482,27 @@ test("a question in a reply opens the pane with the keyboard, though it can't sc
   expect(state.isPaneOpen).toBe(true);
   expect(state.opens).toEqual([false, true]);
   await reply.unmount();
+});
+
+test("a question in a reply whose item is Done opens its turn's Done section and its box", async ($, on) => {
+  const open: unknown[] = [...ITEMS];
+  engine(on, () => open);
+  await $.tool.call({ tool: TOOL, items: ITEMS } as never);
+  await $.turn.complete(replyDone("t0"));
+  open.splice(0, 1);
+  await $.turn.complete(replyDone("t1"));
+  const reply = await $.ui.mount(REPLY);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  expect(await doneLines(ui)).toEqual([]);
+
+  await reply.press({
+    key: "kanban-questions",
+    link: { href: "https://kanban-turns.invalid/9efb08a1.Decide.1" },
+  });
+  expect((await ui.find({ type: "Button", key: "9efb08a1.done" }))?.text).toBe("▾ Done (1)");
+  expect(await titles(ui)).toContain("🧠 Decide.1 · Which cache to keep (done)");
+  await reply.unmount();
+  await ui.unmount();
 });
 
 test("a reply without the items' summaries is drawn as the engine draws it", async ($, on) => {
@@ -1778,6 +1910,39 @@ test("Submit moves the items its draft answers to Done at once, and the turn's e
   ]);
   expect(await countsOn(line)).toBe("📌 Outstanding: 🚧 1 · 🧠 1");
   await line.unmount();
+  await ui.unmount();
+});
+
+test("a Submit pressed while the turn's end reads the transcript keeps its answer Done", async ($, on) => {
+  const later: TranscriptRecord[] = [];
+  const state = engine(on, () => ITEMS, listsText, () => later);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  await ui.press({ key: "9efb08a1.Decide.1.A" });
+  await ui.press({ key: "submit" });
+  later.push(pluginPrompt("b2c3d4e5", state.sent[0] ?? ""), assistant("On it."));
+  await $.turn.start({ text: state.sent[0] ?? "", turnId: "t2" });
+
+  // The turn ends, and while its refresh reads the transcript, another
+  // answer is picked and sent.
+  const held = gate();
+  state.holdRead = held.wait;
+  const ending = $.turn.complete(replyDone("t2"));
+  await held.reached;
+  await ui.press({ key: "9efb08a1.Decide.3.N" });
+  await ui.press({ key: "submit" });
+  expect(state.sent).toHaveLength(2);
+  held.release();
+  await ending;
+
+  // The read confirms the first answer; the second, which it couldn't
+  // hold, stays Done as sent until a later read.
+  await openDone(ui);
+  expect(await doneLines(ui)).toEqual([
+    "🧠 Decide.1  Which cache to keep · Answered in b2c3d4e5: A",
+    "🧠 Decide.3  Ship tonight? · Sent: N",
+  ]);
+  expect(await titles(ui)).toEqual(["🧠 Decide.2 · Cleanups to start"]);
   await ui.unmount();
 });
 
