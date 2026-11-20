@@ -138,7 +138,7 @@ export type Json =
 
 /**
  * The plugin's settings. defaults/config.yaml lists each with its default and
- * what it does; `SETTINGS_SHAPE` in src/config.ts is the same list as a
+ * what it does; `SETTINGS_SHAPE` in src/config/config.ts is the same list as a
  * schema.
  */
 export type Settings = Readonly<{

@@ -4,7 +4,7 @@ state: proposed
 kind: implementation
 part-of: kanban-next-chunk
 needs: [next-chunk-pick, mod-draws-item-links]
-touches: [plugin/hooks/register.tsx, plugin/src/chunk.ts, plugin/types/index.d.ts]
+touches: [plugin/hooks/register.tsx, plugin/src/items/chunk.ts, plugin/types/index.d.ts]
 ---
 
 # /next-chunk starts a run of chunks, and the plugin submits the next one when a chunk settles

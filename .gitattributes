@@ -2,9 +2,9 @@
 # them, byte for byte, which `nix flake check` compares: no line-ending
 # conversion, whatever core.autocrlf says. The bundles are generated, so
 # GitHub folds them in a diff and leaves them out of the language stats.
-/plugin/vendor/*.js -text linguist-generated
-/plugin/vendor/*.LICENSE -text
+/plugin/vendor/*/*.js -text linguist-generated
+/plugin/vendor/*/LICENSE -text
 # The module and JSON copy the protocol's spec compiles to are committed as
 # `spec-build` writes them, which `checks.spec` compares the same way.
-/plugin/src/spec.ts -text linguist-generated
+/plugin/src/protocol/spec.ts -text linguist-generated
 /plugin/spec/kanban.json -text linguist-generated

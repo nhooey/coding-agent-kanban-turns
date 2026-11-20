@@ -4,7 +4,7 @@ state: approved
 kind: implementation
 part-of: pane-every-list
 needs: [pane-turn-sections, list-actions, answers-grouped-by-turn-and-list, pane-submit-review-fixes, pane-state-reducer]
-touches: [plugin/hooks/register.tsx, plugin/src/raised.ts, plugin/src/sections.ts, plugin/plugin-tests/]
+touches: [plugin/hooks/register.tsx, plugin/src/items/raised.ts, plugin/src/pane/sections.ts, plugin/test/engine/]
 ---
 
 # Submit moves every list's items it settles to their Done sections at once, and the turn's end confirms them or puts them back
@@ -16,4 +16,4 @@ touches: [plugin/hooks/register.tsx, plugin/src/raised.ts, plugin/src/sections.t
 - **One rule for Done.** An item settled any other way, a merged pull request for a Review item, a `reassess` that leaves it out, a report for a Waiting item, is in its Done section too.
 - **Pure.** Which items move, and which come back after the read, are pure functions of the submitted draft, the items and the read's result, the ones that do it for Decide items today taking every list.
 
-Checks: tests in `plugin/test/` for the move and for the confirm and put-back, with a Todo, a Review and a Waiting item; an engine test in `plugin/plugin-tests/` that submits answers to items of two lists, finds them in their Done sections before the turn ends, and then a transcript that settles one and not the other.
+Checks: tests in `plugin/test/unit/` for the move and for the confirm and put-back, with a Todo, a Review and a Waiting item; an engine test in `plugin/test/engine/` that submits answers to items of two lists, finds them in their Done sections before the turn ends, and then a transcript that settles one and not the other.

@@ -4,7 +4,7 @@ state: approved
 kind: implementation
 part-of: pane-every-list
 needs: [pane-turn-sections, pane-turn-navigation, pane-state-reducer]
-touches: [plugin/hooks/register.tsx, plugin/src/window.ts, plugin/src/layout.ts, plugin/defaults/config.yaml, plugin/plugin-tests/, plugin/test/]
+touches: [plugin/hooks/register.tsx, plugin/src/pane/window.ts, plugin/src/pane/layout.ts, plugin/defaults/config.yaml, plugin/test/engine/, plugin/test/unit/]
 ---
 
 # The pane draws only the items in or near its scroll window, from cached item heights
@@ -16,6 +16,6 @@ touches: [plugin/hooks/register.tsx, plugin/src/window.ts, plugin/src/layout.ts,
 
 Checks:
 
-- tests in `plugin/test/` for the heights and for the window's slice, with spacers that add up to the left-out rows;
+- tests in `plugin/test/unit/` for the heights and for the window's slice, with spacers that add up to the left-out rows;
 - a test that renders a session of 2000 Done items and 20 open ones and finds only the window's items in the rendered tree;
 - in a live session of that size, scrolling and a refresh show no visible lag.

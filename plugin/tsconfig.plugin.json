@@ -4,5 +4,5 @@
     "noEmit": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["hooks", "src", "types", "plugin-tests"]
+  "include": ["hooks", "src", "types", "test/engine"]
 }

@@ -4,7 +4,7 @@ state: approved
 kind: implementation
 part-of: kanban-next-chunk
 needs: [protocol-spec-data, protocol-prose-fragments]
-touches: [plugin/spec/kanban.yaml, plugin/spec/fragments/, plugin/spec/cases/, plugin/src/transcript.ts, plugin/src/instructions.ts, plugin/test/]
+touches: [plugin/spec/kanban.yaml, plugin/spec/fragments/, plugin/spec/cases/, plugin/src/transcript/turns.ts, plugin/src/protocol/instructions.ts, plugin/test/unit/]
 ---
 
 # Each item that blocks other work names the items it frees, by reference

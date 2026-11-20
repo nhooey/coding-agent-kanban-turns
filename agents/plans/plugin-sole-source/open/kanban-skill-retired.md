@@ -4,7 +4,7 @@ state: approved
 kind: implementation
 part-of: plugin-sole-source
 needs: [protocol-spec-data, protocol-prose-fragments, protocol-golden-cases, neutral-turn-stream, kanban-cli-adapter, plugin-tools-replace-skill-scripts, derived-skill-package, instructions-once-with-skill, prompt-context-hook-runs]
-touches: [AGENTS.md, skills-devshell/flake.nix, skills-devshell/flake.lock]
+touches: [AGENTS.md, nix/skills-devshell/flake.nix, nix/skills-devshell/flake.lock]
 ---
 
 # The coding-agent-kanban-turn-responses skill is retired, and no repository or session installs it
@@ -19,7 +19,7 @@ Done once the plugin carries its own skill ([derived-skill-package](derived-skil
 
 Checks:
 
-- `skills-devshell/flake.nix` names no `coding-agent-kanban-turn-responses`, and `.agents/skills/` has no copy;
+- `nix/skills-devshell/flake.nix` names no `coding-agent-kanban-turn-responses`, and `.agents/skills/` has no copy;
 - `~/.claude/skills/` has no `coding-agent-kanban-turn-responses` on a machine MyNixOS configures;
 - `AGENTS.md` has no section about rules shared with the kanban skill;
 - a session in a repository with the plugin and without the old skill writes replies in the kanban shape.

@@ -44,7 +44,7 @@ With the coding-agent-kanban-turns plugin loaded:
 
 Checks:
 
-- the repository's checks pass, `typecheck-plugin` and `plugin-test` among them, with an engine test in `plugin/plugin-tests/` for each bullet above;
+- the repository's checks pass, `typecheck-plugin` and `plugin-test` among them, with an engine test in `plugin/test/engine/` for each bullet above;
 - a test renders a session of 2000 Done items and 20 open ones and finds only the scroll window's items in the rendered tree;
 - the spec's golden cases pass, with cases for the grouped example above and for a plain reference;
 - in a live session, an answer written by each list's actions settles its item in the pane, under the reply and in the next reply's 📌 count line.
