@@ -1,10 +1,11 @@
 ---
 title: The pane's state is one value that a pure step function moves, and the hooks only dispatch events and run the effects it returns
-state: approved
+state: in-progress
+owner: pane-state-reducer
 kind: implementation
 part-of: pane-every-list
 needs: [neutral-turn-stream]
-touches: [plugin/src/pane/pane-state.ts, plugin/hooks/register.tsx, plugin/types/index.d.ts, plugin/test/unit/]
+touches: [plugin/src/pane/pane-state.ts, plugin/src/pane/view.ts, plugin/src/items/raised.ts, plugin/hooks/register.tsx, plugin/types/index.d.ts, plugin/test/unit/, plugin/test/engine/, plugin/test/oracle/, plugin/test/fixtures/]
 cost: "about 29M tokens over 10 runs, 5 implementer and 5 review, one pair per area; about $30 at Opus 5.5's rates; weekly share not costed, no weekly limit set"
 ---
 
@@ -25,6 +26,7 @@ The pane's state is 15 atoms in `plugin/hooks/register.tsx` today: `raised`, `se
   - **Submit** is one `submit` field, replacing `submits`, `submitting`, `runningTurn` and `submitProblem`: idle, a turn running (by its id, so a late end of an earlier turn leaves it), sending (with the draft and the refs it moved to Done), or refused (with why). A press does nothing while a turn runs or a draft is sending because `step` says so, not because of a stamp. The overlap of sending and the turn it starts is one defined transition.
   - **Refresh** is one field replacing the `refreshes` stamp: idle, or reading, with the refresh asked for next. A stale read's result is dropped by `step`.
   - **Settings** keep their three states, unread, loaded or broken, as one field.
+- **A press a reload overtook keeps to itself.** A press a session's start overtakes finishes as it would have, under its own number. Each answer it holds Done is tagged with its press, so its refusal puts back only its own holds and leaves a later press's for the same item. Its message is kept apart from what the pane says of the press under way. Today the two presses share the prompt box, the held answers and that message, as the old handlers did. This lands with the refresh area, which moves `sent`.
 - **Order.** It starts with the Submit flow, the one with the races, and moves one area at a time, each its own commit: Submit, then the transcript refresh with `raised`, `sent`, `merged` and `counts`, then settings, then the pane's own state (`expanded`, `focused`, `isKeysOpen`, `noting`), then `draft`. Until an area moves, its atoms stay, and `step` doesn't touch them.
 
 ## One atom, not slices
