@@ -30,7 +30,7 @@ export async function loadSettings($: EngineInterface): Promise<Loaded> {
   });
 
   return loaded(
-    (await textOf($, defaultsPath)) ?? { path: defaultsPath, text: "" },
+    (await textOf($, defaultsPath)) ?? { path: defaultsPath, text: undefined },
     await textOf($, userPath),
   );
 }

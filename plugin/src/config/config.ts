@@ -2,10 +2,11 @@
 // the user's own file merged over it. Pure: hooks/settings.ts reads the two
 // files and hands their text here.
 //
-// The defaults file holds every value; this module holds only the shape
-// those values must have, so a default is written in one place. Sections
-// merge key by key, a scalar or a list replaces, and a key the shape
-// doesn't name, or a value of the wrong type, refuses the user's file whole.
+// The defaults file holds every setting and its value, and gives the shape
+// the user's file must have: each setting the type of its default, unless
+// KINDS names its section's. Sections merge key by key, a scalar or a list
+// replaces, and a key the defaults file doesn't hold, or a value of the
+// wrong type, refuses the user's file whole.
 // A section the plugin no longer reads is the exception: it is left out with a
 // warning, and the rest of the file is used.
 //
@@ -18,44 +19,98 @@ import type { ParsedDocument } from "../../vendor/yaml/yaml.js";
 import { isObject } from "../json/fields.ts";
 import type { Json, Loaded, Settings } from "../../types/index.d.ts";
 
-/**
- * The type each setting must have: a section is a map of its keys, and a
- * `key` is a string the engine takes as a Button's hotkey.
- */
-type Shape =
-  | "string"
-  | "number"
-  | "boolean"
-  | "key"
-  | { readonly [key: string]: Shape };
+/** The type a setting must have: a scalar's, or a `key`, a string the engine takes as a Button's hotkey. */
+export type Kind = "string" | "number" | "boolean" | "key";
+
+/** The type each setting must have: a section is a map of its keys. */
+export type Shape = Kind | { readonly [key: string]: Shape };
 
 /** What the engine takes as a Button's hotkey: one lowercase letter or one digit; it refuses the whole drawing over anything else. */
 const HOTKEY = /^[a-z0-9]$/;
 
-/** Every setting the plugin reads, by the type its value must have. */
-export const SETTINGS_SHAPE: Shape = {
-  counts: { turns: "number", "gh-timeout-ms": "number" },
-  keys: {
-    dismiss: "key",
-    next: "key",
-    previous: "key",
-    submit: "key",
-    reassess: "key",
-    help: "key",
-  },
-  pane: { "close-when-all-submitted": "boolean" },
-  notes: { rows: "number" },
-  marks: { sent: "string" },
-  colors: {
-    border: "string",
-    "title-label": "string",
-    "title-background": "string",
-    code: "string",
-    hover: "string",
-    settled: "string",
-    close: "string",
-    kanban: "string",
-  },
+/**
+ * The type of every setting in a section, by the section's dotted key,
+ * where the defaults' types don't say it: every pane key is a hotkey.
+ */
+const KINDS: Readonly<Record<string, Kind>> = { keys: "key" };
+
+/** The types a default gives its setting by being one. */
+const SCALARS = ["string", "number", "boolean"] as const;
+
+/** The shape a defaults file gives, or why it gives none. */
+export type Derived = Readonly<{ shape: Shape } | { problems: readonly string[] }>;
+
+/** The type KINDS names for every setting in the section at `path`, if it names one. */
+const kindNamed = (path: readonly string[]): Kind | undefined =>
+  Object.hasOwn(KINDS, path.join(".")) ? KINDS[path.join(".")] : undefined;
+
+/** A section's shape, each key's from its default, or every reason its defaults give none. */
+const sectionShape = (
+  section: { readonly [key: string]: Json },
+  path: readonly string[],
+  kind: Kind | undefined,
+): Derived => {
+  const inner = Object.entries(section).map(
+    ([key, value]) => [key, shapeAt(value, [...path, key], kind)] as const,
+  );
+  const problems = [
+    ...(inner.length === 0 ? [`${named(path)} holds no settings`] : []),
+    ...inner.flatMap(([, each]) => ("problems" in each ? each.problems : [])),
+  ];
+
+  return problems.length > 0
+    ? { problems }
+    : {
+        shape: Object.fromEntries(
+          inner.flatMap(([key, each]): [string, Shape][] =>
+            "shape" in each ? [[key, each.shape]] : [],
+          ),
+        ),
+      };
+};
+
+/**
+ * The shape a default at `path` gives: a section's, the type KINDS names
+ * for its section's settings, or its scalar's type.
+ */
+const shapeAt = (
+  value: Json,
+  path: readonly string[],
+  kind: Kind | undefined,
+): Derived => {
+  const sectionKind = kindNamed(path);
+  const leaf = kind ?? SCALARS.find((scalar) => typeof value === scalar);
+
+  return isMap(value)
+    ? sectionShape(value, path, sectionKind ?? kind)
+    : sectionKind !== undefined
+      ? { problems: [`${named(path)} is ${typeName(value)}, not the section KINDS names`] }
+      : leaf !== undefined
+        ? { shape: leaf }
+        : {
+            problems: [
+              `${named(path)} is ${typeName(value)}, so its default gives it no type; write a string, a number, or true or false, or name its section's type in KINDS in src/config/config.ts`,
+            ],
+          };
+};
+
+/**
+ * The shape the defaults file's value gives the user's file, or why it
+ * gives none: a default that gives no type, a section that holds no
+ * settings, or a section KINDS names that the file doesn't hold.
+ */
+export const shapeOf = (defaults: Json): Derived => {
+  const derived: Derived = isMap(defaults)
+    ? sectionShape(defaults, [], undefined)
+    : { problems: [`${named([])} is ${typeName(defaults)}, not a section`] };
+  const unheld = isMap(defaults)
+    ? Object.keys(KINDS)
+        .filter((key) => at(defaults, key.split(".")) === undefined)
+        .map((key) => `${key} is missing, a section KINDS names`)
+    : [];
+  const problems = [...("problems" in derived ? derived.problems : []), ...unheld];
+
+  return problems.length > 0 ? { problems } : derived;
 };
 
 /** The sections and settings the plugin no longer reads, by dotted key, each with what to set instead. */
@@ -75,7 +130,7 @@ export const RETIRED: Readonly<Record<string, string>> = {
 /** The value at a dotted key's path, or undefined where there is none. */
 const at = (value: Json | undefined, path: readonly string[]): Json | undefined =>
   path.reduce<Json | undefined>(
-    (inner, key) => (isMap(inner) ? inner[key] : undefined),
+    (inner, key) => (isMap(inner) && Object.hasOwn(inner, key) ? inner[key] : undefined),
     value,
   );
 
@@ -225,7 +280,7 @@ const scalarProblems = (
       : [];
 
 /** The value with each section the shape names that's null, as a section with every key commented out reads, empty. */
-const nullSectionsEmptied = (shape: Shape, value: Json): Json =>
+export const nullSectionsEmptied = (shape: Shape, value: Json): Json =>
   typeof shape === "string" || !isMap(value)
     ? value
     : Object.fromEntries(
@@ -271,13 +326,15 @@ export const problemsIn = (
               (key) =>
                 `${named([...path, key])} is no setting; the keys here are ${Object.keys(shape).join(", ")}`,
             ),
-          ...Object.entries(shape).flatMap(([key, inner]) =>
-            value[key] === undefined
+          ...Object.entries(shape).flatMap(([key, inner]) => {
+            const set = Object.hasOwn(value, key) ? value[key] : undefined;
+
+            return set === undefined
               ? isSparse
                 ? []
                 : [`${named([...path, key])} is missing`]
-              : problemsIn(inner, value[key], isSparse, [...path, key]),
-          ),
+              : problemsIn(inner, set, isSparse, [...path, key]);
+          }),
         ];
 
 /** `layer` over `base`: maps merge key by key, anything else replaces. */
@@ -285,10 +342,11 @@ export const mergedOver = (base: Json, layer: Json): Json =>
   isMap(base) && isMap(layer)
     ? Object.fromEntries([
         ...Object.entries(base).map(
-          ([key, value]): [string, Json] => [
-            key,
-            layer[key] === undefined ? value : mergedOver(value, layer[key]),
-          ],
+          ([key, value]): [string, Json] => {
+            const set = Object.hasOwn(layer, key) ? layer[key] : undefined;
+
+            return [key, set === undefined ? value : mergedOver(value, set)];
+          },
         ),
         ...Object.entries(layer).filter(([key]) => !Object.hasOwn(base, key)),
       ])
@@ -321,33 +379,60 @@ export const userConfigPath = (
 /** A file the plugin read: where it is, and its text. */
 export type ConfigFile = Readonly<{ path: string; text: string }>;
 
+/** The shipped defaults file: where it is, and its text, or none when it isn't there. */
+export type DefaultsFile = Readonly<{ path: string; text: string | undefined }>;
+
+/** Each line, naming the file at `path`. */
+const inFile = (path: string, lines: readonly string[]): readonly string[] =>
+  lines.map((line) => `${path}: ${line}`);
+
 /**
- * A file's value checked against the shape, a null section read as an empty
- * one, without the sections the plugin no longer reads, or what's wrong with
- * it: each problem, a section or setting left out among them, names the file.
+ * A file's value checked against `shape`, a null section read as an empty
+ * one, without the sections the plugin no longer reads, or what's wrong
+ * with it: each problem, a section or setting left out among them, names
+ * the file.
  */
 const checked = (
-  file: ConfigFile,
+  shape: Shape,
+  path: string,
+  parsed: Parsed,
   isSparse: boolean,
 ): Readonly<{
   value: Json | undefined;
   problems: readonly string[];
 }> => {
-  const parsed = parseYaml(file.text);
-  const read =
-    "value" in parsed ? nullSectionsEmptied(SETTINGS_SHAPE, parsed.value) : undefined;
+  const read = "value" in parsed ? nullSectionsEmptied(shape, parsed.value) : undefined;
   const value = read === undefined ? undefined : withoutRetired(read);
   const leftOut = read === undefined ? [] : retiredIn(read);
   const problems =
-    "error" in parsed
-      ? [parsed.error]
-      : problemsIn(SETTINGS_SHAPE, value ?? null, isSparse);
-  const inFile = (lines: readonly string[]) =>
-    lines.map((line) => `${file.path}: ${line}`);
+    "error" in parsed ? [parsed.error] : problemsIn(shape, value ?? null, isSparse);
 
   return problems.length === 0 && value !== undefined
-    ? { value, problems: inFile(leftOut) }
-    : { value: undefined, problems: inFile([...leftOut, ...problems]) };
+    ? { value, problems: inFile(path, leftOut) }
+    : { value: undefined, problems: inFile(path, [...leftOut, ...problems]) };
+};
+
+/**
+ * The shape the defaults file gives, with its value, or why it gives none:
+ * it isn't there, it can't be read, or its defaults give no shape, after
+ * the sections it holds that the plugin no longer reads.
+ */
+const givenBy = (
+  defaults: DefaultsFile,
+): Readonly<{ shape: Shape; value: Json } | { problems: readonly string[] }> => {
+  const parsed: Parsed =
+    defaults.text === undefined ? { error: "is missing" } : parseYaml(defaults.text);
+  const derived: Derived =
+    "value" in parsed ? shapeOf(withoutRetired(parsed.value)) : { problems: [parsed.error] };
+
+  return "value" in parsed && "shape" in derived
+    ? { shape: derived.shape, value: parsed.value }
+    : {
+        problems: [
+          ...("value" in parsed ? retiredIn(parsed.value) : []),
+          ...("problems" in derived ? derived.problems : []),
+        ],
+      };
 };
 
 const keyOf = ([key]: readonly [string, Json]): string => key;
@@ -355,7 +440,7 @@ const keyOf = ([key]: readonly [string, Json]): string => key;
 /** One line per setting in effect, with the file it came from. */
 const effectiveLines = (
   merged: Json,
-  defaults: ConfigFile,
+  defaults: DefaultsFile,
   user: Readonly<{ value: Json | undefined; path: string }> | undefined,
 ): readonly string[] => {
   const fromUser = new Set(
@@ -368,18 +453,34 @@ const effectiveLines = (
   );
 };
 
+/** Every setting the shape takes as a hotkey, by its path, in the shape's order. */
+const hotkeysOf = (
+  shape: Shape,
+  path: readonly string[] = [],
+): readonly (readonly string[])[] =>
+  shape === "key"
+    ? [path]
+    : typeof shape === "string"
+      ? []
+      : Object.entries(shape).flatMap(([key, inner]) => hotkeysOf(inner, [...path, key]));
+
 /**
  * The pane's keys bound to more than one of its buttons in `value`, one
- * line each, naming the settings: a hotkey two buttons share presses
- * neither, so it's refused as a wrong type is.
+ * line each, naming the settings, the ones `shape` takes as hotkeys: a
+ * hotkey two buttons share presses neither, so it's refused as a wrong
+ * type is.
  */
-export const clashesIn = (value: Json): readonly string[] => {
-  const keys = isMap(value) && isMap(value["keys"]) ? Object.entries(value["keys"]) : [];
+export const clashesIn = (shape: Shape, value: Json): readonly string[] => {
+  const keys = hotkeysOf(shape).flatMap((path): (readonly [string, Json])[] => {
+    const bound = at(value, path);
+
+    return bound === undefined ? [] : [[path.join("."), bound]];
+  });
 
   return [...new Set(keys.map(([, key]) => key))]
     .map((key) => ({
       key,
-      names: keys.filter(([, bound]) => bound === key).map(([name]) => `keys.${name}`),
+      names: keys.filter(([, bound]) => bound === key).map(([name]) => name),
     }))
     .filter(({ names }) => names.length > 1)
     .map(
@@ -389,27 +490,28 @@ export const clashesIn = (value: Json): readonly string[] => {
 };
 
 /**
- * The settings in effect: the user's file merged over the defaults file
- * when both are sound and bind no key twice, the defaults alone when the
- * user's isn't, and none when the defaults file isn't; each problem names
- * its file.
+ * The settings in effect, the defaults file's value given the shape it
+ * gives: the user's file merged over it when both are sound and bind no
+ * key twice, the defaults alone when the user's isn't, and none when the
+ * defaults file isn't. Each problem names its file.
  */
-export const loaded = (
-  defaults: ConfigFile,
+const loadedIn = (
+  shape: Shape,
+  defaultsValue: Json,
+  defaults: DefaultsFile,
   user: ConfigFile | undefined,
 ): Loaded => {
-  const base = checked(defaults, false);
-  const layer = user === undefined ? undefined : checked(user, true);
-  const baseClashes = base.value === undefined ? [] : clashesIn(base.value);
+  const base = checked(shape, defaults.path, { value: defaultsValue }, false);
+  const layer =
+    user === undefined ? undefined : checked(shape, user.path, parseYaml(user.text), true);
+  const baseClashes = base.value === undefined ? [] : clashesIn(shape, base.value);
   const sound = baseClashes.length === 0 ? base.value : undefined;
   const over =
     sound === undefined || layer?.value === undefined
       ? undefined
       : mergedOver(sound, layer.value);
-  const overClashes = over === undefined ? [] : clashesIn(over);
+  const overClashes = over === undefined ? [] : clashesIn(shape, over);
   const merged = over !== undefined && overClashes.length === 0 ? over : sound;
-  const inFile = (path: string, lines: readonly string[]) =>
-    lines.map((line) => `${path}: ${line}`);
 
   return {
     settings: merged === undefined ? null : (merged as Settings),
@@ -430,4 +532,21 @@ export const loaded = (
       ...inFile(user?.path ?? "", overClashes),
     ],
   };
+};
+
+/**
+ * The settings in effect. The defaults file holds every setting, so it
+ * gives the shape the user's file is checked against; when it isn't
+ * there, can't be read or gives no shape, no settings are in effect and
+ * the user's file isn't checked. Each problem names its file.
+ */
+export const loaded = (
+  defaults: DefaultsFile,
+  user: ConfigFile | undefined,
+): Loaded => {
+  const given = givenBy(defaults);
+
+  return "problems" in given
+    ? { settings: null, effective: [], problems: inFile(defaults.path, given.problems) }
+    : loadedIn(given.shape, given.value, defaults, user);
 };
