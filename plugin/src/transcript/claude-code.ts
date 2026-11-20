@@ -34,11 +34,13 @@
 import { itemsOf } from "../items/items.ts";
 import { PLUGIN, TOOL_CALLED } from "../protocol/instructions.ts";
 import { elements } from "./reports.ts";
+import { field, isObject, parsedJson } from "../json/fields.ts";
+import type { Fields } from "../json/fields.ts";
 import { SPEC } from "../protocol/spec.ts";
 import type { DecideItem, Message, Owner, Turn } from "../../types/index.d.ts";
 
 /** One record of the transcript, a JSON object; only what the plugin reads is looked at. */
-export type TranscriptRecord = Readonly<Record<string, unknown>>;
+export type TranscriptRecord = Fields;
 
 // Who wrote a prompt no plugin sent, by the record's `turnOrigin`.
 const ORIGIN_OWNERS: ReadonlyMap<unknown, Owner> = new Map([
@@ -74,17 +76,6 @@ const STILL_WAITING = "is waiting on its own background work";
 const MONITOR_ENDED = "[Monitor expired";
 const QUOTED = /"([^"]+)"/g;
 
-const isObject = (value: unknown): value is TranscriptRecord =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
-const parsed = (line: string): unknown => {
-  try {
-    return JSON.parse(line) as unknown;
-  } catch {
-    return undefined;
-  }
-};
-
 /**
  * The records of a transcript's text, in order: one JSON object a line. A
  * line that is no JSON object is skipped, such as the last one, cut short
@@ -92,13 +83,10 @@ const parsed = (line: string): unknown => {
  */
 export const recordsOf = (text: string): readonly TranscriptRecord[] =>
   text.split("\n").flatMap((line) => {
-    const value = line.trim() === "" ? undefined : parsed(line);
+    const value = line.trim() === "" ? undefined : parsedJson(line);
 
     return isObject(value) ? [value] : [];
   });
-
-const field = (value: unknown, key: string): unknown =>
-  isObject(value) ? value[key] : undefined;
 
 /** A message's text: the string it is, or its text blocks joined by newlines. */
 const textOf = (content: unknown): string =>

@@ -3,14 +3,9 @@
 // the draft, calls these, and writes what they return.
 
 import { refOf } from "./items.ts";
-import {
-  DECIDE,
-  LETTER,
-  REASSESS,
-  TURN_ID_PREFIX,
-  escaped,
-} from "../protocol/rules.ts";
+import { DECIDE, LETTER, REASSESS, TURN_ID_PREFIX } from "../protocol/rules.ts";
 import { SPEC } from "../protocol/spec.ts";
+import { escaped } from "../text/patterns.ts";
 import { isReassessLine } from "../transcript/turns.ts";
 import type { DecideItem } from "../../types/index.d.ts";
 

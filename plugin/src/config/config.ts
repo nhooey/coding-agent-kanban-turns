@@ -15,6 +15,7 @@
 
 import { parseAllDocuments } from "../../vendor/yaml/yaml.js";
 import type { ParsedDocument } from "../../vendor/yaml/yaml.js";
+import { isObject } from "../json/fields.ts";
 import type { Json, Loaded, Settings } from "../../types/index.d.ts";
 
 /**
@@ -182,7 +183,7 @@ export const parseYaml = (yaml: string): Parsed => {
 };
 
 const isMap = (value: Json | undefined): value is { readonly [key: string]: Json } =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
+  isObject(value);
 
 const named = (path: readonly string[]): string => path.join(".") || "the file";
 

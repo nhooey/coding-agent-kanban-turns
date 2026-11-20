@@ -8,9 +8,9 @@ import {
   LETTER,
   TURN_ID_CHAR,
   TURN_ID_PREFIX,
-  escaped,
 } from "../protocol/rules.ts";
 import { SPEC } from "../protocol/spec.ts";
+import { escaped } from "../text/patterns.ts";
 
 /**
  * One answer a line of the user's gives: the item's number, and its turn, by
