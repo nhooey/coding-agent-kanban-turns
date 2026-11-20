@@ -19,9 +19,10 @@ export const SETTINGS_SHAPE: Shape = {
   counts: { turns: "number", "gh-timeout-ms": "number" },
   keys: { dismiss: "string" },
   notes: { rows: "number" },
+  marks: { sent: "string" },
   colors: {
     border: "string",
-    title: "string",
+    "title-label": "string",
     "title-background": "string",
     code: "string",
     hover: "string",
@@ -36,6 +37,8 @@ export const SETTINGS_SHAPE: Shape = {
 export const RETIRED: Readonly<Record<string, string>> = {
   outstanding:
     "the plugin reads the transcript itself; counts.turns sets how many turns the count line reads",
+  "colors.title":
+    "an item's title is now a label on a background, then the summary in plain text; colors.title-label and colors.title-background colour the label",
   "colors.expand":
     "the ↗ beside the count line is gone; colors.kanban colours the 🖥️ Kanban button that opens the pane",
 };

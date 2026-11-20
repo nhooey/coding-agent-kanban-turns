@@ -6,12 +6,13 @@
 
 import { isAnswered } from "./answers.ts";
 import { refOf } from "./items.ts";
-import type { DecideItem, Raised } from "../types/index.d.ts";
+import type { DecideItem, Raised, Settlement } from "../types/index.d.ts";
 
 export const emptyRaised: Raised = {
   session: "",
   items: [],
   settledRefs: [],
+  settlements: [],
   seenRefs: [],
   problem: "",
   warnings: [],
@@ -34,24 +35,36 @@ export const withItems = (
   items: readonly DecideItem[],
 ): Raised => ({ ...raised, items: byRef([...raised.items, ...items]) });
 
-/** The items once a refresh read the transcript and found `open`: those merged in, and every raised item not among them settled. */
+/** The items once a refresh read the transcript and found `open`: those merged in, and every raised item not among them settled, as `settlements` say how. */
 export const refreshed = (
   raised: Raised,
   open: readonly DecideItem[],
+  settlements: readonly Settlement[],
   warnings: readonly string[],
 ): Raised => {
   const merged = withItems(raised, open);
   const openRefs = open.map(refOf);
+  const settledRefs = merged.items
+    .map(refOf)
+    .filter((ref) => !openRefs.includes(ref));
 
   return {
     ...merged,
-    settledRefs: merged.items
-      .map(refOf)
-      .filter((ref) => !openRefs.includes(ref)),
+    settledRefs,
+    settlements: settlements.filter((settled) =>
+      settledRefs.includes(settled.ref),
+    ),
     problem: "",
     warnings,
   };
 };
+
+/** How the item settled, as the last refresh found; undefined when it's open, or settled in a way the transcript doesn't say. */
+export const settlementOf = (
+  raised: Raised,
+  item: DecideItem,
+): Settlement | undefined =>
+  raised.settlements.findLast((settled) => settled.ref === refOf(item));
 
 /** The items once a refresh couldn't read the transcript, for `problem`: each raised item settled or open as it was. */
 export const unread = (

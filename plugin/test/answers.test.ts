@@ -3,9 +3,15 @@ import { expect } from "expect";
 
 import {
   choose,
+  REASSESS_LINE,
+  draftHeader,
+  hasReassess,
+  headed,
   isAnswered,
   lettersFor,
   noteFor,
+  reassessKept,
+  toggledReassess,
   withNote,
 } from "../src/answers.ts";
 import { itemsOf } from "../src/items.ts";
@@ -112,6 +118,88 @@ describe("building and replacing references in the draft", () => {
   test("the letters a draft picks are read back", () => {
     expect(lettersFor("9efb08a1.Decide.2.A,C", checkbox)).toEqual(["A", "C"]);
     expect(lettersFor("nothing here", checkbox)).toEqual([]);
+  });
+});
+
+describe("the line naming the plugin", () => {
+  const header = draftHeader("coding-agent-kanban-turns@nix-pinned");
+  const click = (draft: string, item: DecideItem, letter: string) =>
+    headed(draft, header, (body) => choose(body, item, letter));
+
+  test("is the plugin's id and a colon", () => {
+    expect(header).toBe("coding-agent-kanban-turns@nix-pinned:");
+    expect(draftHeader("coding-agent-kanban-turns")).toBe("coding-agent-kanban-turns:");
+  });
+
+  test("opens a draft a click starts in an empty box", () => {
+    expect(click("", radio, "A")).toBe(
+      "coding-agent-kanban-turns@nix-pinned:\n9efb08a1.Decide.1.A\n",
+    );
+  });
+
+  test("stays first, once, as later clicks and notes write", () => {
+    const first = click("", radio, "A");
+    const second = click(first, checkbox, "C");
+    expect(second).toBe(
+      "coding-agent-kanban-turns@nix-pinned:\n9efb08a1.Decide.1.A\n9efb08a1.Decide.2.C\n",
+    );
+    expect(headed(second, header, (body) => withNote(body, radio, "only the loader"))).toBe(
+      "coding-agent-kanban-turns@nix-pinned:\n9efb08a1.Decide.2.C\n9efb08a1.Decide.1.A: only the loader\n",
+    );
+  });
+
+  test("goes when the last answer is unpicked, leaving the box empty", () => {
+    const one = click("", radio, "A");
+    expect(click(one, radio, "A")).toBe("");
+    const two = click(click(one, checkbox, "C"), radio, "A");
+    expect(click(two, checkbox, "C")).toBe("");
+  });
+
+  test("keeps what the person wrote after it", () => {
+    const typed = `${click("", radio, "A")}and ship it\n`;
+    expect(click(typed, radio, "A")).toBe(
+      "coding-agent-kanban-turns@nix-pinned:\nand ship it\n",
+    );
+  });
+
+  test("is not added to a draft the person began", () => {
+    expect(click("go on\n", radio, "B")).toBe("go on\n9efb08a1.Decide.1.B\n");
+    expect(click("go on\n9efb08a1.Decide.1.B\n", radio, "B")).toBe("go on\n");
+  });
+});
+
+describe("the Reassess line", () => {
+  const header = draftHeader("coding-agent-kanban-turns");
+  const press = (draft: string) => headed(draft, header, toggledReassess);
+  const click = (draft: string, item: DecideItem, letter: string) =>
+    headed(draft, header, (body) => reassessKept(body, (kept) => choose(kept, item, letter)));
+
+  test("is added as the draft's last line, under the line naming the plugin, and taken out by a second press", () => {
+    expect(press("")).toBe("coding-agent-kanban-turns:\nreassess\n");
+    expect(press(press(""))).toBe("");
+    const picked = click("", radio, "A");
+    expect(press(picked)).toBe("coding-agent-kanban-turns:\n9efb08a1.Decide.1.A\nreassess\n");
+    expect(press(press(picked))).toBe(picked);
+  });
+
+  test("stays last as later clicks and notes write their answers", () => {
+    const pressed = press(click("", radio, "A"));
+    expect(click(pressed, checkbox, "C")).toBe(
+      "coding-agent-kanban-turns:\n9efb08a1.Decide.1.A\n9efb08a1.Decide.2.C\nreassess\n",
+    );
+    expect(
+      headed(pressed, header, (body) => reassessKept(body, (kept) => withNote(kept, radio, "soon"))),
+    ).toBe("coding-agent-kanban-turns:\n9efb08a1.Decide.1.A: soon\nreassess\n");
+    expect(click(pressed, radio, "A")).toBe("coding-agent-kanban-turns:\nreassess\n");
+  });
+
+  test("is found by any of its names, once, alone on the last line", () => {
+    expect(hasReassess("9efb08a1.Decide.1.A\nRecheck.\n")).toBe(true);
+    expect(hasReassess("reassess")).toBe(true);
+    expect(hasReassess("reassess\n9efb08a1.Decide.1.A\n")).toBe(false);
+    expect(hasReassess("please reassess\n")).toBe(false);
+    expect(hasReassess("")).toBe(false);
+    expect(REASSESS_LINE).toBe("reassess");
   });
 });
 

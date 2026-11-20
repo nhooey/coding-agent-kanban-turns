@@ -64,9 +64,9 @@ describe("the user's file over the defaults", () => {
     expect(got.problems).toEqual([]);
     expect(got.settings?.keys).toEqual({ dismiss: "x" });
     expect(got.settings?.colors.kanban).toBe("red");
-    expect(got.settings?.colors.title).toBe("inverseText");
+    expect(got.settings?.colors["title-label"]).toBe("inverseText");
     expect(got.effective).toContain('keys.dismiss = "x"  # user: ~/.config/x/config.jsonc');
-    expect(got.effective).toContain('colors.title = "inverseText"  # defaults: defaults/config.jsonc');
+    expect(got.effective).toContain('colors.title-label = "inverseText"  # defaults: defaults/config.jsonc');
   });
 
   test("an unknown key refuses the file, which leaves the defaults in effect", () => {
@@ -89,7 +89,7 @@ describe("the user's file over the defaults", () => {
     const got = loaded(defaults, user('{"colors": {"hover": "claude"}}'));
     expect(got.problems).toEqual([]);
     expect(got.settings?.colors.hover).toBe("claude");
-    expect(got.settings?.colors.title).toBe("inverseText");
+    expect(got.settings?.colors["title-label"]).toBe("inverseText");
     expect(loaded(defaults, user('{"colors": {"hover": 3}}')).problems).toEqual([
       "~/.config/x/config.jsonc: colors.hover is number, not a string",
     ]);
@@ -109,17 +109,27 @@ describe("the user's file over the defaults", () => {
   });
 
   test("a setting the plugin no longer reads is left out with a warning, its section's other keys used", () => {
-    const got = loaded(defaults, user('{"colors": {"expand": "red", "title": "warning"}}'));
-    expect(got.settings?.colors.title).toBe("warning");
+    const got = loaded(defaults, user('{"colors": {"expand": "red", "border": "warning"}}'));
+    expect(got.settings?.colors.border).toBe("warning");
     expect(got.settings?.colors).not.toHaveProperty("expand");
     expect(got.problems).toEqual([
       "~/.config/x/config.jsonc: colors.expand is no longer read and is left out: the ↗ beside the count line is gone; colors.kanban colours the 🖥️ Kanban button that opens the pane",
     ]);
   });
 
+  test("an old colors.title is left out with a warning, so it never colours the label as its own background", () => {
+    const got = loaded(defaults, user('{"colors": {"title": "claude"}}'));
+    expect(got.settings?.colors).not.toHaveProperty("title");
+    expect(got.settings?.colors["title-label"]).toBe("inverseText");
+    expect(got.settings?.colors["title-background"]).toBe("claude");
+    expect(got.problems).toEqual([
+      "~/.config/x/config.jsonc: colors.title is no longer read and is left out: an item's title is now a label on a background, then the summary in plain text; colors.title-label and colors.title-background colour the label",
+    ]);
+  });
+
   test("the title label's, the settled bar's, the close button's and the Kanban button's colours are settings", () => {
     expect(loaded(defaults, undefined).settings?.colors).toMatchObject({
-      title: "inverseText",
+      "title-label": "inverseText",
       "title-background": "claude",
       settled: "ide",
       close: "error",
@@ -166,12 +176,12 @@ describe("the user's file over the defaults", () => {
 
 describe("the pieces", () => {
   test("a retired setting goes and its section stays; a file without it is unchanged", () => {
-    expect(withoutRetired({ colors: { expand: "x", title: "y" }, outstanding: {}, keys: {} })).toEqual({
-      colors: { title: "y" },
+    expect(withoutRetired({ colors: { expand: "x", border: "y" }, outstanding: {}, keys: {} })).toEqual({
+      colors: { border: "y" },
       keys: {},
     });
     expect(withoutRetired({ colors: "x" })).toEqual({ colors: "x" });
-    expect(retiredIn({ colors: { title: "y" } })).toEqual([]);
+    expect(retiredIn({ colors: { border: "y" } })).toEqual([]);
     expect(retiredIn(null)).toEqual([]);
   });
 

@@ -1,9 +1,10 @@
 // What the hooks draw, worked out apart from drawing it: the text of the
-// commands, the tool's result and an item's title, and whether the tool's
-// row is plain enough to be drawn as nothing, the buttons going under the
-// reply instead.
+// commands, the tool's result and an item's title, what Submit does with
+// the draft, how an item's notes are drawn, and whether the tool's row is
+// plain enough to be drawn as nothing, the buttons going under the reply
+// instead.
 
-import type { DecideItem, Raised } from "../types/index.d.ts";
+import type { DecideItem, Raised, Settlement } from "../types/index.d.ts";
 import { refOf } from "./items.ts";
 import { problemsOf, stillOpen } from "./raised.ts";
 
@@ -35,9 +36,61 @@ export const drewText = (items: readonly DecideItem[]): string =>
     .map(refOf)
     .join(", ")}.`;
 
-/** The text the pane's Submit sends from the prompt box: the draft as it is, or none when it holds nothing but blanks. */
-export const submittedText = (draft: string): string | undefined =>
-  draft.trim() === "" ? undefined : draft;
+/** What the pane says when Submit finds `@` mentions or pasted images, which a plugin's prompt sends unexpanded. */
+export const MENTIONS_TEXT =
+  "Not sent: press Enter in the prompt to send mentions or images.";
+
+/** What the pane says when the prompt box couldn't be emptied, so Submit sent nothing. */
+export const NOT_EMPTIED_TEXT =
+  "Not sent: the prompt box couldn't be emptied, so the draft is still there.";
+
+/** What the pane says when the engine didn't take the prompt Submit sent, the draft put back. */
+export const notSentText = (why: string): string =>
+  `Not sent, the draft put back in the prompt box: ${why}`;
+
+// An `@` mention, `@path` after a blank or at the start, and a pasted
+// image's placeholder in the box, `[Image #1]`.
+const MENTION = /(?:^|\s)@[^\s@]/;
+const IMAGE = /\[Image #\d+\]/;
+
+/** Whether a draft holds an `@` mention or a pasted image, which Claude Code expands only for a prompt sent with Enter. */
+export const hasMentionOrImage = (draft: string): boolean =>
+  MENTION.test(draft) || IMAGE.test(draft);
+
+/** What a press of the pane's Submit does with the box's text. */
+export type SubmitStep = Readonly<
+  { skip: true } | { refuse: string } | { send: string }
+>;
+
+/**
+ * What a press of the pane's Submit does: nothing while a turn runs or
+ * another Submit is under way, or for a box of blanks; refuses a draft with
+ * a mention or an image; else sends the draft as it is.
+ */
+export const submitStep = (draft: string, isBusy: boolean): SubmitStep =>
+  isBusy || draft.trim() === ""
+    ? { skip: true }
+    : hasMentionOrImage(draft)
+      ? { refuse: MENTIONS_TEXT }
+      : { send: draft };
+
+/** The key of an item's notes field in the pane. */
+export const notesKey = (item: DecideItem): string => `${refOf(item)}.notes`;
+
+/** How an item's notes are drawn: none once settled, a button under a reply, else the field, which takes the focus when `✏️ Add a note` asked for it. */
+export type NotesMode = "none" | "button" | "field" | "focused";
+
+/** How an item's notes are drawn, by whether it's settled, whether the pane draws it, and whether its `✏️ Add a note` opened the pane. */
+export const notesMode = (
+  at: Readonly<{ isSettled: boolean; isPane: boolean; isNoting: boolean }>,
+): NotesMode =>
+  at.isSettled
+    ? "none"
+    : !at.isPane
+      ? "button"
+      : at.isNoting
+        ? "focused"
+        : "field";
 
 /** How many lines tall the notes field is drawn: the setting, a whole number of at least 1. */
 export const noteRows = (rows: number): number =>
@@ -71,6 +124,29 @@ export const itemTitle = (
   label: ` 🧠 Decide.${item.number} `,
   summary: `${item.summary}${isSettled ? " (settled)" : ""}`,
 });
+
+/**
+ * The line under a settled item's title saying what settled it: the answer,
+ * `Answered in <turn>: <letters>`, its note after ` · ` or in place of the
+ * letters; else `Settled: reassessed`, `Settled: asked again`, or
+ * `Settled` where the transcript doesn't say.
+ */
+export const settledText = (settlement: Settlement | undefined): string =>
+  settlement === undefined
+    ? "Settled"
+    : settlement.how === "answered"
+      ? `Answered in ${settlement.turn}: ${[settlement.letters.join(","), settlement.note]
+          .filter((part) => part !== "")
+          .join(" · ")}`
+      : settlement.how === "reassessed"
+        ? "Settled: reassessed"
+        : "Settled: asked again";
+
+/** The letters the answer that settled an item picked; none when something else settled it. */
+export const sentLetters = (
+  settlement: Settlement | undefined,
+): readonly string[] =>
+  settlement?.how === "answered" ? settlement.letters : [];
 
 /** What the engine says of a tool row or its result line. */
 export type ToolRow = Readonly<{

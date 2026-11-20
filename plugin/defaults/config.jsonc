@@ -14,8 +14,9 @@
 // value of the wrong type, refuses your whole file: the plugin uses these
 // defaults and says why in the pane and in /answers-config, which lists
 // every setting in effect and the file it came from. An `outstanding`
-// section or a `colors.expand` setting, which the plugin no longer reads,
-// is left out with a warning instead, and the rest of your file is used.
+// section, or a `colors.title` or `colors.expand` setting, which the
+// plugin no longer reads, is left out with a warning instead, and the rest
+// of your file is used.
 {
   // The count line above the prompt, such as `📌 Outstanding: 🚧 2 · 🧠 3`,
   // which the plugin works out from this session's transcript.
@@ -47,6 +48,14 @@
     "rows": 3
   },
 
+  // The marks an option is drawn with, beside its letter.
+  "marks": {
+    // A settled item's options that the answer which settled it picked,
+    // drawn at full strength in the dimmed item, with no underline: the
+    // draft's own picks keep ✅ underlined.
+    "sent": "☑️"
+  },
+
   // The colours each part is drawn in, by the name of a colour in Claude
   // Code's theme, so each keeps its contrast in light and dark themes.
   "colors": {
@@ -54,7 +63,7 @@
     "border": "promptBorder",
     // The label that opens an item's title line, `🧠 Decide.1`, drawn bold
     // on title-background; the summary after it is plain text.
-    "title": "inverseText",
+    "title-label": "inverseText",
     // The background of that label, while the item is open; a settled
     // item's label is dimmed, on no background.
     "title-background": "claude",

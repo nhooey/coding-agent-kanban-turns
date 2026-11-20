@@ -3,6 +3,7 @@
 // the draft, calls these, and writes what they return.
 
 import { refOf } from "./items.ts";
+import { isReassessLine } from "./transcript.ts";
 import type { DecideItem } from "../types/index.d.ts";
 
 /**
@@ -165,6 +166,79 @@ export const withNote = (
     : held === undefined || letters.length === 0
       ? rest
       : replaced(draft, held, text);
+};
+
+/** The line that opens a draft the plugin's clicks start: the plugin's id, `<name>@<marketplace>` or its name, and a colon. */
+export const draftHeader = (id: string): string => `${id}:`;
+
+/**
+ * The draft once a click or a note changes its answers by `edit`, the
+ * header line kept first. A draft the click starts, from an empty box,
+ * opens with the header; one that already does keeps it, once; one the
+ * person began without it stays without it. A draft left with no answers
+ * and nothing else loses the header too, leaving the box empty.
+ */
+export const headed = (
+  draft: string,
+  header: string,
+  edit: (body: string) => string,
+): string => {
+  const body = draft.startsWith(`${header}\n`)
+    ? draft.slice(header.length + 1)
+    : draft === header
+      ? ""
+      : draft;
+  const hasHeader = body !== draft;
+  const edited = edit(body);
+
+  return edited.trim() === ""
+    ? hasHeader
+      ? ""
+      : edited
+    : hasHeader || body.trim() === ""
+      ? `${header}\n${edited}`
+      : edited;
+};
+
+/** The line the Reassess button adds at the draft's end. */
+export const REASSESS_LINE = "reassess";
+
+/** The draft parted into what comes before a last line naming `reassess`, and that line; undefined when its last line names none. */
+const reassessSplit = (
+  draft: string,
+): Readonly<{ body: string; last: string }> | undefined => {
+  const lines = draft.replace(/\s+$/, "").split("\n");
+  const last = lines.at(-1) ?? "";
+
+  return last.trim() !== "" && isReassessLine(last)
+    ? {
+        body: lines.length > 1 ? `${lines.slice(0, -1).join("\n")}\n` : "",
+        last: last.trim(),
+      }
+    : undefined;
+};
+
+/** Whether the draft's last line is only a word naming `reassess`, so sending it reassesses after its answers. */
+export const hasReassess = (draft: string): boolean =>
+  reassessSplit(draft) !== undefined;
+
+/** The draft once the Reassess button is pressed: a `reassess` line added at its end, or the one there taken out. */
+export const toggledReassess = (draft: string): string => {
+  const split = reassessSplit(draft);
+
+  return split === undefined ? appended(draft, REASSESS_LINE) : split.body;
+};
+
+/** The draft once `edit` changes its answers, a last line naming `reassess` kept last. */
+export const reassessKept = (
+  draft: string,
+  edit: (body: string) => string,
+): string => {
+  const split = reassessSplit(draft);
+
+  return split === undefined
+    ? edit(draft)
+    : appended(edit(split.body), split.last);
 };
 
 /**

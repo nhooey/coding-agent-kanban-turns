@@ -1,20 +1,28 @@
 // What the hooks draw: the commands' and the tool's text, an item's title,
-// and when the tool's row draws nothing.
+// what Submit does with the draft, an item's notes, and when the tool's row
+// draws nothing.
 
 import { describe, test } from "node:test";
 import { expect } from "expect";
 
 import { emptyRaised } from "../src/raised.ts";
 import {
+  MENTIONS_TEXT,
   answersText,
   configText,
   drewText,
   gutterStyle,
+  hasMentionOrImage,
   isPlainToolRow,
   itemTitle,
   noItemsText,
   noteRows,
-  submittedText,
+  notSentText,
+  notesKey,
+  notesMode,
+  sentLetters,
+  settledText,
+  submitStep,
 } from "../src/view.ts";
 import type { DecideItem, Raised } from "../types/index.d.ts";
 
@@ -100,6 +108,26 @@ describe("an item's title", () => {
   });
 });
 
+describe("what settled an item", () => {
+  test("is the answer: the turn it was sent in, its letters, then its note", () => {
+    const answered = { ref: "9efb08a1.Decide.1", how: "answered", turn: "4a2206b0", note: "" } as const;
+    expect(settledText({ ...answered, letters: ["Y"] })).toBe("Answered in 4a2206b0: Y");
+    expect(settledText({ ...answered, letters: ["A", "C"], note: "the loader" })).toBe(
+      "Answered in 4a2206b0: A,C · the loader",
+    );
+    expect(settledText({ ...answered, letters: [], note: "not yet" })).toBe("Answered in 4a2206b0: not yet");
+    expect(sentLetters({ ...answered, letters: ["A", "C"] })).toEqual(["A", "C"]);
+  });
+
+  test("says so when a reassess, an item asked again, or nothing the transcript says settled it", () => {
+    expect(settledText({ ref: "r", how: "reassessed" })).toBe("Settled: reassessed");
+    expect(settledText({ ref: "r", how: "restated" })).toBe("Settled: asked again");
+    expect(settledText(undefined)).toBe("Settled");
+    expect(sentLetters({ ref: "r", how: "reassessed" })).toEqual([]);
+    expect(sentLetters(undefined)).toEqual([]);
+  });
+});
+
 describe("a plain tool row", () => {
   const plain = { isExpanded: false, isErrored: false, isInterrupted: false, itemCount: 2 };
 
@@ -123,12 +151,67 @@ describe("a plain tool row", () => {
 
 describe("the pane's Submit", () => {
   test("sends the draft as it is", () => {
-    expect(submittedText("9efb08a1.Decide.1.A\n")).toBe("9efb08a1.Decide.1.A\n");
+    expect(submitStep("9efb08a1.Decide.1.A\n", false)).toEqual({
+      send: "9efb08a1.Decide.1.A\n",
+    });
   });
 
-  test("sends nothing for an empty or blank draft", () => {
-    expect(submittedText("")).toBeUndefined();
-    expect(submittedText("  \n\t")).toBeUndefined();
+  test("does nothing for an empty or blank draft", () => {
+    expect(submitStep("", false)).toEqual({ skip: true });
+    expect(submitStep("  \n\t", false)).toEqual({ skip: true });
+  });
+
+  test("does nothing while a turn runs or another Submit is under way", () => {
+    expect(submitStep("9efb08a1.Decide.1.A\n", true)).toEqual({ skip: true });
+  });
+
+  test("keeps a draft with a mention or an image in the box, saying to press Enter", () => {
+    expect(submitStep("9efb08a1.Decide.1: see @src/a.ts", false)).toEqual({
+      refuse: MENTIONS_TEXT,
+    });
+    expect(submitStep("Decide.1: like [Image #1]", false)).toEqual({
+      refuse: MENTIONS_TEXT,
+    });
+    expect(MENTIONS_TEXT).toContain("press Enter in the prompt to send mentions or images");
+  });
+
+  test("says why the engine didn't take the prompt", () => {
+    expect(notSentText("a hook refused it")).toBe(
+      "Not sent, the draft put back in the prompt box: a hook refused it",
+    );
+  });
+});
+
+describe("a mention or an image in a draft", () => {
+  test("is an @ path at the start or after a blank, or an image's placeholder", () => {
+    expect(hasMentionOrImage("@README.md")).toBe(true);
+    expect(hasMentionOrImage("Decide.1: read\n@plugin/src/view.ts")).toBe(true);
+    expect(hasMentionOrImage("[Image #12] here")).toBe(true);
+  });
+
+  test("is not an address, a bare @ or plain text", () => {
+    expect(hasMentionOrImage("Decide.1: mail me@example.com")).toBe(false);
+    expect(hasMentionOrImage("Decide.1: the @ sign")).toBe(false);
+    expect(hasMentionOrImage("9efb08a1.Decide.1.A\n")).toBe(false);
+  });
+});
+
+describe("an item's notes", () => {
+  test("are keyed by the item's reference", () => {
+    expect(notesKey(radio)).toBe("9efb08a1.Decide.1.notes");
+  });
+
+  test("are none once settled, a button under a reply, else the field", () => {
+    const at = { isSettled: false, isPane: true, isNoting: false };
+    expect(notesMode({ ...at, isSettled: true })).toBe("none");
+    expect(notesMode({ ...at, isSettled: true, isPane: false })).toBe("none");
+    expect(notesMode({ ...at, isPane: false })).toBe("button");
+    expect(notesMode({ ...at, isPane: false, isNoting: true })).toBe("button");
+    expect(notesMode(at)).toBe("field");
+  });
+
+  test("take the focus in the pane when their Add a note opened it", () => {
+    expect(notesMode({ isSettled: false, isPane: true, isNoting: true })).toBe("focused");
   });
 });
 

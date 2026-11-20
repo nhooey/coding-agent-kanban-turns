@@ -12,6 +12,7 @@ import {
   problemsOf,
   refreshed,
   seen,
+  settlementOf,
   stillOpen,
   unread,
   unseen,
@@ -95,7 +96,7 @@ describe("merging items in", () => {
 
 describe("a refresh", () => {
   test("merges in the open items and settles every raised item not among them", () => {
-    const after = refreshed(raised, [checkbox, binary], []);
+    const after = refreshed(raised, [checkbox, binary], [], []);
     expect(refs(after)).toEqual([
       "9efb08a1.Decide.1",
       "9efb08a1.Decide.2",
@@ -107,18 +108,33 @@ describe("a refresh", () => {
   });
 
   test("an item open again is no longer settled", () => {
-    const settled = refreshed(raised, [checkbox], []);
-    expect(refreshed(settled, [radio, checkbox], []).settledRefs).toEqual([]);
+    const settled = refreshed(raised, [checkbox], [], []);
+    expect(refreshed(settled, [radio, checkbox], [], []).settledRefs).toEqual([]);
   });
 
   test("keeps the settings' warnings, and clears an earlier read's problem", () => {
-    const after = refreshed(unread(raised, "no file", []), [checkbox], ["bad key"]);
+    const after = refreshed(unread(raised, "no file", []), [checkbox], [], ["bad key"]);
     expect(after.warnings).toEqual(["bad key"]);
     expect(after.problem).toBe("");
   });
 
+  test("keeps how each item it settled settled, and none for an open one", () => {
+    const answered = {
+      ref: "9efb08a1.Decide.1",
+      how: "answered",
+      turn: "b2c3d4e5",
+      letters: ["B"],
+      note: "only the loader",
+    } as const;
+    const restated = { ref: "9efb08a1.Decide.2", how: "restated" } as const;
+    const after = refreshed(raised, [checkbox], [answered, restated], []);
+    expect(after.settlements).toEqual([answered]);
+    expect(settlementOf(after, radio)).toEqual(answered);
+    expect(settlementOf(after, checkbox)).toBeUndefined();
+  });
+
   test("that couldn't read the transcript settles nothing and reopens nothing", () => {
-    const before = refreshed(raised, [checkbox], []);
+    const before = refreshed(raised, [checkbox], [], []);
     const after = unread(before, "Error: no file", ["bad key"]);
     expect(after.items).toEqual(before.items);
     expect(after.settledRefs).toEqual(before.settledRefs);
@@ -130,11 +146,11 @@ describe("a refresh", () => {
     expect(problemsOf(unread(raised, "Error: no file", ["bad key", "worse key"]))).toBe(
       "bad key; worse key; Error: no file",
     );
-    expect(problemsOf(refreshed(raised, [], []))).toBe("");
+    expect(problemsOf(refreshed(raised, [], [], []))).toBe("");
   });
 
   test("the items still open are the raised ones not settled, in order", () => {
-    expect(stillOpen(refreshed(raised, [checkbox, binary], []))).toEqual([
+    expect(stillOpen(refreshed(raised, [checkbox, binary], [], []))).toEqual([
       checkbox,
       binary,
     ]);
@@ -143,7 +159,7 @@ describe("a refresh", () => {
 
 describe("announcing new items", () => {
   test("open items not yet seen are unseen, settled ones never", () => {
-    const after = refreshed(raised, [checkbox], []);
+    const after = refreshed(raised, [checkbox], [], []);
     expect(unseen(after)).toEqual([checkbox]);
   });
 
@@ -160,7 +176,7 @@ describe("where /answers scrolls", () => {
   });
 
   test("to none when the draft answers every open item", () => {
-    const after = refreshed(raised, [checkbox], []);
+    const after = refreshed(raised, [checkbox], [], []);
     expect(firstUnanswered(after, "9efb08a1.Decide.2.A")).toBeUndefined();
   });
 });
