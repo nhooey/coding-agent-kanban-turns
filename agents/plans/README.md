@@ -9,7 +9,7 @@
 
 ## Ready (8)
 
-- [Kanban items stay in the reply, with the Decide buttons under it and in the pane](kanban-answers-in-transcript/open/kanban-answers-in-transcript.md) `kanban-answers-in-transcript`, part of [The kanban turns plugin lives in its own repository, in TypeScript only, beside the kanban skill](kanban-answers-in-transcript/closed/kanban-mod-own-repository.md)
+- [Kanban items stay in the reply, with the Decide buttons under it and in the pane](kanban-answers-in-transcript/open/kanban-answers-in-transcript.md) `kanban-answers-in-transcript`, part of [The plugin is the only source of the kanban turn-response protocol, and a skill derived from it builds deterministically](plugin-sole-source/open/plugin-sole-source.md)
 - [Each item that blocks other work names the items it frees, by reference](kanban-next-chunk/open/kanban-items-name-what-they-free.md) `kanban-items-name-what-they-free`, part of [next-chunk shows the open items that free the most work, a chunk at a time, until none are open](kanban-next-chunk/open/kanban-next-chunk.md)
 - [The pane and the boxes under replies hold every list's items, grouped by turn, list and state, filtered, and answered in grouped references](pane-every-list/open/pane-every-list.md) `pane-every-list`
 - [The core works on harness-neutral turns, and a Claude Code JSONL adapter produces them](plugin-sole-source/open/neutral-turn-stream.md) `neutral-turn-stream`, part of [The plugin is the only source of the kanban turn-response protocol, and a skill derived from it builds deterministically](plugin-sole-source/open/plugin-sole-source.md)
