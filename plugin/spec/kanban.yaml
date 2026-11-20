@@ -13,6 +13,19 @@
 #   glyph: what its header opens with, and what the count line counts it by;
 #   aliases: the names older replies in a transcript still carry;
 #   rolls-up: whether its items roll up under 📌 until something settles them;
+#   settled-by: what settles an item of it, besides a later `reassess` turn,
+#     which settles every list's; it decides which items the 📌 roll-up and
+#     the count line still carry, and is apart from settling-words, which a
+#     prompt writes after an item's reference:
+#     answer: the user's answer to its latest restatement, by an option
+#       letter or in words; only Decide's items take an answer;
+#     merged-pull-request: every pull request it names with its repository,
+#       as a GitHub URL or `owner/repo#N`, having merged; a bare `#N` is
+#       never looked up, so an item naming only that never settles;
+#     report: a report naming it, in a turn after the last that printed it
+#       in its own list;
+#     none: nothing; a list that doesn't roll up is settled by none, since
+#       none of its items stays open to settle;
 #   settling-words: each word that, after an item's reference, settles it,
 #     with what it does; a word settles every list it's on the same way.
 lists:
@@ -21,54 +34,63 @@ lists:
     glyph: ✅
     aliases: []
     rolls-up: false
+    settled-by: none
     settling-words: {}
   pending:
     header: Pending
     glyph: 🚧
     aliases: [Unfinished, Open]
     rolls-up: true
+    settled-by: none
     settling-words: {}
   logged:
     header: Logged
     glyph: 📝
     aliases: []
     rolls-up: false
+    settled-by: none
     settling-words: {}
   waiting:
     header: Waiting
     glyph: ⏳
     aliases: []
     rolls-up: true
+    settled-by: report
     settling-words: {}
   answers:
     header: Answers
     glyph: ❓
     aliases: [Questions]
     rolls-up: false
+    settled-by: none
     settling-words: {}
   authorizations:
     header: Authorizations
     glyph: 🔑
     aliases: []
     rolls-up: true
+    settled-by: none
     settling-words: {}
   review:
     header: Review
     glyph: 🔍
     aliases: [To review]
     rolls-up: true
+    settled-by: merged-pull-request
     settling-words: {}
   todo:
     header: Todo
     glyph: 👉
     aliases: [To do]
     rolls-up: true
+    settled-by: none
     settling-words: {}
   decide:
     header: Decide
     glyph: 🧠
     aliases: [Decisions, Blocked]
     rolls-up: true
+    settled-by: answer
     settling-words: {}
 
 # A Decide item's options.

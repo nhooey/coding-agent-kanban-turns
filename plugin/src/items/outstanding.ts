@@ -4,19 +4,18 @@
 // raised. No `$`, no I/O, and nothing of where the turns came from: the hooks
 // build the turns, ask GitHub which pull requests merged, and hand both here.
 //
-// What settles an item is a rule this plugin shares with the skill:
+// What settles an item is a rule this plugin shares with the skill, stated
+// once, in spec/kanban.yaml: each list's `settled-by` names its way, the
+// comment there says what each way does, and SETTLERS below holds each
+// way's code. What the code adds to the rule:
 //
-// - Review: every pull request it names with its repository, as a GitHub
-//   URL or `owner/repo#N`, has merged; a bare `#N` is never looked up.
-// - Decide: a later prompt or a message sent while a turn ran answers its
-//   latest restatement, by an option letter or in words,
-//   `9efb08a1.Decide.2.B`, `Decide.2: B of 9efb08a1`, `Decide.2: <words>`,
-//   or a line of numbered answers to the turn before, `2. B` or
-//   `1. A / 3. B`; a line holding a question mark answers nothing. Only the
-//   user's own text answers.
-// - Waiting: a report, the prompt of a turn or a message sent while a turn
-//   ran, names it in a turn after the last that printed it in its own list.
-// - Every list: a later `reassess` turn, whose lists replace every item.
+// - `answer`: the user's answer comes in a later prompt or a message sent
+//   while a turn ran, as `9efb08a1.Decide.2.B`, `Decide.2: B of 9efb08a1`,
+//   `Decide.2: <words>`, or a line of numbered answers to the turn before,
+//   `2. B` or `1. A / 3. B`; a line holding a question mark answers
+//   nothing, and only the user's own text answers.
+// - `report`: a report is the prompt of a turn, or a message sent while a
+//   turn ran, that goes by names; no text of the user's own is one.
 //
 // A 📌 roll-up's restatement of a settled item reopens nothing.
 
@@ -607,15 +606,108 @@ export const rollUp = (
   });
 };
 
-/** The pull requests the roll-up's Review items name with their repository: what to ask GitHub about. */
-export const reviewPullRequests = (items: readonly ListItem[]): readonly string[] =>
-  [
-    ...new Set(
-      items
-        .filter((item) => item.list === "review")
-        .flatMap((item) => pullRequestsOf(item.line)),
+// --- what settles an item ---------------------------------------------------
+
+/** The ways an item is settled, as a list's `settled-by` in the spec names them. */
+export type SettledBy = Lists[keyof Lists]["settled-by"];
+
+/** A report the turns hold: the place `n` of the turn it came in, the names it goes by, and its text. */
+export type Report = Readonly<{
+  n: number;
+  names: readonly string[];
+  report: string;
+}>;
+
+/**
+ * What the turns hold that settles an item: the pull requests that merged,
+ * the subject keys of the Decide items the user answered, the reports, and
+ * the place of the last turn whose own list printed each item since the
+ * latest `reassess` turn, by the item's key.
+ */
+export type Settling = Readonly<{
+  merged: ReadonlySet<string>;
+  decided: ReadonlySet<string>;
+  reports: readonly Report[];
+  lastOwn: ReadonlyMap<string, number>;
+}>;
+
+/** How a way of settling settles an item: whether what the turns hold settles it, and the pull requests to ask GitHub about for it. */
+export type Settler = Readonly<{
+  settles: (item: ListItem, settling: Settling) => boolean;
+  pullRequests: (item: ListItem) => readonly string[];
+}>;
+
+/** No pull requests to ask about, for a way that merges settle nothing of. */
+const askNothing = (): readonly string[] => [];
+
+/**
+ * Each way an item is settled, by the name a list's `settled-by` gives it,
+ * as spec/kanban.yaml's comment states it; every way the spec's lists use
+ * is covered, so a way with no settler here doesn't compile. A later
+ * `reassess` turn settles every list's items besides, which the roll-up
+ * reads before this.
+ */
+export const SETTLERS: Readonly<Record<SettledBy, Settler>> = {
+  answer: {
+    settles: (item, { decided }) =>
+      decided.has(subjectKey(summaryOf(item.line))),
+    pullRequests: askNothing,
+  },
+  "merged-pull-request": {
+    settles: (item, { merged }) => {
+      const refs = pullRequestsOf(item.line);
+
+      return refs.length > 0 && refs.every((ref) => merged.has(ref));
+    },
+    pullRequests: (item) => pullRequestsOf(item.line),
+  },
+  report: {
+    settles: (item, { reports, lastOwn }) => {
+      const summary = summaryOf(item.line);
+      const printed = lastOwn.get(keyOf(item)) ?? -1;
+
+      return reports.some(
+        ({ n, names, report }) =>
+          n > printed && reportNamesItem(summary, names, report),
+      );
+    },
+    pullRequests: askNothing,
+  },
+  none: { settles: () => false, pullRequests: askNothing },
+};
+
+/** The settler of the way the item's list is settled, as the spec's `settled-by` names it. */
+export const settlerOf = (item: Pick<ListItem, "list">): Settler =>
+  SETTLERS[SPEC.lists[item.list]["settled-by"]];
+
+/** What the turns hold that settles an item, given the pull requests that merged. */
+export const settlingOf = (
+  turns: readonly Turn[],
+  merged: ReadonlySet<string>,
+): Settling => {
+  const floor = reassessStart(turns);
+
+  return {
+    merged,
+    decided: answeredSubjects(turns),
+    reports: turns.flatMap((turn, n) =>
+      textsOf(turn).flatMap(({ owner, text, reportNames }) =>
+        isOwn(owner) || reportNames === undefined
+          ? []
+          : [{ n, names: reportNames, report: text }],
+      ),
     ),
-  ].sort();
+    lastOwn: new Map(
+      allItems(turns)
+        .filter((item) => !item.isPinned && item.at >= floor)
+        .map((item) => [keyOf(item), item.at]),
+    ),
+  };
+};
+
+/** The pull requests whose merging would settle any of `items`, as each one's settler names them: what to ask GitHub about. */
+export const settlingPullRequests = (items: readonly ListItem[]): readonly string[] =>
+  [...new Set(items.flatMap((item) => settlerOf(item).pullRequests(item)))].sort();
 
 /** The pull requests the count line over the last `window` turns asks GitHub about: none of those `merged` already holds. */
 export const pullRequestsToAsk = (
@@ -623,7 +715,7 @@ export const pullRequestsToAsk = (
   window: number,
   merged: ReadonlySet<string> = new Set(),
 ): readonly string[] =>
-  reviewPullRequests(rollUp(turns, window)).filter((ref) => !merged.has(ref));
+  settlingPullRequests(rollUp(turns, window)).filter((ref) => !merged.has(ref));
 
 /** The items nothing settled, of the roll-up's `items`, given the pull requests that merged. */
 export const unsettled = (
@@ -631,38 +723,9 @@ export const unsettled = (
   items: readonly ListItem[],
   merged: ReadonlySet<string>,
 ): readonly ListItem[] => {
-  const floor = reassessStart(turns);
-  const lastOwn = new Map(
-    allItems(turns)
-      .filter((item) => !item.isPinned && item.at >= floor)
-      .map((item) => [keyOf(item), item.at]),
-  );
-  const reports = turns.flatMap((turn, n) =>
-    textsOf(turn).flatMap(({ owner, text, reportNames }) =>
-      isOwn(owner) || reportNames === undefined
-        ? []
-        : [{ n, names: reportNames, report: text }],
-    ),
-  );
-  const decided = answeredSubjects(turns);
-  const isSettled = (item: ListItem): boolean => {
-    const refs = pullRequestsOf(item.line);
-    const summary = summaryOf(item.line);
+  const settling = settlingOf(turns, merged);
 
-    return item.list === "review"
-      ? refs.length > 0 && refs.every((ref) => merged.has(ref))
-      : item.list === "decide"
-        ? decided.has(subjectKey(summary))
-        : item.list === "waiting"
-          ? reports.some(
-              ({ n, names, report }) =>
-                n > (lastOwn.get(keyOf(item)) ?? -1) &&
-                reportNamesItem(summary, names, report),
-            )
-          : false;
-  };
-
-  return items.filter((item) => !isSettled(item));
+  return items.filter((item) => !settlerOf(item).settles(item, settling));
 };
 
 /**
