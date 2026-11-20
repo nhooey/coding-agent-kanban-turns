@@ -14,9 +14,9 @@
 // value of the wrong type, refuses your whole file: the plugin uses these
 // defaults and says why in the pane and in /answers-config, which lists
 // every setting in effect and the file it came from. An `outstanding`
-// section, or a `colors.title` or `colors.expand` setting, which the
-// plugin no longer reads, is left out with a warning instead, and the rest
-// of your file is used.
+// section, or a `colors.title`, `colors.expand` or `colors.close-x`
+// setting, which the plugin no longer reads, is left out with a warning
+// instead, and the rest of your file is used.
 {
   // The count line above the prompt, such as `📌 Outstanding: 🚧 2 · 🧠 3`,
   // which the plugin works out from this session's transcript.
@@ -33,11 +33,27 @@
     "gh-timeout-ms": 20000
   },
 
-  // The pane's hotkeys, pressed while the pane holds the keyboard (as it
+  // The pane's keys, pressed while the pane holds the keyboard (as it
   // opens from /answers or the line above the prompt, or after a click).
+  // Each is one lowercase letter or one digit, drawn before its button,
+  // such as `s: 📤 Submit`. Options take no key of their own.
   "keys": {
-    // ✖: close the pane.
-    "dismiss": "q"
+    // ✖ Close: close the pane.
+    "dismiss": "q",
+    // ↓ Next: move the focus ring to the next item, or Done header.
+    "next": "j",
+    // ↑ Previous: move the focus ring to the item before.
+    "previous": "k",
+    // 📤 Submit: send the draft.
+    "submit": "s",
+    // 🔄 Reassess: add the `reassess` line to the draft, or take it out.
+    "reassess": "r"
+  },
+
+  // The pane's own rows.
+  "pane": {
+    // Whether the pane ends on a dim row naming its keys.
+    "hints": true
   },
 
   // The ✏️ notes field under each open item in the pane.
@@ -50,7 +66,7 @@
 
   // The marks an option is drawn with, beside its letter.
   "marks": {
-    // A settled item's options that the answer which settled it picked,
+    // A Done item's options that the answer which made it Done picked,
     // drawn at full strength in the dimmed item, with no underline: the
     // draft's own picks keep ✅ underlined.
     "sent": "☑️"
@@ -64,23 +80,21 @@
     // The label that opens an item's title line, `🧠 Decide.1`, drawn bold
     // on title-background; the summary after it is plain text.
     "title-label": "inverseText",
-    // The background of that label, while the item is open; a settled
-    // item's label is dimmed, on no background.
+    // The background of that label, while the item is open; a Done item's
+    // label is dimmed, on no background.
     "title-background": "claude",
     // Code spans in a summary, note or option.
     "code": "permission",
     // The bar in the column left of an option, lit down the option's
     // full height while the pointer is over any of its lines.
     "hover": "suggestion",
-    // The bar in the same column beside each of a settled item's option,
-    // ➕ and ➖ lines, which stays lit; a settled item lights no hover bar.
+    // The bar in the same column beside each of a Done item's option, ➕
+    // and ➖ lines, which stays lit, and the ▌ that opens a Done item's
+    // line in its turn's Done section; a Done item lights no hover bar.
     "settled": "ide",
-    // The background of the ✖ button that closes the pane.
+    // The ✖ of the button that closes the pane.
     "close": "error",
-    // The ✖ itself, on that background.
-    "close-x": "inverseText",
-    // The word Kanban in the 🖥️ Kanban button before the count line above
-    // the prompt, which opens the pane.
+    // The word Kanban in 🖥️ Kanban, above the prompt and atop the pane.
     "kanban": "claude"
   }
 }

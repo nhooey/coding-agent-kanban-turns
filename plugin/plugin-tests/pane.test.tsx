@@ -112,7 +112,8 @@ const LATER = {
 // The settings the tests draw with: defaults/config.jsonc's values.
 const DEFAULTS = JSON.stringify({
   counts: { turns: 20, "gh-timeout-ms": 20000 },
-  keys: { dismiss: "q" },
+  keys: { dismiss: "q", next: "j", previous: "k", submit: "s", reassess: "r" },
+  pane: { hints: true },
   notes: { rows: 3 },
   marks: { sent: "☑️" },
   colors: {
@@ -123,7 +124,6 @@ const DEFAULTS = JSON.stringify({
     hover: "suggestion",
     settled: "ide",
     close: "error",
-    "close-x": "inverseText",
     kanban: "claude",
   },
 });
@@ -256,7 +256,21 @@ const engine = (
     holdSubmit: undefined as (() => Promise<void>) | undefined,
     // What each command registration waits on, as the session starts.
     registering: undefined as (() => Promise<void>) | undefined,
+    userConfig: undefined as string | undefined,
+    isRingMovable: false,
+    focus: [] as string[],
   };
+  // The pane's focus ring as the engine moves it for the person: nothing
+  // beneath the plugins answers, unless a test lets it land, keeping each
+  // element it lands on.
+  on("ui.focus", (_, e, next) => {
+    if (!state.isRingMovable) {
+      return next(e);
+    }
+    state.focus.push(e.element ?? "");
+
+    return {};
+  });
   on("process.run", async (_, e) => {
     state.runs.push(e.argv);
     const stdout = await gh();
@@ -303,15 +317,20 @@ const engine = (
   on("session.cwd", () => ({ value: "/work" }));
   on("session.start", (_, e) => ({ cwd: e.cwd }));
   on("env.get", () => ({ value: "/home/neil" }));
-  // No user settings file is there, so the shipped defaults are what's in
-  // effect.
+  // No user settings file is there unless a test writes one, so the shipped
+  // defaults are what's in effect.
+  const isUserConfig = (path: string) =>
+    path.endsWith("/coding-agent-kanban-turns/config.jsonc");
   on("fs.exists", (_, e) => ({
-    value: !e.path.endsWith("/coding-agent-kanban-turns/config.jsonc"),
+    value: !isUserConfig(e.path) || state.userConfig !== undefined,
   }));
   // A test has no files, so the defaults file reads as this; the Node tests
   // (test/config.test.ts) hold the real one to the shape. The transcript is
   // read as bytes, by the range asked for.
   on("fs.read", (_, e) => {
+    if (isUserConfig(e.path)) {
+      return { value: state.userConfig ?? "" };
+    }
     if (e.path !== TRANSCRIPT) {
       return { value: DEFAULTS };
     }
@@ -389,18 +408,48 @@ type Drawing = {
   findAll: (q: {
     type: string;
     text: RegExp;
-  }) => Promise<readonly { text: string }[]>;
+  }) => Promise<readonly { text: string; key: string | undefined }[]>;
 };
 
 /**
  * The items' title lines, in the order drawn, each as `label · summary`: a
- * title line's Text holds the label's Text, a space and the summary's, so
- * only the whole line has a summary after its label.
+ * title is a Box keyed `<ref>.title-hang` holding the label, then the
+ * summary, which wraps under its own start.
  */
 const titles = async (ui: Drawing) =>
-  (await ui.findAll({ type: "Text", text: /^ 🧠 Decide\.\d+  \S/ })).map(
-    (found) => found.text.trim().replace(/^(🧠 Decide\.\d+)\s+/, "$1 · "),
-  );
+  (await ui.findAll({ type: "Box", text: /^ 🧠 Decide\.\d+ / }))
+    .filter((found) => found.key?.endsWith(".title-hang"))
+    .map((found) => found.text.trim().replace(/^(🧠 Decide\.\d+)\s+/, "$1 · "));
+
+type Pressable = Drawing & {
+  press: (target: { key: string }) => Promise<unknown>;
+};
+
+/** The pane's turn headers, in the order drawn. */
+const turnHeaders = async (ui: Drawing) =>
+  (await ui.findAll({ type: "Text", text: /^── / })).map((found) => found.text);
+
+/**
+ * The Done items' one-line rows, in the order drawn, once their sections
+ * are open, each as `label  text`: the label a Button keyed
+ * `<ref>.line-label`, the text, which wraps under its own start, one keyed
+ * `<ref>.line`.
+ */
+const doneLines = async (ui: Drawing) => {
+  const buttons = await ui.findAll({ type: "Button", text: /^/ });
+  const byKey = new Map(buttons.map((found) => [found.key, found.text]));
+
+  return buttons
+    .filter((found) => /^🧠 Decide\.\d+$/.test(found.text))
+    .map((found) => `${found.text}  ${byKey.get(found.key?.replace(/-label$/, ""))}`);
+};
+
+/** Opens every Done section of the pane, by the Done headers drawn. */
+const openDone = async (ui: Pressable) => {
+  for (const found of await ui.findAll({ type: "Button", text: /^▸ Done \(\d+\)$/ })) {
+    await ui.press({ key: found.key ?? "" });
+  }
+};
 
 /** What the pane says about the last Submit that sent nothing, if it says anything. */
 const sendProblem = async (ui: Drawing) =>
@@ -454,23 +503,21 @@ for (const surface of ["terminal", "desktop"] as const) {
   });
 }
 
-test("/answers opens the pane with the keyboard, and ✖ on its background closes it", async ($, on) => {
+test("/answers opens the pane with the keyboard, and ✖ Close closes it", async ($, on) => {
   const state = engine(on, () => ITEMS);
   await $.command.run(ANSWERS);
   expect(state.isPaneOpen).toBe(true);
   expect(state.opens).toEqual([true]);
   const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
 
-  // ✖ with a space each side, all of it the button: bold, in the close-x
-  // colour on the close colour.
+  // `glyph label` as every button is, the ✖ in the close colour, on no
+  // background.
   const close = await ui.find({ type: "Button", key: "dismiss" });
-  expect(close?.text).toBe(" ✖ ");
-  expect(close?.props).toMatchObject({ role: "dismiss", hotkey: "q" });
-  expect((await ui.find({ type: "Text", text: /^ ✖ $/ }))?.props).toMatchObject({
-    weight: "bold",
-    color: "inverseText",
-    backgroundColor: "error",
-  });
+  expect(close?.text).toBe("✖ Close");
+  expect(close?.props).toMatchObject({ role: "dismiss", hotkey: "q", plain: true, dimColor: false });
+  const glyph = await ui.find({ type: "Text", text: /^✖$/ });
+  expect(glyph?.props).toMatchObject({ color: "error" });
+  expect(glyph?.props).not.toHaveProperty("backgroundColor");
   expect(JSON.stringify(await ui.drawn())).not.toContain("❌");
 
   await ui.press({ key: "dismiss" });
@@ -484,33 +531,207 @@ test("/answers-config lists each setting in effect and its file", async ($, on) 
   expect(JSON.stringify(shown)).toContain('keys.dismiss = \\"q\\"  # defaults: ');
 });
 
-test("the pane keeps every item raised, newest at the bottom, a settled one dimmed and dead", async ($, on) => {
-  const open: unknown[] = [...ITEMS];
-  const state = engine(on, () => open);
-  await $.tool.call({ tool: TOOL, items: ITEMS } as never);
+test("the pane keeps every item raised, newest turn first, a Done one in its turn's collapsed Done section", async ($, on) => {
+  const later: TranscriptRecord[] = [];
+  const state = engine(on, () => ITEMS, listsText, () => later);
   await $.turn.complete(replyDone("t1"));
   const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
 
   // A later reply raises one more, and item 1 is answered meanwhile.
-  open.splice(0, 1);
-  open.push(LATER);
-  await $.tool.call({ tool: TOOL, items: [LATER] } as never);
+  later.push(
+    human("b2c3d4e5", "9efb08a1.Decide.1.A"),
+    replyRecord([LATER], listsText([LATER])),
+  );
   await $.turn.complete(replyDone("t2"));
 
+  // Each turn under a faint header naming its index, the latest ₀; its open
+  // items drawn in full.
+  expect(await turnHeaders(ui)).toEqual(["── b2c3d4e5 ₀ ──", "── 9efb08a1 ₋₁ ──"]);
+  expect((await ui.find({ type: "Text", text: /^── 9efb08a1/ }))?.props).toMatchObject({ dimColor: true });
   expect(await titles(ui)).toEqual([
-    "🧠 Decide.1 · Which cache to keep (settled)",
+    "🧠 Decide.1 · Which loader to keep",
     "🧠 Decide.2 · Cleanups to start",
     "🧠 Decide.3 · Ship tonight?",
-    "🧠 Decide.1 · Which loader to keep",
   ]);
-  await ui.press({ key: "9efb08a1.Decide.1.A" });
+
+  // The Done section is collapsed: its header alone, none of the item's
+  // elements.
+  const header = await ui.find({ type: "Button", key: "9efb08a1.done" });
+  expect(header?.text).toBe("▸ Done (1)");
+  expect(header?.props["dimColor"]).not.toBe(true);
+  expect(await ui.find({ type: "Button", key: "9efb08a1.Decide.1.A" })).toBeUndefined();
+  expect(await doneLines(ui)).toEqual([]);
+
+  // A click opens it to one dim line per Done item, opened by a ▌ in the
+  // settled colour.
+  await ui.press({ key: "9efb08a1.done" });
+  expect((await ui.find({ type: "Button", key: "9efb08a1.done" }))?.text).toBe("▾ Done (1)");
+  expect(await doneLines(ui)).toEqual([
+    "🧠 Decide.1  Which cache to keep · Answered in b2c3d4e5: A",
+  ]);
+  expect((await ui.find({ type: "Button", key: "9efb08a1.Decide.1.line" }))?.props).toMatchObject({
+    dimColor: true,
+  });
+  expect((await ui.find({ type: "Text", text: /^▌$/ }))?.props).toMatchObject({
+    color: "ide",
+  });
+  expect(await ui.find({ type: "Button", key: "9efb08a1.Decide.1.A" })).toBeUndefined();
+
+  // A click on the line opens the item's full box, dimmed but for its
+  // options, which pick as an open item's do: a click writes a fresh
+  // reference into the draft and marks the option ✅, the sent answer
+  // keeping its ☑️, and the item stays in its Done section. A click on its
+  // title closes it to its line again.
+  await ui.press({ key: "9efb08a1.Decide.1.line" });
+  expect(await titles(ui)).toContain("🧠 Decide.1 · Which cache to keep (done)");
+  await ui.press({ key: "9efb08a1.Decide.1.B" });
+  expect(state.box).toBe(`${HEADER}9efb08a1.Decide.1.B\n`);
+  expect((await ui.find({ type: "Button", key: "9efb08a1.Decide.1.B-mark" }))?.text).toBe("✅ B. ");
+  expect((await ui.find({ type: "Button", key: "9efb08a1.Decide.1.A-mark" }))?.text).toBe("☑️ A. ");
+  expect((await ui.find({ type: "Button", key: "9efb08a1.Decide.1.B" }))?.props["dimColor"]).not.toBe(true);
+  expect(await titles(ui)).toContain("🧠 Decide.1 · Which cache to keep (done)");
+  await ui.press({ key: "9efb08a1.Decide.1.B" });
   expect(state.box).toBe("");
+  await ui.press({ key: "9efb08a1.Decide.1.line" });
+  expect(await titles(ui)).not.toContain("🧠 Decide.1 · Which cache to keep (done)");
+  expect(await doneLines(ui)).toHaveLength(1);
+
+  // A second click on the Done header collapses the section again.
+  await ui.press({ key: "9efb08a1.done" });
+  expect(await doneLines(ui)).toEqual([]);
+
   await ui.press({ key: "b2c3d4e5.Decide.1.B" });
   expect(state.box).toBe(`${HEADER}b2c3d4e5.Decide.1.B\n`);
   await ui.unmount();
 });
 
-test("a reply that raises a new item opens the pane without the keyboard, at its end", async ($, on) => {
+test("the pane's header row: the line above the prompt, then how many open items the draft answers", async ($, on) => {
+  engine(on, () => ITEMS);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+
+  // The same text and colours as above the prompt, not pressable here.
+  const drawn = JSON.stringify(await ui.drawn());
+  expect(drawn.indexOf("Kanban")).toBeLessThan(drawn.indexOf(COUNTS));
+  expect(drawn.indexOf(COUNTS)).toBeLessThan(drawn.indexOf("0 of 3 answered"));
+  expect((await ui.find({ type: "Text", text: /^Kanban$/ }))?.props).toMatchObject({ color: "claude" });
+  expect((await ui.find({ type: "Text", text: /^ · $/ }))?.props).toMatchObject({ dimColor: true });
+  expect(await ui.find({ type: "Button", key: "kanban" })).toBeUndefined();
+  expect(await ui.find({ type: "Button", key: "counts" })).toBeUndefined();
+
+  await ui.press({ key: "9efb08a1.Decide.1.B" });
+  expect(await ui.find({ type: "Text", text: /^1 of 3 answered$/ })).toBeDefined();
+  await ui.unmount();
+});
+
+test("with nothing raised the pane says Nothing open under its header, and its footer stays", async ($, on) => {
+  engine(on, () => []);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+
+  const drawn = JSON.stringify(await ui.drawn());
+  expect(drawn.indexOf("Kanban")).toBeLessThan(drawn.indexOf("Nothing open"));
+  expect(await ui.find({ type: "Text", text: /answered$/ })).toBeUndefined();
+  expect(await ui.find({ type: "Text", text: /^Draft: empty$/ })).toBeDefined();
+  expect((await ui.find({ type: "Button", key: "submit" }))?.props).toMatchObject({ dimColor: true });
+  await ui.unmount();
+});
+
+test("the footer says what Submit will send, beside Reassess and Submit", async ($, on) => {
+  engine(on, () => ITEMS);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  const summary = async () => (await ui.find({ type: "Text", text: /^Draft: / }))?.text;
+
+  expect(await summary()).toBe("Draft: empty");
+  await ui.press({ key: "9efb08a1.Decide.1.B" });
+  await ui.press({ key: "9efb08a1.Decide.2.A" });
+  await ui.input({ key: "9efb08a1.Decide.3.notes", text: "after the release" });
+  await ui.press({ key: "reassess" });
+  expect(await summary()).toBe("Draft: 3 answers · 1 note · reassess");
+
+  // The footer comes after every item, its buttons after its summary.
+  const drawn = JSON.stringify(await ui.drawn());
+  expect(drawn.indexOf("Ship tonight?")).toBeLessThan(drawn.indexOf("Draft: "));
+  expect(drawn.indexOf("Draft: ")).toBeLessThan(drawn.indexOf("Reassess"));
+  expect(drawn.indexOf("Reassess")).toBeLessThan(drawn.indexOf("Submit"));
+  await ui.unmount();
+});
+
+test("the pane's keys are its buttons' hotkeys, and the hint row names them unless a setting hides it", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  const hotkey = async (key: string) =>
+    (await ui.find({ type: "Button", key }))?.props["hotkey"];
+
+  expect(await hotkey("previous")).toBe("k");
+  expect(await hotkey("next")).toBe("j");
+  expect(await hotkey("dismiss")).toBe("q");
+  expect(await hotkey("reassess")).toBe("r");
+  expect(await hotkey("submit")).toBe("s");
+  // Options keep no letter hotkeys.
+  expect(await hotkey("9efb08a1.Decide.1.A")).toBeUndefined();
+  const hints = () => ui.find({ type: "Text", text: /^j\/k item · / });
+  expect((await hints())?.props).toMatchObject({ dimColor: true });
+  expect((await hints())?.text).toBe(
+    "j/k item · ↑/↓ option · enter pick · s submit · r reassess · q close · esc back to the prompt",
+  );
+
+  // Each key is a setting; hints off takes the row away.
+  state.userConfig = '{"keys": {"submit": "x"}, "pane": {"hints": false}}';
+  await $.command.run(ANSWERS);
+  expect(await hotkey("submit")).toBe("x");
+  expect(await hints()).toBeUndefined();
+  await ui.unmount();
+});
+
+test("↓ Next and ↑ Previous follow the focus ring, dim at either end of the items and the Done header", async ($, on) => {
+  const later: TranscriptRecord[] = [];
+  const state = engine(on, () => ITEMS, listsText, () => later);
+  await $.turn.complete(replyDone("t1"));
+  later.push(human("b2c3d4e5", "9efb08a1.Decide.1.A"), assistant("On it."));
+  await $.turn.complete(replyDone("t2"));
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  const dim = async (key: string) =>
+    (await ui.find({ type: "Button", key }))?.props["dimColor"];
+  // The ring landing on an element, as the engine says of a Tab, an arrow
+  // or a click. A plugin's own $.ui.focus never reaches the kit's hooks, so
+  // a press of ↓ or ↑ moving the ring is left to a live session; the stops
+  // it moves between are test/sections.test.ts's.
+  state.isRingMovable = true;
+  const ringOn = (element: string) =>
+    $.ui.focus({
+      component: "Pane",
+      requestId: "kanban-turns",
+      element,
+      origin: { kind: "person" },
+    });
+
+  // On no item yet, either moves.
+  expect(await dim("next")).toBe(false);
+  expect(await dim("previous")).toBe(false);
+
+  // On the first item's notes field, the item counts: nothing is before it.
+  await ringOn("9efb08a1.Decide.2.notes");
+  expect(await dim("previous")).toBe(true);
+  expect(await dim("next")).toBe(false);
+
+  // On the Done header, the last stop while its section is closed.
+  await ringOn("9efb08a1.done");
+  expect(await dim("next")).toBe(true);
+  expect(await dim("previous")).toBe(false);
+
+  // A press of ↓ itself, which a hotkey may leave the ring on, keeps the
+  // item the ring was on.
+  await ringOn("next");
+  expect(await dim("next")).toBe(true);
+  expect(state.focus).toEqual(["9efb08a1.Decide.2.notes", "9efb08a1.done", "next"]);
+  await ui.unmount();
+});
+
+test("a reply that raises a new item opens the pane without the keyboard", async ($, on) => {
   const open: unknown[] = [...ITEMS];
   const state = engine(on, () => open);
   await $.turn.complete(replyDone("t1"));
@@ -607,45 +828,51 @@ test("an answer in a later prompt settles its item, in the pane and the count li
   const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
   const line = await $.ui.mount({ ...ABOVE_PROMPT, surface: "terminal" });
 
-  expect(await titles(ui)).toEqual([
-    "🧠 Decide.1 · Which cache to keep (settled)",
-    "🧠 Decide.2 · Cleanups to start",
-    "🧠 Decide.3 · Ship tonight? (settled)",
-  ]);
+  expect(await titles(ui)).toEqual(["🧠 Decide.2 · Cleanups to start"]);
   expect(await countsOn(line)).toBe("📌 Outstanding: 🚧 1 · 🧠 1");
+  await openDone(ui);
+  expect(await doneLines(ui)).toEqual([
+    "🧠 Decide.1  Which cache to keep · Answered in b2c3d4e5: A",
+    "🧠 Decide.3  Ship tonight? · Answered in b2c3d4e5: B",
+  ]);
+  await ui.press({ key: "9efb08a1.Decide.1.line" });
+  await ui.press({ key: "9efb08a1.Decide.3.line" });
 
-  // Each settled item says the answer that settled it, under its title, and
-  // marks the option it picked, at full strength in the dimmed item and
-  // never underlined; the others stay dim.
+  // Each Done item, opened to its box, says the answer that made it Done,
+  // under its title, and marks the option it picked, never underlined; its
+  // options, which still pick, are at full strength in the dimmed item.
   for (const drawing of [ui, await $.ui.mount(REPLY)]) {
     expect(
       (await drawing.findAll({ type: "Text", text: /^Answered in / })).map((found) => found.text),
     ).toEqual(["Answered in b2c3d4e5: A", "Answered in b2c3d4e5: B"]);
+    expect((await drawing.find({ type: "Button", key: "9efb08a1.Decide.1.A-mark" }))?.text).toBe("☑️ A. ");
     const sent = await drawing.find({ type: "Button", key: "9efb08a1.Decide.1.A" });
-    expect(sent?.text).toStartWith("☑️ A.");
-    expect(sent?.props).toMatchObject({ dimColor: false });
+    expect(sent?.text).toBe("Disk");
+    expect(sent?.props["dimColor"]).not.toBe(true);
     expect(JSON.stringify(sent?.children)).not.toContain('"underline":true');
-    expect((await drawing.find({ type: "Button", key: "9efb08a1.Decide.1.B" }))?.props).toMatchObject({
-      dimColor: true,
-    });
+    expect((await drawing.find({ type: "Button", key: "9efb08a1.Decide.1.B" }))?.props["dimColor"]).not.toBe(true);
   }
   await line.unmount();
   await ui.unmount();
 });
 
-test("an item a reassess settled, or one asked again, says so", async ($, on) => {
+test("an item a reassess made Done says so", async ($, on) => {
   const later: TranscriptRecord[] = [];
   engine(on, () => ITEMS, listsText, () => later);
   await $.turn.complete(replyDone("t1"));
   // A prompt that answers item 1 and ends on reassess: its answer stands,
-  // and the reassess settles the rest.
+  // and the reassess makes the rest Done.
   later.push(pluginPrompt("b2c3d4e5", `${HEADER}9efb08a1.Decide.1.B\nreassess\n`), assistant("Reassessed."));
   await $.turn.complete(replyDone("t2"));
   const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  await openDone(ui);
 
-  expect(
-    (await ui.findAll({ type: "Text", text: /^(Answered in|Settled)/ })).map((found) => found.text),
-  ).toEqual(["Answered in b2c3d4e5: B", "Settled: reassessed", "Settled: reassessed"]);
+  expect(await doneLines(ui)).toEqual([
+    "🧠 Decide.1  Which cache to keep · Answered in b2c3d4e5: B",
+    "🧠 Decide.2  Cleanups to start · Done: reassessed",
+    "🧠 Decide.3  Ship tonight? · Done: reassessed",
+  ]);
+  expect(JSON.stringify(await ui.drawn())).not.toMatch(/[Ss]ettled/);
   await ui.unmount();
 });
 
@@ -662,9 +889,9 @@ test("a message sent while a turn runs settles the item it answers", async ($, o
 
   expect(await titles(ui)).toEqual([
     "🧠 Decide.1 · Which cache to keep",
-    "🧠 Decide.2 · Cleanups to start (settled)",
     "🧠 Decide.3 · Ship tonight?",
   ]);
+  expect((await ui.find({ type: "Button", key: "9efb08a1.done" }))?.text).toBe("▸ Done (1)");
   expect(await countsOn(line)).toBe("📌 Outstanding: 🚧 1 · 🧠 2");
   await line.unmount();
   await ui.unmount();
@@ -682,12 +909,9 @@ test("the Reassess button's prompt replaces every earlier item", async ($, on) =
   const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
   const line = await $.ui.mount({ ...ABOVE_PROMPT, surface: "terminal" });
 
-  expect(await titles(ui)).toEqual([
-    "🧠 Decide.1 · Which cache to keep (settled)",
-    "🧠 Decide.2 · Cleanups to start (settled)",
-    "🧠 Decide.3 · Ship tonight? (settled)",
-    "🧠 Decide.1 · Which loader to keep",
-  ]);
+  expect(await turnHeaders(ui)).toEqual(["── b2c3d4e5 ₀ ──", "── 9efb08a1 ₋₁ ──"]);
+  expect(await titles(ui)).toEqual(["🧠 Decide.1 · Which loader to keep"]);
+  expect((await ui.find({ type: "Button", key: "9efb08a1.done" }))?.text).toBe("▸ Done (3)");
   expect(await countsOn(line)).toBe("📌 Outstanding: 🚧 1 · 🧠 1");
   await line.unmount();
   await ui.unmount();
@@ -851,10 +1075,10 @@ test("a transcript that can't be read settles nothing, and the pane says why", a
   const line = await $.ui.mount({ ...ABOVE_PROMPT, surface: "terminal" });
 
   expect(await titles(ui)).toEqual([
-    "🧠 Decide.1 · Which cache to keep (settled)",
     "🧠 Decide.2 · Cleanups to start",
     "🧠 Decide.3 · Ship tonight?",
   ]);
+  expect((await ui.find({ type: "Button", key: "9efb08a1.done" }))?.text).toBe("▸ Done (1)");
   expect(await ui.find({ type: "Text", text: /the transcript is gone/ })).toBeDefined();
   expect(await countsOn(line)).toBe("📌 Outstanding: 🚧 1 · 🧠 2");
   await line.unmount();
@@ -924,6 +1148,58 @@ test("another drawing above the prompt still shows, after the count line", async
   await line.unmount();
 });
 
+test("a long option, its ➕ line, a title and a Done line wrap under their text, not their lead", async ($, on) => {
+  const long = {
+    ...ITEMS[0],
+    summary: "Where the protocol's data lives, and what reads it when the plugin builds",
+    options: [
+      {
+        letter: "A",
+        name: "YAML compiled at build time",
+        consequence:
+          "plugin/spec/kanban.yaml, read strictly against a schema by a build step that writes a typed TypeScript module, plus a JSON copy",
+        pros: ["One source, checked at build time, that every reader shares without parsing YAML at run time."],
+      },
+      { letter: "B", name: "JSON alone" },
+    ],
+  };
+  const open: unknown[] = [long, ITEMS[2]];
+  engine(on, () => open);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  await $.tool.call({ tool: TOOL, items: [long] } as never);
+  const reply = await $.ui.mount({
+    ...REPLY,
+    props: { ...REPLY.props, text: `Some work.\n\n1. **${long.summary}**  ` },
+  });
+
+  // Each line's lead is a Box as wide as its cells, an emoji counting 2,
+  // that never shrinks; the text beside it takes the rest of the row and
+  // wraps there, so its rows start under the text: the engine lays it out.
+  const box = async (drawing: Pick<typeof ui | typeof reply, "find">, key: string) =>
+    (await drawing.find({ type: "Box", key }))?.props;
+  for (const drawing of [ui, reply]) {
+    expect(await box(drawing, "9efb08a1.Decide.1.A-hang-lead")).toMatchObject({ width: 6, flexShrink: 0 });
+    expect(await box(drawing, "9efb08a1.Decide.1.A-hang-text")).toMatchObject({ flexGrow: 1, flexShrink: 1 });
+    expect(await box(drawing, "9efb08a1.Decide.1.A-pro-0-hang-lead")).toMatchObject({ width: 3, flexShrink: 0 });
+    expect(await box(drawing, "9efb08a1.Decide.1.title-hang-lead")).toMatchObject({ width: 14, flexShrink: 0 });
+    expect((await drawing.find({ type: "Button", key: "9efb08a1.Decide.1.A-mark" }))?.text).toBe("🔘 A. ");
+    expect((await drawing.find({ type: "Button", key: "9efb08a1.Decide.1.A-pro-0-mark" }))?.text).toBe("➕ ");
+  }
+
+  // A Done line's label is its lead, the summary and what made it Done
+  // wrapping under the summary's start.
+  open.splice(0, 1);
+  await $.turn.complete(replyDone("t1"));
+  await openDone(ui);
+  expect(await box(ui, "9efb08a1.Decide.1.line-hang-lead")).toMatchObject({ width: 13, flexShrink: 0 });
+  expect((await ui.find({ type: "Button", key: "9efb08a1.Decide.1.line" }))?.text).toBe(
+    `${long.summary} · Done`,
+  );
+  await reply.unmount();
+  await ui.unmount();
+});
+
 test("an option's pros and cons pick it too", async ($, on) => {
   const state = engine(on, () => [
     {
@@ -984,7 +1260,7 @@ const REPLY = {
   },
 } as const;
 
-test("a reply draws its items under its text, a settled one dimmed", async ($, on) => {
+test("a reply whose Decide list isn't found intact draws its items under its text, a Done one dimmed but live", async ($, on) => {
   const open: unknown[] = [...ITEMS];
   const state = engine(on, () => open);
   await $.tool.call({ tool: TOOL, items: ITEMS } as never);
@@ -1017,14 +1293,65 @@ test("a reply draws its items under its text, a settled one dimmed", async ($, o
   open.splice(0, 1);
   await $.turn.complete(replyDone("t1"));
   expect(await titles(reply)).toEqual([
-    "🧠 Decide.1 · Which cache to keep (settled)",
+    "🧠 Decide.1 · Which cache to keep (done)",
     "🧠 Decide.3 · Ship tonight?",
   ]);
   expect(await label(1)).not.toHaveProperty("backgroundColor");
   expect(await label(3)).toMatchObject({ backgroundColor: "claude" });
+  // Its options still pick, as the pane's do.
   await reply.press({ key: "9efb08a1.Decide.1.A" });
-  expect(state.box).toBe(`${HEADER}9efb08a1.Decide.3.N\n`);
+  expect(state.box).toBe(`${HEADER}9efb08a1.Decide.3.N\n9efb08a1.Decide.1.A\n`);
   await reply.unmount();
+});
+
+test("a reply's Decide list found intact is cut out, its items' boxes drawn in its place", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  await $.tool.call({ tool: TOOL, items: ITEMS } as never);
+  await $.turn.complete(replyDone("t0"));
+  const text = `${listsText(ITEMS)}\n📌 Outstanding: 🧠 1\n`;
+  const reply = await $.ui.mount({ ...REPLY, props: { ...REPLY.props, text } });
+
+  // The text before the list, the boxes, then the text after it; the list
+  // itself, header and summaries, is drawn by the boxes alone.
+  const before = await reply.find({ type: "Markdown", key: "kanban-before" });
+  expect(before?.props["text"]).toBe("Some work.\n\n🚧 **Pending:**  \n1. **Rework the loader**");
+  expect((await reply.find({ type: "Markdown", key: "kanban-after" }))?.props["text"]).toBe(
+    "📌 Outstanding: 🧠 1",
+  );
+  expect(await reply.find({ type: "Markdown", key: "kanban-questions" })).toBeUndefined();
+  const drawn = JSON.stringify(await reply.drawn());
+  expect(drawn).not.toContain("**Decide:**");
+  expect(drawn).not.toContain("**Which cache to keep**");
+  expect(drawn.indexOf("Rework the loader")).toBeLessThan(drawn.indexOf(" 🧠 Decide.1 "));
+  expect(drawn.indexOf(" 🧠 Decide.3 ")).toBeLessThan(drawn.indexOf("📌 Outstanding: 🧠 1"));
+  expect(await titles(reply)).toEqual([
+    "🧠 Decide.1 · Which cache to keep",
+    "🧠 Decide.2 · Cleanups to start",
+    "🧠 Decide.3 · Ship tonight?",
+  ]);
+
+  // The boxes write the draft as the pane's do.
+  await reply.press({ key: "9efb08a1.Decide.2.B" });
+  expect(state.box).toBe(`${HEADER}9efb08a1.Decide.2.B\n`);
+  await reply.unmount();
+});
+
+test("above the prompt, ✏️ n picked follows the count line while the draft answers open items", async ($, on) => {
+  engine(on, () => ITEMS);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  const line = await $.ui.mount({ ...ABOVE_PROMPT, surface: "terminal" });
+  expect(await line.find({ type: "Button", key: "picked" })).toBeUndefined();
+
+  await ui.press({ key: "9efb08a1.Decide.1.B" });
+  await ui.press({ key: "9efb08a1.Decide.3.Y" });
+  const picked = await line.find({ type: "Button", key: "picked" });
+  expect(picked?.text).toBe("✏️ 2 picked");
+  expect(picked?.props["dimColor"]).not.toBe(true);
+  const drawn = JSON.stringify(await line.drawn());
+  expect(drawn.indexOf(COUNTS)).toBeLessThan(drawn.indexOf("✏️ 2 picked"));
+  await line.unmount();
+  await ui.unmount();
 });
 
 test("a question in a reply opens the pane with the keyboard, though it can't scroll here", async ($, on) => {
@@ -1387,7 +1714,7 @@ test("raised items stored under an older shape are not drawn", async ($, on) => 
   const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
 
   expect(await titles(ui)).toEqual([]);
-  expect(await ui.find({ type: "Text", text: /^No open Decide items/ })).toBeDefined();
+  expect(await ui.find({ type: "Text", text: "Nothing open" })).toBeDefined();
   await ui.unmount();
 });
 
@@ -1417,30 +1744,76 @@ test("settings stored under an older shape are not used", async ($, on) => {
   await ui.unmount();
 });
 
-test("an answer Submit sent settles its item at the next refresh", async ($, on) => {
+test("Submit moves the items its draft answers to Done at once, and the turn's end confirms them", async ($, on) => {
   const later: TranscriptRecord[] = [];
   const state = engine(on, () => ITEMS, listsText, () => later);
   await $.command.run(ANSWERS);
   const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
   await ui.press({ key: "9efb08a1.Decide.1.A" });
+  await ui.press({ key: "9efb08a1.Decide.3.N" });
   await ui.press({ key: "submit" });
 
-  // The engine records the sent draft as this plugin's prompt.
+  // Before the turn runs: Done, saying what was sent.
+  expect(await titles(ui)).toEqual(["🧠 Decide.2 · Cleanups to start"]);
+  await openDone(ui);
+  expect(await doneLines(ui)).toEqual([
+    "🧠 Decide.1  Which cache to keep · Sent: A",
+    "🧠 Decide.3  Ship tonight? · Sent: N",
+  ]);
+
+  // The engine records the sent draft as this plugin's prompt; the turn's
+  // end reads it, and the items stay Done, now as answered.
   later.push(pluginPrompt("b2c3d4e5", state.sent[0] ?? ""), assistant("On it."));
+  await $.turn.start({ text: state.sent[0] ?? "", turnId: "t2" });
   await $.turn.complete(replyDone("t2"));
   const line = await $.ui.mount({ ...ABOVE_PROMPT, surface: "terminal" });
 
-  expect(await titles(ui)).toEqual([
-    "🧠 Decide.1 · Which cache to keep (settled)",
-    "🧠 Decide.2 · Cleanups to start",
-    "🧠 Decide.3 · Ship tonight?",
+  expect(await titles(ui)).toEqual(["🧠 Decide.2 · Cleanups to start"]);
+  expect(await doneLines(ui)).toEqual([
+    "🧠 Decide.1  Which cache to keep · Answered in b2c3d4e5: A",
+    "🧠 Decide.3  Ship tonight? · Answered in b2c3d4e5: N",
   ]);
-  expect(await countsOn(line)).toBe("📌 Outstanding: 🚧 1 · 🧠 2");
+  expect(await countsOn(line)).toBe("📌 Outstanding: 🚧 1 · 🧠 1");
   await line.unmount();
   await ui.unmount();
 });
 
-test("a settled item's lines have the settled bar beside them, and no hover bar", async ($, on) => {
+test("an answer Submit sent that the turn's end doesn't find goes back among the open items", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  await ui.press({ key: "9efb08a1.Decide.1.A" });
+  await ui.press({ key: "submit" });
+  expect(state.sent).toHaveLength(1);
+  expect(await titles(ui)).toHaveLength(2);
+
+  // A refresh before the turn ends keeps it Done; the turn's end, whose
+  // transcript holds no answer, puts it back.
+  await $.command.run(ANSWERS);
+  expect(await titles(ui)).toHaveLength(2);
+  await $.turn.complete(replyDone("t2"));
+  expect(await titles(ui)).toEqual([
+    "🧠 Decide.1 · Which cache to keep",
+    "🧠 Decide.2 · Cleanups to start",
+    "🧠 Decide.3 · Ship tonight?",
+  ]);
+  await ui.unmount();
+});
+
+test("a Submit the engine refuses moves nothing to Done", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  await ui.press({ key: "9efb08a1.Decide.1.A" });
+  state.submitAnswer = { drop: "a hook refused it" };
+  await ui.press({ key: "submit" });
+
+  expect(await titles(ui)).toHaveLength(3);
+  expect(await ui.find({ type: "Button", key: "9efb08a1.done" })).toBeUndefined();
+  await ui.unmount();
+});
+
+test("a Done item's lines, opened to its box, have the settled bar beside them, and no hover bar", async ($, on) => {
   const open: unknown[] = [
     {
       ...ITEMS[0],
@@ -1456,6 +1829,8 @@ test("a settled item's lines have the settled bar beside them, and no hover bar"
   open.splice(0, 1);
   await $.turn.complete(replyDone("t1"));
   const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  await openDone(ui);
+  await ui.press({ key: "9efb08a1.Decide.1.line" });
 
   const gutter = async (key: string) =>
     (await ui.find({ type: "Box", key: `${key}-gutter` }))?.props;

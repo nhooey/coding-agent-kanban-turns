@@ -4,12 +4,13 @@
 // takes the items and returns new ones, or a part of them; none changes
 // what it's given.
 
-import { isAnswered } from "./answers.ts";
+import { answerTo, isAnswered } from "./answers.ts";
 import { refOf } from "./items.ts";
 import type { DecideItem, Raised, Settlement } from "../types/index.d.ts";
 
 export const emptyRaised: Raised = {
   session: "",
+  turns: [],
   items: [],
   settledRefs: [],
   settlements: [],
@@ -35,12 +36,18 @@ export const withItems = (
   items: readonly DecideItem[],
 ): Raised => ({ ...raised, items: byRef([...raised.items, ...items]) });
 
-/** The items once a refresh read the transcript and found `open`: those merged in, and every raised item not among them settled, as `settlements` say how. */
+/**
+ * The items once a refresh read the transcript and found `open`: those
+ * merged in, and every raised item not among them settled, as `settlements`
+ * say how; `turns`, the ids of the turns it read, kept for the pane's turn
+ * headers.
+ */
 export const refreshed = (
   raised: Raised,
   open: readonly DecideItem[],
   settlements: readonly Settlement[],
   warnings: readonly string[],
+  turns: readonly string[] = [],
 ): Raised => {
   const merged = withItems(raised, open);
   const openRefs = open.map(refOf);
@@ -50,6 +57,7 @@ export const refreshed = (
 
   return {
     ...merged,
+    turns,
     settledRefs,
     settlements: settlements.filter((settled) =>
       settledRefs.includes(settled.ref),
@@ -94,6 +102,55 @@ export const seen = (raised: Raised): Raised => ({
   ...raised,
   seenRefs: raised.items.map(refOf),
 });
+
+/**
+ * What the pane's Submit sends for the items: one `sent` settlement for
+ * each open item the draft answers, with its letters and note.
+ */
+export const sentOf = (draft: string, raised: Raised): readonly Settlement[] =>
+  stillOpen(raised).flatMap((item) => {
+    const answer = answerTo(draft, item);
+
+    return answer === undefined
+      ? []
+      : [
+          {
+            ref: refOf(item),
+            how: "sent" as const,
+            letters: answer.letters,
+            note: answer.note,
+          },
+        ];
+  });
+
+/**
+ * The items as the pane and a reply draw them while answers Submit sent
+ * wait for the turn's end: each raised item a `sent` settlement names, and
+ * the transcript leaves open, Done with it; what the transcript says of an
+ * item stays first.
+ */
+export const withSent = (
+  raised: Raised,
+  sent: readonly Settlement[],
+): Raised => {
+  const added = sent.filter(
+    (settled) =>
+      !raised.settledRefs.includes(settled.ref) &&
+      raised.items.some((item) => refOf(item) === settled.ref),
+  );
+
+  return added.length === 0
+    ? raised
+    : {
+        ...raised,
+        settledRefs: [...raised.settledRefs, ...added.map((s) => s.ref)],
+        settlements: [...raised.settlements, ...added],
+      };
+};
+
+/** How many open items the draft answers. */
+export const answeredCount = (raised: Raised, draft: string): number =>
+  stillOpen(raised).filter((item) => isAnswered(draft, item)).length;
 
 /** The first open item the draft doesn't answer, if there is one. */
 export const firstUnanswered = (

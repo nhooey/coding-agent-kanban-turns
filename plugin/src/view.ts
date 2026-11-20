@@ -1,13 +1,15 @@
 // What the hooks draw, worked out apart from drawing it: the text of the
 // commands, the tool's result and an item's title, what Submit does with
-// the draft, how an item's notes are drawn, and whether the tool's row is
-// plain enough to be drawn as nothing, the buttons going under the reply
-// instead.
+// the draft and what the footer says it will send, how much of what's open
+// the draft answers, the hint row, how an item's notes are drawn, and
+// whether the tool's row is plain enough to be drawn as nothing, the
+// buttons going under the reply instead.
 
-import type { DecideItem, Raised, Settlement } from "../types/index.d.ts";
+import type { DecideItem, Raised, Settings, Settlement } from "../types/index.d.ts";
+import { answersIn, hasReassess } from "./answers.ts";
 import { refOf } from "./items.ts";
 import { problemsOf, stillOpen } from "./raised.ts";
-import { withoutDraftHeader } from "./transcript.ts";
+import { isReassessLine, withoutDraftHeader } from "./transcript.ts";
 
 /** What the pane and /answers say when there are no open items, with why when it's known. */
 export const noItemsText = (problem: string): string =>
@@ -153,38 +155,98 @@ export const gutterStyle = (
 /**
  * An item's title line in its box: the label, its list and number, drawn
  * bold on a background with a space either side, then the summary on the
- * same line, marked when the item is settled.
+ * same line, marked when the item is Done.
  */
 export const itemTitle = (
   item: DecideItem,
-  isSettled: boolean,
+  isDone: boolean,
 ): Readonly<{ label: string; summary: string }> => ({
   label: ` 🧠 Decide.${item.number} `,
-  summary: `${item.summary}${isSettled ? " (settled)" : ""}`,
+  summary: `${item.summary}${isDone ? " (done)" : ""}`,
 });
 
+/** An answer's letters, then its note after ` · ` or in their place. */
+const lettersAndNote = (letters: readonly string[], note: string): string =>
+  [letters.join(","), note].filter((part) => part !== "").join(" · ");
+
 /**
- * The line under a settled item's title saying what settled it: the answer,
+ * The line under a Done item's title saying what made it Done: the answer,
  * `Answered in <turn>: <letters>`, its note after ` · ` or in place of the
- * letters; else `Settled: reassessed`, `Settled: asked again`, or
- * `Settled` where the transcript doesn't say.
+ * letters; the answer Submit sent, `Sent: <letters>`, until the turn's end
+ * reads it; else `Done: reassessed`, `Done: asked again`, or `Done` where
+ * the transcript doesn't say.
  */
 export const settledText = (settlement: Settlement | undefined): string =>
   settlement === undefined
-    ? "Settled"
+    ? "Done"
     : settlement.how === "answered"
-      ? `Answered in ${settlement.turn}: ${[settlement.letters.join(","), settlement.note]
-          .filter((part) => part !== "")
-          .join(" · ")}`
-      : settlement.how === "reassessed"
-        ? "Settled: reassessed"
-        : "Settled: asked again";
+      ? `Answered in ${settlement.turn}: ${lettersAndNote(settlement.letters, settlement.note)}`
+      : settlement.how === "sent"
+        ? `Sent: ${lettersAndNote(settlement.letters, settlement.note)}`
+        : settlement.how === "reassessed"
+          ? "Done: reassessed"
+          : "Done: asked again";
 
-/** The letters the answer that settled an item picked; none when something else settled it. */
+/** The letters the answer that made an item Done picked, sent or read; none when something else did. */
 export const sentLetters = (
   settlement: Settlement | undefined,
 ): readonly string[] =>
-  settlement?.how === "answered" ? settlement.letters : [];
+  settlement?.how === "answered" || settlement?.how === "sent"
+    ? settlement.letters
+    : [];
+
+const counted = (count: number, noun: string): string =>
+  `${count} ${noun}${count === 1 ? "" : "s"}`;
+
+/** The draft's lines, past the line naming the plugin, that hold no answer and aren't its trailing `reassess`: words of the person's own. */
+const ownLines = (body: string): readonly string[] => {
+  const lines = body.split("\n").filter((line) => line.trim() !== "");
+
+  return lines.filter(
+    (line, n) =>
+      answersIn(line).length === 0 &&
+      !(n === lines.length - 1 && isReassessLine(line)),
+  );
+};
+
+/**
+ * What the pane's footer says Submit will send: how many answers, how many
+ * of them carry a note, a trailing `reassess`, and words of the person's
+ * own, `Draft: 2 answers · 1 note · reassess`; `Draft: empty` for none.
+ */
+export const draftSummary = (draft: string): string => {
+  const body = withoutDraftHeader(draft);
+  const answers = answersIn(body);
+  const notes = answers.filter((answer) => answer.note !== "").length;
+  const parts = [
+    ...(answers.length > 0 ? [counted(answers.length, "answer")] : []),
+    ...(notes > 0 ? [counted(notes, "note")] : []),
+    ...(hasReassess(body) ? ["reassess"] : []),
+    ...(ownLines(body).length > 0 ? ["your words"] : []),
+  ];
+
+  return `Draft: ${parts.length > 0 ? parts.join(" · ") : "empty"}`;
+};
+
+/** The pane header's count: the open items the draft answers, out of every open item. */
+export const answeredText = (answered: number, open: number): string =>
+  `${answered} of ${open} answered`;
+
+/** What the line above the prompt adds while the draft answers open items: `✏️ 2 picked`; empty while it answers none. */
+export const pickedText = (picked: number): string =>
+  picked > 0 ? `✏️ ${picked} picked` : "";
+
+/** The pane's hint row: each key it takes while it has the keyboard, by the settings. */
+export const hintText = (keys: Settings["keys"]): string =>
+  [
+    `${keys.next}/${keys.previous} item`,
+    "↑/↓ option",
+    "enter pick",
+    `${keys.submit} submit`,
+    `${keys.reassess} reassess`,
+    `${keys.dismiss} close`,
+    "esc back to the prompt",
+  ].join(" · ");
 
 /** What the engine says of a tool row or its result line. */
 export type ToolRow = Readonly<{
