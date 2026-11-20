@@ -188,8 +188,9 @@ export type Json =
 
 /**
  * The plugin's settings. defaults/config.yaml lists each with its default and
- * what it does; `SETTINGS_SHAPE` in src/config/config.ts is the same list as a
- * schema.
+ * what it does, and gives the shape every file is checked against: each
+ * setting the type of its default, unless `KINDS` in src/config/config.ts
+ * names one.
  */
 export type Settings = Readonly<{
   counts: Readonly<{ turns: number; "gh-timeout-ms": number }>;
