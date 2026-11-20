@@ -1,6 +1,6 @@
 ---
 title: A row under the pane's header row hides Decide items by state, answered, unanswered or Done
-state: proposed
+state: approved
 kind: implementation
 part-of: pane-every-list
 needs: [pane-state-reducer]

@@ -1,6 +1,6 @@
 ---
 title: The pane's state is one value that a pure step function moves, and the hooks only dispatch events and run the effects it returns
-state: proposed
+state: approved
 kind: implementation
 part-of: pane-every-list
 needs: [neutral-turn-stream]
