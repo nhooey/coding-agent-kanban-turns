@@ -21,18 +21,13 @@
 import { BLOCK, INSTRUCTIONS } from "../protocol/instructions.ts";
 import { recordsOf } from "./claude-code.ts";
 import type { TranscriptRecord } from "./claude-code.ts";
+import { field } from "../json/fields.ts";
 
 /** What the hook about to add the instructions reads: this conversation's key, and whether they are still owed. */
 export type Instructing = Readonly<{ key: string; isOwed: boolean }>;
 
 // The command record `/clear` leaves, which opens a conversation.
 const CLEAR = /^\s*<command-name>\/clear<\/command-name>/;
-
-const isObject = (value: unknown): value is TranscriptRecord =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
-const field = (value: unknown, key: string): unknown =>
-  isObject(value) ? value[key] : undefined;
 
 const listed = (value: unknown): readonly unknown[] =>
   Array.isArray(value) ? value : [];

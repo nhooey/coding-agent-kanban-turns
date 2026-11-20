@@ -21,6 +21,7 @@ import { expect } from "expect";
 import { turnsOf } from "../../../src/transcript/claude-code.ts";
 import type { TranscriptRecord } from "../../../src/transcript/claude-code.ts";
 import { PLUGIN } from "../../../src/protocol/instructions.ts";
+import { field } from "../../../src/json/fields.ts";
 import { itemsOf } from "../../../src/items/items.ts";
 import * as core from "../../../src/items/outstanding.ts";
 import { isOwn, reassessStart } from "../../../src/transcript/turns.ts";
@@ -229,11 +230,6 @@ const promptIds = (records: readonly TranscriptRecord[]): readonly unknown[] =>
     .filter((one) => turnsOf([one]).length === 1)
     .map((one) => one.promptId);
 
-const fieldOf = (value: unknown, key: string): unknown =>
-  typeof value === "object" && value !== null
-    ? (value as Readonly<Record<string, unknown>>)[key]
-    : undefined;
-
 /**
  * A record as the oracle is handed it: a prompt a plugin sent as the user,
  * which the oracle can't read, in the `pluginPrompt` shape it reads as the
@@ -241,15 +237,15 @@ const fieldOf = (value: unknown, key: string): unknown =>
  * a peer's; any other record as it is.
  */
 const forOracle = (record: TranscriptRecord): TranscriptRecord => {
-  const content = fieldOf(record.message, "content");
+  const content = field(record.message, "content");
 
-  return fieldOf(record.origin, "kind") === "plugin" &&
+  return field(record.origin, "kind") === "plugin" &&
     record.pluginPrompt === undefined &&
     (record.turnOrigin !== undefined || record.isMeta !== true)
     ? {
         ...record,
         pluginPrompt: {
-          name: fieldOf(record.origin, "name"),
+          name: field(record.origin, "name"),
           text: typeof content === "string" ? content : "",
         },
       }

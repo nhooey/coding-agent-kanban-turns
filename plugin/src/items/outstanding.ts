@@ -23,7 +23,9 @@
 import { answersOfLine } from "./answer-lines.ts";
 import type { LineAnswer } from "./answer-lines.ts";
 import { refOf } from "./items.ts";
-import { reportNamesItem } from "../transcript/reports.ts";
+import { branchSpans, reportNamesItem } from "../transcript/reports.ts";
+import { isObject, parsedJson } from "../json/fields.ts";
+import { escaped } from "../text/patterns.ts";
 import {
   DECISIONS,
   HEADER,
@@ -37,7 +39,6 @@ import {
   LETTER,
   SUBSCRIPT_CHAR,
   TURN_ID,
-  escaped,
   namesOf,
 } from "../protocol/rules.ts";
 import { optionGlyphs } from "../protocol/kinds.ts";
@@ -102,8 +103,6 @@ export const summaryOf = (line: string): string => {
 };
 
 const ENTRY = /\bentr(?:y|ies)\s+(\d{3,4})\b/i;
-const SPAN = /`([^`]+)`/g;
-const BRANCH = /^[a-z0-9]+(?:-[a-z0-9]+)+$/;
 const STOP_WORDS: readonly string[] =
   "a an and at by for from in is its of on the to with".split(" ");
 const KEY_WORDS = 3;
@@ -120,9 +119,7 @@ const normal = (text: string): string =>
  */
 export const subjectKey = (summary: string): string => {
   const entry = ENTRY.exec(summary)?.[1];
-  const branch = [...summary.matchAll(SPAN)]
-    .map((m) => m[1] ?? "")
-    .find((span) => BRANCH.test(span));
+  const branch = branchSpans(summary)[0];
   const words = (summary.toLowerCase().match(/[a-z0-9]+/g) ?? []).filter(
     (word) => !STOP_WORDS.includes(word),
   );
@@ -386,17 +383,6 @@ export const mergedQuery = (
   };
 };
 
-const isObject = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
-const parsed = (text: string): unknown => {
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    return undefined;
-  }
-};
-
 /**
  * The pull requests a GraphQL response, aliased `pr<n>` after their place in
  * `ordered`, reports merged; none where the response is no JSON object. A
@@ -407,7 +393,7 @@ export const mergedOfResponse = (
   ordered: readonly string[],
   response: string,
 ): ReadonlySet<string> => {
-  const body = parsed(response);
+  const body = parsedJson(response);
   const data = isObject(body) && isObject(body.data) ? body.data : {};
   const stateOf = (key: string): unknown => {
     const value = data[key];

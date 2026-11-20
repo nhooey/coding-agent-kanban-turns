@@ -12,7 +12,6 @@ import {
   TURN_ID_CHAR,
   TURN_ID_PREFIX,
   classOf,
-  escaped,
   isLineOf,
   itemLabel,
   namesOf,
@@ -43,13 +42,6 @@ describe("the protocol's patterns", () => {
   test("match a subscript digit or minus", () => {
     expect(whole(`${SUBSCRIPT_CHAR}+`).test("₋₃")).toBe(true);
     expect(whole(SUBSCRIPT_CHAR).test("3")).toBe(false);
-  });
-});
-
-describe("escaped", () => {
-  test("matches text literally", () => {
-    expect(new RegExp(`^${escaped("a.b*(c)")}$`, "u").test("a.b*(c)")).toBe(true);
-    expect(new RegExp(`^${escaped("a.b")}$`, "u").test("axb")).toBe(false);
   });
 });
 

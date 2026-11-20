@@ -355,4 +355,16 @@ describe("the items a kanban_options call hands over", () => {
       },
     ]);
   });
+
+  test("an array, even one with an items field, hands over none", () => {
+    const item = {
+      turn: "abc12345",
+      number: 4,
+      summary: "S",
+      options: [{ letter: "A", name: "a" }],
+    };
+
+    expect(itemsOf([item])).toEqual([]);
+    expect(itemsOf(Object.assign([], { items: [item] }))).toEqual([]);
+  });
 });

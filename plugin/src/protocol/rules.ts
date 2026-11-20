@@ -5,10 +5,6 @@
 
 import { SPEC } from "./spec.ts";
 
-/** Text as a regular expression, `u` flag or not, matches it literally. */
-export const escaped = (text: string): string =>
-  text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
 /** Characters as a character class, `[…]`, `u` flag or not, holds each of them and nothing more. */
 export const classOf = (chars: string): string =>
   `[${chars.replace(/[\\\]^-]/g, "\\$&")}]`;

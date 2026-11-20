@@ -4,7 +4,12 @@
 import { describe, test } from "node:test";
 import { expect } from "expect";
 
-import { elements, namesWord, reportNamesItem } from "../../../src/transcript/reports.ts";
+import {
+  branchSpans,
+  elements,
+  namesWord,
+  reportNamesItem,
+} from "../../../src/transcript/reports.ts";
 
 describe("elements", () => {
   test("each element with its attributes and its own text, no child's", () => {
@@ -66,5 +71,26 @@ describe("reportNamesItem", () => {
 
   test("an empty name names nothing", () => {
     expect(namesWord("  ", "anything")).toBe(false);
+  });
+});
+
+describe("branchSpans", () => {
+  test("the code spans shaped like a branch name, in order", () => {
+    expect(
+      branchSpans("merge `core-shared-helpers`, then `pane-state` and `x`"),
+    ).toEqual(["core-shared-helpers", "pane-state"]);
+  });
+
+  test("none for spans with no hyphen, capitals, or other characters", () => {
+    expect(
+      branchSpans("`main` `Core-Helpers` `a_b-c` `-a` `a-` `a--b` plain-text"),
+    ).toEqual([]);
+  });
+
+  test("the same twice in a row, the pattern holding no state between calls", () => {
+    const text = "`a-b` and `c-d`";
+
+    expect(branchSpans(text)).toEqual(["a-b", "c-d"]);
+    expect(branchSpans(text)).toEqual(["a-b", "c-d"]);
   });
 });
