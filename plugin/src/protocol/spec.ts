@@ -7,6 +7,7 @@ export const SPEC = {
       "glyph": "✅",
       "aliases": [],
       "rolls-up": false,
+      "settled-by": "none",
       "settling-words": {}
     },
     "pending": {
@@ -17,6 +18,7 @@ export const SPEC = {
         "Open"
       ],
       "rolls-up": true,
+      "settled-by": "none",
       "settling-words": {}
     },
     "logged": {
@@ -24,6 +26,7 @@ export const SPEC = {
       "glyph": "📝",
       "aliases": [],
       "rolls-up": false,
+      "settled-by": "none",
       "settling-words": {}
     },
     "waiting": {
@@ -31,6 +34,7 @@ export const SPEC = {
       "glyph": "⏳",
       "aliases": [],
       "rolls-up": true,
+      "settled-by": "report",
       "settling-words": {}
     },
     "answers": {
@@ -40,6 +44,7 @@ export const SPEC = {
         "Questions"
       ],
       "rolls-up": false,
+      "settled-by": "none",
       "settling-words": {}
     },
     "authorizations": {
@@ -47,6 +52,7 @@ export const SPEC = {
       "glyph": "🔑",
       "aliases": [],
       "rolls-up": true,
+      "settled-by": "none",
       "settling-words": {}
     },
     "review": {
@@ -56,6 +62,7 @@ export const SPEC = {
         "To review"
       ],
       "rolls-up": true,
+      "settled-by": "merged-pull-request",
       "settling-words": {}
     },
     "todo": {
@@ -65,6 +72,7 @@ export const SPEC = {
         "To do"
       ],
       "rolls-up": true,
+      "settled-by": "none",
       "settling-words": {}
     },
     "decide": {
@@ -75,6 +83,7 @@ export const SPEC = {
         "Blocked"
       ],
       "rolls-up": true,
+      "settled-by": "answer",
       "settling-words": {}
     }
   },

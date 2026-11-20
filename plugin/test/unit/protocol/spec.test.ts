@@ -98,7 +98,11 @@ describe("specProblems", () => {
   const decide = SPEC.lists.decide;
 
   test("finds a list too many", () => {
-    expect(specProblems(withList("extra", { ...decide, header: "Extra", glyph: "🧩", aliases: [] }))).toEqual([
+    expect(
+      specProblems(
+        withList("extra", { ...decide, header: "Extra", glyph: "🧩", aliases: [], "settled-by": "none" }),
+      ),
+    ).toEqual([
       "holds 10 lists, not 9",
     ]);
   });
@@ -113,6 +117,20 @@ describe("specProblems", () => {
     expect(specProblems(withList("decide", { ...decide, aliases: ["To do"] }))).toEqual([
       'the name "To do" names more than one list',
     ]);
+  });
+
+  test("finds a list that doesn't roll up yet something settles", () => {
+    expect(specProblems(withList("done", { ...SPEC.lists.done, "settled-by": "report" }))).toEqual([
+      "done doesn't roll up, so none of its items stays open to settle, yet it's settled by report",
+    ]);
+    expect(specProblems(withList("done", { ...SPEC.lists.done, "rolls-up": true }))).toEqual([]);
+  });
+
+  test("finds a list other than Decide settled by an answer, which reads only Decide's items", () => {
+    expect(specProblems(withList("todo", { ...SPEC.lists.todo, "settled-by": "answer" }))).toEqual([
+      "todo is settled by answer, which reads only the decide list's items",
+    ]);
+    expect(specProblems(withList("decide", { ...SPEC.lists.decide, "settled-by": "answer" }))).toEqual([]);
   });
 
   test("finds a word that settles two lists differently", () => {

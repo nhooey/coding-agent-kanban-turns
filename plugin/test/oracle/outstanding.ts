@@ -16,7 +16,7 @@ import {
   itemsOfText,
   openItemsIn,
   pullRequestsOf,
-  reviewPullRequests,
+  settlingPullRequests as reviewPullRequests,
   settlementsIn,
   subjectKey,
   summaryOf,

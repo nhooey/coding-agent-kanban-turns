@@ -43,6 +43,8 @@ export type SpecShape = Readonly<{
         header: string;
         glyph: string;
         aliases: readonly string[];
+        "rolls-up": boolean;
+        "settled-by": string;
         "settling-words": Readonly<Record<string, string>>;
       }>
     >
@@ -63,6 +65,32 @@ export type SpecShape = Readonly<{
     letters: Readonly<{ first: string; last: string }>;
   }>;
 }>;
+
+/** The way that settles nothing, the one way a list that doesn't roll up is settled by. */
+const SETTLED_BY_NOTHING = "none";
+
+/** The way an answer settles, and the one list whose items the core reads answers to: Decide's. */
+const SETTLED_BY_ANSWER = "answer";
+const ANSWERED_LIST = "decide";
+
+/**
+ * Each list settled by a way it can't be: one that doesn't roll up, so none
+ * of its items stays open to settle, by a way that settles something; and
+ * a list other than Decide by an answer.
+ */
+const settledByProblems = (spec: SpecShape): readonly string[] =>
+  Object.entries(spec.lists).flatMap(([key, list]) => [
+    ...(!list["rolls-up"] && list["settled-by"] !== SETTLED_BY_NOTHING
+      ? [
+          `${key} doesn't roll up, so none of its items stays open to settle, yet it's settled by ${list["settled-by"]}`,
+        ]
+      : []),
+    ...(key !== ANSWERED_LIST && list["settled-by"] === SETTLED_BY_ANSWER
+      ? [
+          `${key} is settled by ${SETTLED_BY_ANSWER}, which reads only the ${ANSWERED_LIST} list's items`,
+        ]
+      : []),
+  ]);
 
 /** Each settling word two lists give different effects, with the lists, by name. */
 const clashingWords = (spec: SpecShape): readonly string[] => {
@@ -156,6 +184,8 @@ const kindGlyphProblems = (spec: SpecShape): readonly string[] =>
  *
  * - a count of lists other than 9;
  * - a glyph or a name two lists share;
+ * - a list that doesn't roll up yet is settled by a way other than `none`,
+ *   or a list other than Decide settled by `answer`;
  * - a word that settles two lists differently;
  * - a command name that starts another's;
  * - a turn id's shortest prefix longer than the id;
@@ -175,6 +205,7 @@ export const specProblems = (spec: SpecShape): readonly string[] => {
     ...repeated(lists.flatMap((list) => [list.header, ...list.aliases])).map(
       (name) => `the name ${JSON.stringify(name)} names more than one list`,
     ),
+    ...settledByProblems(spec),
     ...clashingWords(spec),
     ...clashingCommands(spec),
     ...turnIdProblems(spec),
