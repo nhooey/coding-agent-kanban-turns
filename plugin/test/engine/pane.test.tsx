@@ -253,6 +253,10 @@ const engine = (
     runs: [] as (readonly string[])[],
     isUnreadable: false,
     isFillRefused: false,
+    // What a fill of the box throws, as a box gone from under it would.
+    fillError: undefined as Error | undefined,
+    // Why a hook beneath the plugin refuses to close the pane; none closes it.
+    closeDenial: undefined as string | undefined,
     // The box takes no text added after a draft, as a dialog opening while
     // a submit is pending would leave it.
     isAppendRefused: false,
@@ -324,6 +328,9 @@ const engine = (
       : [],
   }));
   on("ui.close", () => {
+    if (state.closeDenial !== undefined) {
+      return { deny: state.closeDenial };
+    }
     state.isPaneOpen = false;
 
     return { value: undefined };
@@ -365,6 +372,9 @@ const engine = (
   }));
   // A box under a dialog takes no text.
   on("prompt.fill", (_, e) => {
+    if (state.fillError !== undefined) {
+      throw state.fillError;
+    }
     if (state.isFillRefused || (state.isAppendRefused && e.mode === "append")) {
       return { isFilled: false };
     }
@@ -1624,6 +1634,29 @@ test("a box that can't be emptied sends nothing and keeps the draft", async ($, 
   await ui.unmount();
 });
 
+test("a box that throws as Submit empties it sends nothing, names the draft, and frees Submit", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  await ui.press({ key: "9efb08a1.Decide.1.B" });
+  state.fillError = new Error("the box fell over");
+  await ui.press({ key: "submit" });
+
+  expect(state.sent).toEqual([]);
+  const problem = (await ui.findAll({ type: "Text", text: /^Submit failed/ }))[0]?.text;
+  // A hook that throws is skipped, and with nothing else to fill the box the
+  // engine's fill rejects: the pane says what it rejected with. The fill may
+  // have emptied the box before it failed, so the pane keeps the draft.
+  expect(problem).toContain("prompt.fill");
+  expect(problem).toContain("9efb08a1.Decide.1.B");
+
+  // Submit isn't left busy: the next press sends.
+  state.fillError = undefined;
+  await ui.press({ key: "submit" });
+  expect(state.sent).toEqual([`${HEADER}9efb08a1.Decide.1.B\n`]);
+  await ui.unmount();
+});
+
 test("two Submit presses at once send the draft once", async ($, on) => {
   const state = engine(on, () => ITEMS);
   await $.command.run(ANSWERS);
@@ -1986,6 +2019,23 @@ test("a Submit that answers every open item closes the pane", async ($, on) => {
 
   expect(state.sent).toHaveLength(1);
   expect(state.isPaneOpen).toBe(false);
+  await ui.unmount();
+});
+
+test("a pane close refused after a Submit went through rejects the press, as the old handlers' did", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  await answerAll(ui);
+  state.closeDenial = "the pane stays";
+
+  await expect(ui.press({ key: "submit" })).rejects.toThrow("the pane stays");
+  expect(state.sent).toHaveLength(1);
+  // The press ended once the draft went through: Submit is free.
+  state.closeDenial = undefined;
+  state.box = "Ship it";
+  await ui.press({ key: "submit" });
+  expect(state.sent).toEqual([expect.any(String), "Ship it"]);
   await ui.unmount();
 });
 

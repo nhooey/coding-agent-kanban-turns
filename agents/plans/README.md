@@ -2,16 +2,15 @@
 
 <!-- Written by plans.py overview; edit the nodes, not this file. -->
 
-## In progress (0)
+## In progress (1)
 
-None.
+- [The pane's state is one value that a pure step function moves, and the hooks only dispatch events and run the effects it returns](pane-every-list/open/pane-state-reducer.md) `pane-state-reducer`, part of [The pane and the boxes under replies hold every list's items, grouped by turn, list and state, filtered, and answered in grouped references](pane-every-list/open/pane-every-list.md), pane-state-reducer
 
-## Ready (6)
+## Ready (5)
 
 - [The pane's header row and footer stay in sight while its items scroll](open/pane-controls-stay-visible.md) `pane-controls-stay-visible`
 - [Each item that blocks other work names the items it frees, by reference](kanban-next-chunk/open/kanban-items-name-what-they-free.md) `kanban-items-name-what-they-free`, part of [next-chunk shows the open items that free the most work, a chunk at a time, until none are open](kanban-next-chunk/open/kanban-next-chunk.md)
 - [The pane and the boxes under replies hold every list's items, grouped by turn, list and state, filtered, and answered in grouped references](pane-every-list/open/pane-every-list.md) `pane-every-list`
-- [The pane's state is one value that a pure step function moves, and the hooks only dispatch events and run the effects it returns](pane-every-list/open/pane-state-reducer.md) `pane-state-reducer`, part of [The pane and the boxes under replies hold every list's items, grouped by turn, list and state, filtered, and answered in grouped references](pane-every-list/open/pane-every-list.md)
 - [The plugin is the only source of the kanban turn-response protocol, and carries a skill derived from it, built deterministically](plugin-sole-source/open/plugin-sole-source.md) `plugin-sole-source`
 - [The plugin's kanban_outstanding and kanban_lint tools, and its turn.complete reply lint, do what the skill's scripts did](plugin-sole-source/open/plugin-tools-replace-skill-scripts.md) `plugin-tools-replace-skill-scripts`, part of [The plugin is the only source of the kanban turn-response protocol, and carries a skill derived from it, built deterministically](plugin-sole-source/open/plugin-sole-source.md)
 

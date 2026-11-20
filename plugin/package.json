@@ -17,6 +17,7 @@
     "@types/node": "^26.6.5",
     "ajv": "^8.20.0",
     "expect": "^30.5.2",
+    "fast-check": "^4.10.3",
     "typescript": "^7.0.2"
   }
 }

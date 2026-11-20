@@ -66,22 +66,35 @@ import {
 } from "../src/items/outstanding.ts";
 import {
   answeredCount,
-  closesOnSubmit,
   emptyRaised,
   forSession,
   isSettled,
   problemsOf,
   refreshed,
   seen,
-  sentOf,
   settlementOf,
   stillOpen,
   unread,
   unseen,
+  withHeld,
   withItems,
   withSent,
   withoutRead,
 } from "../src/items/raised.ts";
+import {
+  INITIAL_PANE,
+  NO_OUTSIDE,
+  failingPress,
+  readsOutside,
+  step as paneStep,
+  submitShown,
+} from "../src/pane/pane-state.ts";
+import type {
+  Effect,
+  Event,
+  Outside,
+  Stepped,
+} from "../src/pane/pane-state.ts";
 import {
   doneHeader,
   doneKey,
@@ -114,14 +127,10 @@ import {
   isPlainToolRow,
   itemTitle,
   noItemsText,
-  NOT_EMPTIED_TEXT,
   noteRows,
   notesKey,
   notesMode,
-  notPutBackText,
-  notSentText,
   pickedText,
-  putBackText,
   sentLetters,
   settledText,
   submitStep,
@@ -211,30 +220,15 @@ const noting = atom(
   { plugin: "coding-agent-kanban-turns", key: "noting" } as const,
   "",
 );
-// How many Submit presses there have been: each press's stamp.
-const submits = atom(
-  { plugin: "coding-agent-kanban-turns", key: "submits" } as const,
-  0,
+// The pane's state, one value that `step` moves and `dispatch` alone writes:
+// Submit, so far. Change the tag when PaneState's fields change, as for
+// Raised.
+const pane = atom(
+  { plugin: "coding-agent-kanban-turns", key: "pane" } as const,
+  INITIAL_PANE,
+  { shape: "pane-2" },
 );
-// The stamp of the Submit under way, 0 when none is: a second press while
-// one is under way does nothing.
-const submitting = atom(
-  { plugin: "coding-agent-kanban-turns", key: "submitting" } as const,
-  0,
-);
-// The id of the main loop's running turn, from its turn.start to its own
-// turn.complete, empty while none runs: Submit waits it out. Only the end
-// of the turn it names clears it, so a late end of an earlier turn doesn't.
-const runningTurn = atom(
-  { plugin: "coding-agent-kanban-turns", key: "runningTurn" } as const,
-  "",
-);
-// Why the last Submit sent nothing, for the pane to say; empty when it
-// sent, once a turn starts, or as the session starts.
-const submitProblem = atom(
-  { plugin: "coding-agent-kanban-turns", key: "submitProblem" } as const,
-  "",
-);
+
 // The skill's count line, `📌 Outstanding: 🚧 2 · … · 🧠 3`, from the last
 // refresh; empty when nothing is open.
 const counts = atom(
@@ -497,113 +491,179 @@ const note = ($: EngineInterface, item: DecideItem, said: string) =>
 const toggleReassess = ($: EngineInterface) =>
   rewriteDraft($, toggledReassess);
 
-/** Why the engine didn't take a prompt it was sent, or undefined once it entered. */
-const refusalOf = ($: EngineInterface, text: string): Promise<string | undefined> =>
-  $.prompt.submit({ text, asUser: true }).then(
-    (done) => done.drop,
-    (error: unknown) => String(error),
-  );
+/** `call()`'s promise, a synchronous throw in it turned into a rejection. */
+const attempt = <T,>(call: () => T | Promise<T>): Promise<T> =>
+  Promise.resolve().then(call);
+
+/** What `paneStep` reads of the areas whose state is still in atoms of their own; a read that throws rejects. */
+const outsideNow = async ($: EngineInterface): Promise<Outside> => ({
+  raised: await attempt(() => read($, raised)),
+  sent: await attempt(() => read($, sent)),
+  isClosedWhenAllSubmitted:
+    (await attempt(() => settingsNow($)))?.pane["close-when-all-submitted"] ===
+    true,
+});
 
 /**
- * Puts a draft the engine refused back in the box Submit emptied, after
- * whatever the person typed there meanwhile, and says why it wasn't sent.
- * A box that can't take it back leaves the draft in what the pane says.
+ * `event` stepped in a single update of the pane's atom: the state written,
+ * and the effects of the step that wrote it. The outside atoms are read
+ * only for an event whose step reads them, so no other event, such as the
+ * session's start, can fail on them.
  */
-const putBack = async (
+const stepNow = async ($: EngineInterface, event: Event): Promise<Stepped> => {
+  const outside = readsOutside(event) ? await outsideNow($) : NO_OUTSIDE;
+  // `update` may run its function again on a missed write: the step whose
+  // state it wrote is the last it ran, taken once the write has landed.
+  let attempted = undefined as Stepped | undefined;
+  const written = await update($, pane, (state) => {
+    attempted = paneStep(state, event, outside);
+
+    return attempted.state;
+  });
+
+  return { state: written, effects: attempted?.effects ?? [] };
+};
+
+/**
+ * What a failure stepping `event` or running its effects does: the press
+ * still under way or overtaken in `state` that it was for ends, saying why,
+ * as the old `finally` freed Submit; a failure for no such press rejects,
+ * as the old handlers' did.
+ */
+const failedOn = async (
   $: EngineInterface,
-  text: string,
-  refusal: string,
+  event: Event,
+  done: Stepped,
+  error: unknown,
 ): Promise<void> => {
-  const box = (await $.prompt.read().catch(() => ({ text: "" }))).text;
-  const added = putBackText(box, text);
-  const put = await $.prompt
-    .fill({ text: added, mode: "append" })
-    .catch(() => ({ isFilled: false }));
+  const press = failingPress(done.state, event, done.effects);
 
-  if (put.isFilled) {
-    await update($, draft, () => `${box}${added}`);
+  if (press === undefined) {
+    throw error;
   }
-  await update($, submitProblem, () =>
-    put.isFilled
-      ? notSentText(refusal, box !== "")
-      : notPutBackText(refusal, text),
+
+  return dispatch($, { type: "press-failed", press, why: String(error) });
+};
+
+/** Runs `effects` in order, each prompt call's answer dispatched before the next, stopping at the first that fails. */
+const runEffects = async (
+  $: EngineInterface,
+  event: Event,
+  done: Stepped,
+  effects: readonly Effect[],
+): Promise<void> => {
+  const [effect, ...rest] = effects;
+
+  if (effect === undefined) {
+    return;
+  }
+  const ran = await runEffect($, effect).then(
+    (answer) => ({ answer }),
+    (error: unknown) => ({ error }),
   );
+
+  if ("error" in ran) {
+    return failedOn($, event, done, ran.error);
+  }
+  if (ran.answer !== undefined) {
+    await dispatch($, ran.answer);
+  }
+
+  return runEffects($, event, done, rest);
 };
 
 /**
- * Sends `text`, the box emptied first, as the person's own words. A box that
- * can't be emptied sends nothing and leaves the draft as it was; a prompt
- * the engine refuses goes back in the box. Either way the pane says why.
- * The items the draft answers are Done from the moment it's sent, until the
- * turn's end reads the transcript; a refused prompt puts them back at once.
- * A prompt that went through closes the pane when it leaves no item open,
- * as `pane.close-when-all-submitted` says.
+ * The one way the pane's state changes: `event` stepped in a single update
+ * of the pane's atom, then the effects it asked for run in order, each
+ * prompt call's answer dispatched in turn. Resolves once they all have.
+ * A step that fails, before anything is written, is judged by the state as
+ * it stands.
  */
-const sendDraft = async ($: EngineInterface, text: string): Promise<void> => {
-  const emptied = await $.prompt.fill({ text: "", mode: "replace" });
+const dispatch = async ($: EngineInterface, event: Event): Promise<void> => {
+  const done = await stepNow($, event).then(
+    (stepped) => ({ stepped }),
+    (error: unknown) => ({ error }),
+  );
 
-  if (!emptied.isFilled) {
-    await update($, submitProblem, () => NOT_EMPTIED_TEXT);
+  if ("error" in done) {
+    const state = await attempt(() => read($, pane)).catch(() => INITIAL_PANE);
 
-    return;
+    return failedOn($, event, { state, effects: [] }, done.error);
   }
-  await update($, draft, () => "");
-  const moved = sentOf(text, await shownNow($));
-  const isMoved = (held: Settlement) =>
-    moved.some((settled) => settled.ref === held.ref);
-  await update($, sent, (held) => [...held.filter((s) => !isMoved(s)), ...moved]);
-  const refusal = await refusalOf($, text);
 
-  if (refusal !== undefined) {
-    await update($, sent, (held) => held.filter((s) => !isMoved(s)));
-    await putBack($, text, refusal);
-
-    return;
-  }
-  await update($, submitProblem, () => "");
-  const s = await settingsNow($);
-
-  if (
-    closesOnSubmit(
-      await read($, raised),
-      await read($, sent),
-      s?.pane["close-when-all-submitted"] === true,
-    )
-  ) {
-    await closePane($);
-  }
+  return runEffects($, event, done.stepped, done.stepped.effects);
 };
 
 /**
- * The pane's Submit: sends the prompt box's text as the person's own. One
- * press at a time: a press while another is under way, or while a turn
- * runs, does nothing, as does a box of blanks or of the line naming the
- * plugin alone; a draft with a file mention, pasted text or an image stays
- * in the box, the pane saying why.
+ * Runs one effect `paneStep` asked for, and resolves to the event its
+ * answer makes, under the press's number, if it is a prompt call. A read
+ * that throws reads as an empty box, a put-back fill that throws as not
+ * taken, and a submit that throws as refused, for why; emptying the box
+ * that throws rejects, failing the press, as the box may have been emptied.
  */
-const submitDraft = async ($: EngineInterface): Promise<void> => {
-  const stamp = await update($, submits, (n) => n + 1);
-  const holder = await update($, submitting, (held) =>
-    held === 0 ? stamp : held,
-  );
+const runEffect = async (
+  $: EngineInterface,
+  effect: Effect,
+): Promise<Event | undefined> => {
+  switch (effect.kind) {
+    case "read-prompt":
+      return {
+        type: "prompt-read",
+        press: effect.press,
+        purpose: effect.purpose,
+        text: await attempt(() => $.prompt.read()).then(
+          (box) => box.text,
+          () => "",
+        ),
+      };
+    case "fill-prompt": {
+      const filled = attempt(() =>
+        $.prompt.fill({ text: effect.text, mode: effect.mode }),
+      ).then((done) => done.isFilled);
 
-  if (holder !== stamp) {
-    return;
-  }
-
-  try {
-    const step = submitStep(
-      (await $.prompt.read()).text,
-      (await read($, runningTurn)) !== "",
-    );
-
-    if ("refuse" in step) {
-      await update($, submitProblem, () => step.refuse);
-    } else if ("send" in step) {
-      await sendDraft($, step.send);
+      return {
+        type: "prompt-filled",
+        press: effect.press,
+        purpose: effect.purpose,
+        isFilled: await (effect.purpose === "put-back"
+          ? filled.catch(() => false)
+          : filled),
+      };
     }
-  } finally {
-    await update($, submitting, (held) => (held === stamp ? 0 : held));
+    case "submit-prompt": {
+      const refusal = await attempt(() =>
+        $.prompt.submit({ text: effect.text, asUser: true }),
+      ).then(
+        (done) => done.drop,
+        (error: unknown) => String(error),
+      );
+
+      return {
+        type: "prompt-submitted",
+        press: effect.press,
+        ...(refusal === undefined ? {} : { refusal }),
+      };
+    }
+    case "close-pane":
+      await attempt(() => closePane($));
+
+      return undefined;
+    case "set-draft":
+      await attempt(() => update($, draft, () => effect.text));
+
+      return undefined;
+    case "hold-sent":
+      await attempt(() => update($, sent, (held) => withHeld(held, effect.moved)));
+
+      return undefined;
+    case "release-sent":
+      await attempt(() =>
+        update($, sent, (held) => withoutRead(held, effect.moved)),
+      );
+
+      return undefined;
+    default:
+      return effect satisfies never;
   }
 };
 
@@ -729,15 +789,15 @@ const showItem = async ($: EngineInterface, href: string): Promise<void> => {
 
 export const register: Register = (on) => {
   on("session.start", async ($, e, next) => {
-    // No turn runs as the session starts, no Submit is under way, none has
-    // a problem to say, no sent answer waits for a turn's end and the ring
-    // is on nothing, though a reload mid-turn or mid-Submit may have left
-    // them set; the refresh reads what a sent answer did. Cleared before the
-    // hook awaits anything else, so a turn.start or a Submit that lands while
-    // it registers stays.
-    await update($, runningTurn, () => "");
-    await update($, submitting, () => 0);
-    await update($, submitProblem, () => "");
+    // No turn runs as the session starts, no Submit holds the button, none
+    // has a problem to say, no sent answer waits for a turn's end and the
+    // ring is on nothing, though a reload mid-turn or mid-Submit may have
+    // left them set; the refresh reads what a sent answer did. A Submit
+    // under way finishes as it would have, overtaken, since a hook already
+    // running when the plugin reloads still settles. Cleared before the hook
+    // registers anything, so a turn.start or a Submit that lands while it
+    // registers stays.
+    await dispatch($, { type: "session-started" });
     await update($, sent, () => []);
     await update($, focused, () => "");
     const started = await next(e);
@@ -823,8 +883,7 @@ export const register: Register = (on) => {
     const started = await next(e);
 
     if (e.agentId === undefined) {
-      await update($, runningTurn, () => e.turnId);
-      await update($, submitProblem, () => "");
+      await dispatch($, { type: "turn-started", turn: e.turnId });
     }
 
     return started;
@@ -839,7 +898,7 @@ export const register: Register = (on) => {
     const done = await next(e);
 
     if (e.agentId === undefined) {
-      await update($, runningTurn, (held) => (held === e.turnId ? "" : held));
+      await dispatch($, { type: "turn-completed", turn: e.turnId });
       const before = await read($, sent);
 
       if (await refresh($)) {
@@ -978,9 +1037,7 @@ export const register: Register = (on) => {
     }
 
     const text = await read($, draft);
-    const isBusy =
-      (await read($, runningTurn)) !== "" || (await read($, submitting)) !== 0;
-    const problem = await read($, submitProblem);
+    const { isBusy, problem } = submitShown((await read($, pane)).submit);
     const ring = await read($, focused);
     const notingNow = await read($, noting);
     const line = await read($, counts);
@@ -1100,7 +1157,7 @@ export const register: Register = (on) => {
               label: "Submit",
               hotkey: s.keys.submit,
               isInert: "skip" in submitStep(text, isBusy),
-              onPress: () => submitDraft($),
+              onPress: () => dispatch($, { type: "submit-pressed" }),
             })}
           </Box>
         </Box>

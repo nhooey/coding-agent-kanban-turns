@@ -79,8 +79,9 @@
           nodejs = pkgs.nodejs_26;
 
           # plugin/'s npm dependencies (the YAML parser, and for
-          # development TypeScript, Node's types, Jest's expect and ajv, which
-          # checks the protocol's spec against its schema), each
+          # development TypeScript, Node's types, Jest's expect, fast-check,
+          # for the property tests, and ajv, which checks the protocol's
+          # spec against its schema), each
           # fetched by the integrity hash its
           # package-lock.json records: no `npm ci`, and no hash to keep
           # beside the lock. Built from the two files alone, so an edit

@@ -127,6 +127,54 @@ export type Raised = Readonly<{
   warnings: readonly string[];
 }>;
 
+/**
+ * Where a draft Submit sends is: the box being emptied; the draft sent,
+ * with the answers it moved to Done; the engine having refused it, the box
+ * being read to put it back; or the box taking it back after `box`.
+ */
+export type SubmitStage = Readonly<
+  | { at: "emptying" }
+  | { at: "submitting"; moved: readonly Settlement[] }
+  | { at: "reading-back"; refusal: string }
+  | { at: "putting-back"; refusal: string; box: string }
+>;
+
+/**
+ * One press of Submit under way, by its number: reading the box, or
+ * sending the draft it read. Every prompt call it makes, and the call's
+ * answer, carry the number, so an answer moves only the press that asked.
+ */
+export type Press = Readonly<
+  | { press: number; at: "reading" }
+  | { press: number; at: "sending"; draft: string; stage: SubmitStage }
+>;
+
+/**
+ * The pane's Submit: idle; a main-loop turn running, by its id, which only
+ * that turn's end clears; refused, with why; or a press under way. A turn
+ * that started meanwhile is kept with either of the last two. `said` is
+ * what the pane still says from before the press, until it ends; a turn's
+ * start clears it.
+ */
+export type Submit = Readonly<
+  | { tag: "idle" }
+  | { tag: "running"; turn: string }
+  | { tag: "refused"; why: string; turn?: string }
+  | { tag: "pressed"; press: Press; said: string; turn?: string }
+>;
+
+/**
+ * The pane's state, one value that `step` moves: how many presses there
+ * have been, which numbers them; Submit; and the presses a session's start
+ * overtook, which finish as they would have, since a hook already running
+ * when the plugin reloads still settles.
+ */
+export type PaneState = Readonly<{
+  presses: number;
+  submit: Submit;
+  overtaken: readonly Press[];
+}>;
+
 /** A value a settings file holds, as YAML reads it. */
 export type Json =
   | null
@@ -186,10 +234,7 @@ declare module "claude-code" {
       isKeysOpen: boolean;
       draft: string;
       noting: string;
-      submits: number;
-      submitting: number;
-      runningTurn: string;
-      submitProblem: string;
+      pane: Shaped<PaneState>;
       counts: string;
       merged: readonly string[];
       refreshes: number;
