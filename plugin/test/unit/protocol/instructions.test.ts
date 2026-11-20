@@ -119,6 +119,12 @@ describe("the instructions teach the whole format", () => {
     );
   });
 
+  test("tell an item that blocks other work to end on the line naming what it frees, by the spec's label", () => {
+    expect(INSTRUCTIONS).toContain(filled(FRAGMENTS["frees"], values));
+    expect(INSTRUCTIONS).toContain(`\`${SPEC.frees.label}:\``);
+    expect(INSTRUCTIONS).toContain(values["example.frees"]);
+  });
+
   test("give the rules a parser can't check", () => {
     [
       "A progress update is any text the agent writes between tool calls",
@@ -191,6 +197,7 @@ const item = {
   summary: "Which cache to keep",
   kind: "radio",
   ref: "0f311c94.Decide.2",
+  frees: ["0f311c94.Todo.1"],
   options: [option],
 };
 
@@ -264,6 +271,7 @@ describe("the tool's schema", () => {
     [
       ...ITEM_SCHEMA.required,
       "kind",
+      "frees",
       ...Object.keys(ITEM_SCHEMA.properties.options.items.properties),
     ].forEach((field) => expect(INSTRUCTIONS).toContain(`\`${field}\``));
   });

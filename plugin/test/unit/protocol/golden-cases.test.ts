@@ -1,8 +1,9 @@
 // The protocol's golden cases, spec/cases/*.yaml, run through the core: each
 // case's transcript gives the open items, the outstanding items, the count
-// line and each turn's command the case expects. A new case needs no new
-// test code. Between them the cases cover the spec: every list, option
-// kind, command and synonym, settling word, reference form and lint rule.
+// line, what each item frees and each turn's command the case expects. A
+// new case needs no new test code. Between them the cases cover the spec:
+// every list, option kind, command and synonym, settling word, reference
+// form and lint rule.
 
 import { describe, test } from "node:test";
 import { expect } from "expect";

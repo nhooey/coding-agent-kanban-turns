@@ -11,7 +11,7 @@ The final response's lists, in the order it prints them: {{names.lists}}.
 | {{header.answers}} | one item per question the user asked that names no listed item, the question as the summary, shortened or reworded where that reads better, the answer under it | nobody |
 | {{header.authorizations}} | one item per grant only the user can give: a 1Password, SecretSpec or SSH signing prompt, an approval for actions the harness or a classifier refused, a `sudo` password | the user |
 | {{header.review}} | one item per thing put in front of the user to read, listen to or look at, a pull request to review or merge among them, with where to open it and what to look for | the user |
-| {{header.todo}} | one item per action asked of the user that is not a choice, reading or grant: a file to mark up, a prompt to paste, a command to run; each says what to do, where, by its path, and what it frees | the user |
+| {{header.todo}} | one item per action asked of the user that is not a choice, reading or grant: a file to mark up, a prompt to paste, a command to run; each says what to do and where, by its path, and ends on its `{{frees.label}}:` line where it frees a listed item | the user |
 | {{header.decide}} | one item per decision raised, and per judgement call taken instead of asked, its reversal an option | the user |
 
 The {{names.rolled-up}} lists' items roll up into {{roll-up.glyph}} until something settles them: an {{lists.authorizations.header}} item until it is granted or withdrawn, and a {{lists.review.header}} item until the user's reply shows they reviewed it. The {{names.not-rolled-up}} lists' items never roll up.

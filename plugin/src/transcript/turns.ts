@@ -308,10 +308,17 @@ export const commandOf = (prompt: string): string | undefined => {
  * answer.
  */
 export const reassessStart = (turns: readonly Turn[]): number =>
-  Math.max(
-    turns.findLastIndex(
-      (turn) =>
-        isOwn(turn.prompt.owner) && commandOf(turn.prompt.text) === REASSESS,
-    ),
-    0,
+  Math.max(turns.findLastIndex(isReassessTurn), 0);
+
+/** Whether a turn reassesses: its prompt the user's own, running `reassess`. */
+export const isReassessTurn = (turn: Turn): boolean =>
+  isOwn(turn.prompt.owner) && commandOf(turn.prompt.text) === REASSESS;
+
+/** For each turn, the place of the latest `reassess` turn at or before it, as reassessStart gives for the turns up to it; else 0. */
+export const reassessStarts = (turns: readonly Turn[]): readonly number[] => {
+  const reassesses = turns.map(isReassessTurn);
+
+  return reassesses.map((_, at) =>
+    Math.max(reassesses.lastIndexOf(true, at), 0),
   );
+};

@@ -1,0 +1,90 @@
+title: >-
+  Items of four lists, Pending, Authorizations, Todo and Decide, end on a
+  `Frees:` line naming items of their own turn, a Decide item's under its
+  last option, and a later turn's names an earlier turn's item by a prefix
+  of its id: each item frees what its line names, by the turn's whole id,
+  and the Decide item's line wins over the `frees` its `kanban_options` call
+  gave
+turns:
+  - id: a1b2c3d4
+    prompt: Where does the deploy stand?
+    replies:
+      - text: "\
+          The deploy waits on the token, a prompt and one choice.\n\
+          \n\
+          🚧 **Pending:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔▔\n\
+          1. **Rework the deploy script's retries**  \n\
+          \   It retries 3 times, then gives up.\n\
+          \   Frees: a1b2c3d4.Review.1\n\
+          \n\
+          ⏳ **Waiting:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔▔\n\
+          1. **The staging run (`b7c8d9e0f`)**\n\
+          \n\
+          🔑 **Authorizations:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n\
+          1. **1Password prompt for the `deploy-bot` token**  \n\
+          \   The prompt stays open for 10 minutes.\n\
+          \   Frees: a1b2c3d4.Waiting.1, a1b2c3d4.Todo.1\n\
+          \n\
+          🔍 **Review:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔\n\
+          1. **o/deploy#21 The retry rework**\n\
+          \n\
+          👉 **Todo:**  \n\
+          ▔▔▔▔▔▔▔▔\n\
+          1. **Paste the deploy prompt into the release session**  \n\
+          \   It is in `prompts/deploy.md`.\n\
+          \   Frees: a1b2c3d4.Decide.1\n\
+          \n\
+          🧠 **Decide:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔\n\
+          1. **Deploy tonight or in the morning?**  \n\
+          \   🔘 A. **Deploy tonight**: tag `v3.1` and publish.\n\
+          \      ➕ Users get the retry fix a day sooner.\n\
+          \      ➖ Nobody watches the rollout overnight.\n\
+          \   🔘 B. **Deploy at 9**: tag and publish in the morning.\n\
+          \      ➕ The rollout is watched.\n\
+          \      ➖ The fix waits a day.\n\
+          \   Frees: a1b2c3d4.Review.1\n"
+        lint: []
+    decide:
+      - number: 1
+        summary: Deploy tonight or in the morning?
+        kind: radio
+        frees: [a1b2c3d4.Todo.1]
+        options:
+          - { letter: A, name: Deploy tonight }
+          - { letter: B, name: Deploy at 9 }
+  - id: b2c3d4e5
+    prompt: Go on with the rework.
+    replies:
+      - text: "\
+          The rework retries 5 times now.\n\
+          \n\
+          👉 **Todo:**  \n\
+          ▔▔▔▔▔▔▔▔\n\
+          1. **Restart the staging runner**  \n\
+          \   It is stuck on the old image.\n\
+          \   Frees: a1b2c3.Waiting.1\n"
+        lint: []
+expect:
+  open: [a1b2c3d4.Decide.1]
+  outstanding:
+    - "Pending: Rework the deploy script's retries"
+    - "Waiting: The staging run (`b7c8d9e0f`)"
+    - "Authorizations: 1Password prompt for the `deploy-bot` token"
+    - "Review: o/deploy#21 The retry rework"
+    - "Todo: Paste the deploy prompt into the release session"
+    - "Decide: Deploy tonight or in the morning?"
+    - "Todo: Restart the staging runner"
+  counts: "📌 Outstanding: 🚧 1 · ⏳ 1 · 🔑 1 · 🔍 1 · 👉 2 · 🧠 1"
+  frees:
+    a1b2c3d4.Pending.1: [a1b2c3d4.Review.1]
+    a1b2c3d4.Authorizations.1: [a1b2c3d4.Waiting.1, a1b2c3d4.Todo.1]
+    a1b2c3d4.Todo.1: [a1b2c3d4.Decide.1]
+    a1b2c3d4.Decide.1: [a1b2c3d4.Review.1]
+    b2c3d4e5.Todo.1: [a1b2c3d4.Waiting.1]
+  decide-frees:
+    a1b2c3d4.Decide.1: [a1b2c3d4.Review.1]

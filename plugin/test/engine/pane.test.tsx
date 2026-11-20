@@ -1376,6 +1376,21 @@ const REPLY = {
   },
 } as const;
 
+test("a Decide item's box draws the Frees: line naming what it frees, under its options, and none for an item that frees nothing", async ($, on) => {
+  const freeing = [{ ...ITEMS[0], frees: ["9efb08a1.Todo.1", "9efb08a1.Review.2"] }, ITEMS[2]];
+  engine(on, () => freeing);
+  await $.tool.call({ tool: TOOL, items: freeing } as never);
+  await $.turn.complete(replyDone("t0"));
+  const reply = await $.ui.mount(REPLY);
+
+  const drawn = JSON.stringify(await reply.drawn());
+  expect(drawn).toContain("Frees: 9efb08a1.Todo.1, 9efb08a1.Review.2");
+  expect(drawn.indexOf("Frees: ")).toBeGreaterThan(drawn.indexOf("Memory"));
+  expect(drawn.indexOf("Frees: ")).toBeLessThan(drawn.indexOf(" 🧠 Decide.3 "));
+  expect(drawn.split("Frees: ").length).toBe(2);
+  await reply.unmount();
+});
+
 test("a reply whose Decide list isn't found intact draws its items under its text, a Done one dimmed but live", async ($, on) => {
   const open: unknown[] = [...ITEMS];
   const state = engine(on, () => open);
@@ -2305,6 +2320,20 @@ test("the context teaches the whole turn-response format, every list's header an
     "A question is never a choice.",
   ].forEach((phrase) => expect(text).toContain(phrase));
   expect(text).not.toContain("{{");
+});
+
+test("the context tells an item that blocks other work to end on the line naming the items it frees", async ($, on) => {
+  engine(on, () => []);
+  on("prompt.context", (_, e) => ({ blocks: e.blocks }));
+  const { blocks } = await $.prompt.context({ blocks: [] });
+  const text = blocks.find((block) => block.name === "kanbanTurns")?.text ?? "";
+
+  [
+    "## What an item frees",
+    "An item that blocks other work ends on a line naming, by reference, the items it frees",
+    "Frees: 0f311c94.Decide.2, 0f311c94.Review.1",
+    "- `frees`: the references the item's `Frees:` line names",
+  ].forEach((phrase) => expect(text).toContain(phrase));
 });
 
 const GO = { text: "go", wait: false, origin: { kind: "composer" } } as const;

@@ -19,9 +19,12 @@
 //   line break into a space or joins two lines.
 
 import { isScalar, parseDocument } from "yaml";
-import { itemsOf } from "../../src/items/items.ts";
+import { itemsOf, refOf } from "../../src/items/items.ts";
 import {
+  allItems,
   countLine,
+  decideStates,
+  listItemRef,
   openOf,
   rollUp,
   summaryOf,
@@ -56,6 +59,7 @@ export type CaseItem = Readonly<{
   summary: string;
   kind: string;
   options: readonly Readonly<{ letter: string; name: string }>[];
+  frees?: readonly string[];
 }>;
 
 /** One turn of a case, and the command its prompt runs, `runs`, an expectation. */
@@ -70,11 +74,16 @@ export type CaseTurn = Readonly<{
   messages?: readonly CaseMessage[];
 }>;
 
-/** What the core gives for a whole transcript. */
+/** What each item frees, by the item's reference. */
+export type Frees = Readonly<Record<string, readonly string[]>>;
+
+/** What the core gives for a whole transcript; `frees` and `decide-frees` none where a case leaves them out. */
 export type Outcome = Readonly<{
   open: readonly string[];
   outstanding: readonly string[];
   counts: string;
+  frees?: Frees;
+  "decide-frees"?: Frees;
 }>;
 
 /** A golden case, as case.schema.yaml shapes it. */
@@ -308,10 +317,30 @@ export const turnsOfCase = (golden: GoldenCase): readonly Turn[] =>
 const runsOf = (turn: Turn): string | undefined =>
   isOwn(turn.prompt.owner) ? commandOf(turn.prompt.text) : undefined;
 
-/** What the core gives for a case's transcript: the open Decide items by reference, the outstanding items, the count line, and each turn's command. */
+/** What each numbered item of the replies' own lists frees, by its reference; an item that frees none left out. */
+export const freesOfTurns = (turns: readonly Turn[]): Frees =>
+  Object.fromEntries(
+    allItems(turns).flatMap((item) => {
+      const ref = listItemRef(turns, item);
+
+      return ref === undefined || item.frees.length === 0
+        ? []
+        : [[ref, item.frees] as const];
+    }),
+  );
+
+/** What each Decide item a `kanban_options` call raised frees, the reply's line winning over the call's, by its reference; an item that frees none left out. */
+export const decideFreesOfTurns = (turns: readonly Turn[]): Frees =>
+  Object.fromEntries(
+    decideStates(turns).flatMap(({ item }) =>
+      (item.frees ?? []).length === 0 ? [] : [[refOf(item), item.frees ?? []] as const],
+    ),
+  );
+
+/** What the core gives for a case's transcript: the open Decide items by reference, the outstanding items, the count line, what each item frees, and each turn's command. */
 export const outcomeOf = (
   golden: GoldenCase,
-): Outcome & Readonly<{ runs: readonly (string | undefined)[] }> => {
+): Required<Outcome> & Readonly<{ runs: readonly (string | undefined)[] }> => {
   const turns = turnsOfCase(golden);
   const window = golden.window ?? 0;
   const merged = new Set(golden.merged ?? []);
@@ -322,9 +351,17 @@ export const outcomeOf = (
       (item) => `${SPEC.lists[item.list].header}: ${summaryOf(item.line)}`,
     ),
     counts: countLine(turns, window, merged),
+    frees: freesOfTurns(turns),
+    "decide-frees": decideFreesOfTurns(turns),
     runs: turns.map(runsOf),
   };
 };
+
+/** What each item frees, sorted by the item's reference, so the order a case writes them in doesn't count. */
+const sortedFrees = (frees: Frees): Frees =>
+  Object.fromEntries(
+    Object.entries(frees).toSorted(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+  );
 
 /** A value as a failure prints it: JSON, or `none` for nothing. */
 const shown = (value: unknown): string =>
@@ -338,9 +375,10 @@ const differs = (where: string, expected: unknown, got: unknown): readonly strin
 
 /**
  * Where what the core gives for a case differs from what the case expects,
- * one line each: its open items, outstanding items and count line, and each
- * turn's command. Empty when the core gives what the case expects. The lint
- * findings wait for the lint.
+ * one line each: its open items, outstanding items, count line, what each
+ * item and each raised Decide item frees, and each turn's command. Empty
+ * when the core gives what the case expects. The lint findings wait for
+ * the lint.
  */
 export const caseFailures = (golden: GoldenCase): readonly string[] => {
   const got = outcomeOf(golden);
@@ -349,6 +387,16 @@ export const caseFailures = (golden: GoldenCase): readonly string[] => {
     ...differs("expect.open", golden.expect.open, got.open),
     ...differs("expect.outstanding", golden.expect.outstanding, got.outstanding),
     ...differs("expect.counts", golden.expect.counts, got.counts),
+    ...differs(
+      "expect.frees",
+      sortedFrees(golden.expect.frees ?? {}),
+      sortedFrees(got.frees),
+    ),
+    ...differs(
+      "expect.decide-frees",
+      sortedFrees(golden.expect["decide-frees"] ?? {}),
+      sortedFrees(got["decide-frees"]),
+    ),
     ...golden.turns.flatMap((turn, n) =>
       differs(`turns[${n}].runs`, turn.runs, got.runs[n]),
     ),

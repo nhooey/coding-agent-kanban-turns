@@ -5,7 +5,8 @@ $schema: http://json-schema.org/draft-07/schema#
 title: The kanban turn-response protocol's checkable rules
 type: object
 additionalProperties: false
-required: [lists, options, commands, reference, roll-up, tag, characters]
+required:
+  [lists, options, commands, reference, frees, roll-up, tag, characters]
 definitions:
   # One character or emoji, never blank.
   glyph:
@@ -135,6 +136,16 @@ properties:
         properties:
           first: { $ref: "#/definitions/letter" }
           last: { $ref: "#/definitions/letter" }
+  frees:
+    type: object
+    additionalProperties: false
+    required: [label, separator]
+    properties:
+      label: { $ref: "#/definitions/name" }
+      # One punctuation character, so no turn id, list or number holds it.
+      separator:
+        type: string
+        pattern: ^[,;/]$
   roll-up:
     type: object
     additionalProperties: false

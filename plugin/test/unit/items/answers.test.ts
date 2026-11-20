@@ -355,4 +355,17 @@ describe("the items a kanban_options call hands over", () => {
       },
     ]);
   });
+
+  test("an item's frees keep only the references, each once, and one not given an array is dropped", () => {
+    const item = { turn: "abc12345", number: 4, summary: "S", options: [{ letter: "A", name: "a" }] };
+    const [given, bad] = itemsOf({
+      items: [
+        { ...item, frees: ["abc12345.Todo.1", "the release", 7, "abc12345.Todo.1", "abc123.Review.2"] },
+        { ...item, number: 5, frees: "abc12345.Todo.1" },
+      ],
+    });
+
+    expect(given?.frees).toEqual(["abc12345.Todo.1", "abc123.Review.2"]);
+    expect(bad === undefined ? true : "frees" in bad).toBe(false);
+  });
 });
