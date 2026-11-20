@@ -48,13 +48,13 @@
       name = "coding-agent-kanban-turns-devshell";
       sources = [
         { source = inputs.skillspkgs-combinations.combinations.claude-code-tools; }
-        # The kanban turn-response skill, whose rules this mod renders and
+        # The kanban turn-response skill, whose rules this plugin renders and
         # shares (see AGENTS.md); no other Claude Code tool uses it.
         {
           source = inputs.coding-agent-skills;
           skills = [ "coding-agent-kanban-turn-responses" ];
         }
-        # Finds the implicit models in the mod's code; not in the family's
+        # Finds the implicit models in the plugin's code; not in the family's
         # combination.
         {
           source = inputs.software-design-skills;

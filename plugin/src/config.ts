@@ -1,4 +1,4 @@
-// The mod's settings: the shipped defaults file, defaults/config.jsonc, with
+// The plugin's settings: the shipped defaults file, defaults/config.jsonc, with
 // the user's own file merged over it. Pure: hooks/settings.ts reads the two
 // files and hands their text here.
 //
@@ -6,7 +6,7 @@
 // those values must have, so a default is written in one place. Sections
 // merge key by key, a scalar or a list replaces, and a key the shape
 // doesn't name, or a value of the wrong type, refuses the user's file whole.
-// A section the mod no longer reads is the exception: it is left out with a
+// A section the plugin no longer reads is the exception: it is left out with a
 // warning, and the rest of the file is used.
 
 import type { Json, Loaded, Settings } from "../types/index.d.ts";
@@ -14,7 +14,7 @@ import type { Json, Loaded, Settings } from "../types/index.d.ts";
 /** The type each setting must have: a section is a map of its keys. */
 type Shape = "string" | "number" | { readonly [key: string]: Shape };
 
-/** Every setting the mod reads, by the type its value must have. */
+/** Every setting the plugin reads, by the type its value must have. */
 export const SETTINGS_SHAPE: Shape = {
   counts: { turns: "number", "gh-timeout-ms": "number" },
   keys: { dismiss: "string" },
@@ -28,13 +28,13 @@ export const SETTINGS_SHAPE: Shape = {
   },
 };
 
-/** The top-level sections the mod no longer reads, each with what to set instead. */
+/** The top-level sections the plugin no longer reads, each with what to set instead. */
 export const RETIRED: Readonly<Record<string, string>> = {
   outstanding:
-    "the mod reads the transcript itself; counts.turns sets how many turns the count line reads",
+    "the plugin reads the transcript itself; counts.turns sets how many turns the count line reads",
 };
 
-/** The file's value without the sections the mod no longer reads. */
+/** The file's value without the sections the plugin no longer reads. */
 export const withoutRetired = (value: Json): Json =>
   isMap(value)
     ? Object.fromEntries(
@@ -42,7 +42,7 @@ export const withoutRetired = (value: Json): Json =>
       )
     : value;
 
-/** A warning for each section the mod no longer reads that the file still holds. */
+/** A warning for each section the plugin no longer reads that the file still holds. */
 export const retiredIn = (value: Json): readonly string[] =>
   isMap(value)
     ? Object.keys(value)
@@ -53,7 +53,7 @@ export const retiredIn = (value: Json): readonly string[] =>
 /** The folder under $XDG_CONFIG_HOME, or ~/.config, the user's file sits in. */
 export const APP = "coding-agent-kanban-turns";
 
-/** The defaults file, from the mod's own folder. */
+/** The defaults file, from the plugin's own folder. */
 export const DEFAULTS_FILE = "defaults/config.jsonc";
 
 // A JSON string, kept whole, so what looks like a comment or a comma inside
@@ -154,11 +154,11 @@ export const userConfigPath = (
       ? `${env.home}/.config/${APP}/config.jsonc`
       : undefined;
 
-/** A file the mod read: where it is, and its text. */
+/** A file the plugin read: where it is, and its text. */
 export type ConfigFile = Readonly<{ path: string; text: string }>;
 
 /**
- * A file's value checked against the shape, without the sections the mod no
+ * A file's value checked against the shape, without the sections the plugin no
  * longer reads, or what's wrong with it; each problem or warning names the
  * file.
  */

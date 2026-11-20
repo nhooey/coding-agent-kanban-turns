@@ -351,7 +351,7 @@ export const register: Register = (on) => {
     await $.command.register({
       name: "answers-config",
       description:
-        "List the kanban turns mod's settings in effect, and the file each came from",
+        "List the kanban turns plugin's settings in effect, and the file each came from",
     });
     await $.tool.register({
       name: TOOL,
@@ -368,7 +368,7 @@ export const register: Register = (on) => {
     return started;
   });
 
-  // The mod tells the agent about its tool itself: the instructions go in the
+  // The plugin tells the agent about its tool itself: the instructions go in the
   // conversation's context, after whatever the engine and other hooks put there.
   on("prompt.context", async ($, e, next) => withInstructions(await next(e)));
 
@@ -519,7 +519,8 @@ export const register: Register = (on) => {
     if (
       e.props.tool !== TOOL_CALLED ||
       !isPlainToolRow({
-        isExpanded: e.props.isExpanded,
+        // Absent where the surface doesn't say: drawn compact.
+        isExpanded: e.props.isExpanded === true,
         isErrored: e.props.isErrored,
       })
     ) {
@@ -538,7 +539,8 @@ export const register: Register = (on) => {
     if (
       e.props.tool !== TOOL_CALLED ||
       !isPlainToolRow({
-        isExpanded: e.props.isExpanded,
+        // Absent where the surface doesn't say: drawn compact.
+        isExpanded: e.props.isExpanded === true,
         isErrored: e.props.isErrored,
         isInterrupted: e.props.isInterrupted,
         itemCount: itemsOf(e.props.input).length,

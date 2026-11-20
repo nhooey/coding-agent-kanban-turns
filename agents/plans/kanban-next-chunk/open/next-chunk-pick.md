@@ -4,12 +4,12 @@ state: proposed
 kind: implementation
 part-of: kanban-next-chunk
 needs: [kanban-items-name-what-they-free, mod-open-items-state]
-touches: [mod/src/chunk.ts, mod/test/chunk.test.ts]
+touches: [plugin/src/chunk.ts, plugin/test/chunk.test.ts]
 ---
 
 # The chunk is picked by a pure function over the open items, what they free and what earlier chunks showed
 
-- `nextChunk(items, shown, size)` in `mod/src/chunk.ts` takes the open items, the refs earlier chunks showed, in the order they showed them, and the size, by default 7, from `mod/defaults/config.jsonc`.
+- `nextChunk(items, shown, size)` in `plugin/src/chunk.ts` takes the open items, the refs earlier chunks showed, in the order they showed them, and the size, by default 7, from `plugin/defaults/config.jsonc`.
 - It returns first every ref in `shown` whose item is still open, in `shown`'s order, then fills up to `size` with the other open items, ranked by how many open items each frees, directly or through others, then oldest first, then by list (Decide, Todo, Review, Pending, Waiting). When more than `size` shown items are still open, it returns them all; it never drops one to fit.
 - An item whose freed items are all settled ranks as freeing nothing; a cycle of `Frees` counts each item once.
 - The tests, as properties over random item sets and settle sequences:

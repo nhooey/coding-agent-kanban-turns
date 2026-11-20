@@ -1,8 +1,8 @@
 {
-  description = "coding-agent-kanban-turns: the kanban turn responses' Claude Code mod";
+  description = "coding-agent-kanban-turns: the kanban turn responses' Claude Code plugin";
 
   inputs = {
-    # Rolling, for a current Node: the mod's tests run TypeScript straight
+    # Rolling, for a current Node: the plugin's tests run TypeScript straight
     # through `node --test`, and its TypeScript 7 wants a recent runtime.
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-parts = {
@@ -62,54 +62,54 @@
           inherit (pkgs) lib;
           claudePlugins = import "${inputs.agent-plugins-nixpkgs}/lib" { inherit lib; };
 
-          # The mod as Claude Code loads it: mod/ with only what runs, its
-          # manifest, hooks, pure core, shipped defaults and the types the
+          # The plugin as Claude Code loads it: plugin/ with only what runs,
+          # its manifest, hooks, pure core, shipped defaults and the types the
           # manifest names. The tests, the engine-driven tests, the tools and
           # the npm files stay out, since every npm dependency is for
           # development; agent-plugins-nixpkgs installs this through its
           # nix-darwin module.
           plugin = claudePlugins.mkClaudePlugin pkgs {
             src = lib.fileset.toSource {
-              root = ./mod;
+              root = ./plugin;
               fileset = lib.fileset.unions [
-                ./mod/.claude-plugin/plugin.json
-                ./mod/hooks
-                ./mod/src
-                ./mod/defaults
-                ./mod/types
+                ./plugin/.claude-plugin/plugin.json
+                ./plugin/hooks
+                ./plugin/src
+                ./plugin/defaults
+                ./plugin/types
               ];
             };
           };
 
-          # The one Node: the mod's node_modules are built with it, and the
+          # The one Node: the plugin's node_modules are built with it, and the
           # dev shell and the checks run it.
           nodejs = pkgs.nodejs_26;
 
-          # mod/'s npm dependencies (TypeScript, Node's types, Jest's
+          # plugin/'s npm dependencies (TypeScript, Node's types, Jest's
           # expect), each fetched by the integrity hash its
           # package-lock.json records: no `npm ci`, and no hash to keep
           # beside the lock. Built from the two files alone, so an edit
-          # elsewhere in mod/ rebuilds nothing.
-          modNodeModules = pkgs.importNpmLock.buildNodeModules {
-            package = builtins.fromJSON (builtins.readFile ./mod/package.json);
-            packageLock = builtins.fromJSON (builtins.readFile ./mod/package-lock.json);
+          # elsewhere in plugin/ rebuilds nothing.
+          pluginNodeModules = pkgs.importNpmLock.buildNodeModules {
+            package = builtins.fromJSON (builtins.readFile ./plugin/package.json);
+            packageLock = builtins.fromJSON (builtins.readFile ./plugin/package-lock.json);
             inherit nodejs;
           };
 
-          # Runs one of mod/package.json's scripts in a writable copy of
-          # mod/, with the flake's node_modules linked in.
-          modCheck =
+          # Runs one of plugin/package.json's scripts in a writable copy of
+          # plugin/, with the flake's node_modules linked in.
+          pluginCheck =
             name: script:
             pkgs.runCommand "coding-agent-kanban-turns-${name}"
               {
                 nativeBuildInputs = [ nodejs ];
-                src = ./mod;
+                src = ./plugin;
               }
               ''
-                cp -R "$src" mod
-                chmod -R u+w mod
-                cd mod
-                ln -s ${modNodeModules}/node_modules node_modules
+                cp -R "$src" plugin
+                chmod -R u+w plugin
+                cd plugin
+                ln -s ${pluginNodeModules}/node_modules node_modules
                 export HOME="$TMPDIR/home"
                 npm run --silent ${script}
                 touch $out
@@ -129,8 +129,8 @@
             ];
             env = [
               {
-                name = "MOD_NODE_MODULES";
-                value = "${modNodeModules}/node_modules";
+                name = "PLUGIN_NODE_MODULES";
+                value = "${pluginNodeModules}/node_modules";
               }
             ];
             devshell.startup.link-node-modules.text = builtins.readFile ./nix/link-node-modules.sh;
@@ -138,37 +138,37 @@
               {
                 category = "test";
                 name = "tests";
-                help = "run the core's tests under node --test (npm test in mod/)";
-                command = ''cd "$PRJ_ROOT/mod" && npm test -- "$@"'';
+                help = "run the core's tests under node --test (npm test in plugin/)";
+                command = ''cd "$PRJ_ROOT/plugin" && npm test -- "$@"'';
               }
               {
                 category = "test";
                 name = "typecheck";
-                help = "type-check the core and its tests (npm run typecheck in mod/)";
-                command = ''cd "$PRJ_ROOT/mod" && npm run typecheck'';
+                help = "type-check the core and its tests (npm run typecheck in plugin/)";
+                command = ''cd "$PRJ_ROOT/plugin" && npm run typecheck'';
               }
               {
                 category = "test";
                 name = "typecheck-plugin";
-                help = "type-check the hooks against the engine's API, which Claude Code lays in mod/.claude-plugin/types/";
-                command = ''cd "$PRJ_ROOT/mod" && npm run typecheck:plugin'';
+                help = "type-check the hooks against the engine's API, which Claude Code lays in plugin/.claude-plugin/types/";
+                command = ''cd "$PRJ_ROOT/plugin" && npm run typecheck:plugin'';
               }
               {
                 category = "test";
                 name = "plugin-test";
-                help = "claude plugin validate, then the engine-driven tests in mod/mod-tests/ (needs the claude CLI)";
-                command = ''bash "$PRJ_ROOT/mod/tools/plugin-test.sh"'';
+                help = "claude plugin validate, then the engine-driven tests in plugin/plugin-tests/ (needs the claude CLI)";
+                command = ''bash "$PRJ_ROOT/plugin/tools/plugin-test.sh"'';
               }
             ];
           };
 
           # What a build can run: the core's type-check and its tests. The
-          # hooks' type-check and mod-tests/ need the engine (its API
+          # hooks' type-check and plugin-tests/ need the engine (its API
           # declarations, and claude plugin test), which a build has not.
           checks = {
             inherit plugin;
-            typecheck = modCheck "typecheck" "typecheck";
-            tests = modCheck "tests" "test";
+            typecheck = pluginCheck "typecheck" "typecheck";
+            tests = pluginCheck "tests" "test";
           };
 
           treefmt = {

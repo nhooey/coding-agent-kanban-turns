@@ -22,7 +22,7 @@ const engineBlocks: readonly Readonly<{ name: string; text: string }>[] = [
 ];
 
 describe("the instructions", () => {
-  test("name the tool as the agent calls it, the one the mod registers", () => {
+  test("name the tool as the agent calls it, the one the plugin registers", () => {
     expect(TOOL_CALLED).toBe(`mcp__${PLUGIN}__${TOOL}`);
     expect(INSTRUCTIONS).toContain(`\`${TOOL_CALLED}\``);
   });
@@ -48,7 +48,7 @@ describe("the instructions", () => {
 });
 
 describe("adding the instructions to the context", () => {
-  test("appends them as the mod's block and keeps the others in order", () => {
+  test("appends them as the plugin's block and keeps the others in order", () => {
     expect(withInstructions({ blocks: engineBlocks }).blocks).toEqual([
       ...engineBlocks,
       { name: BLOCK, text: INSTRUCTIONS },

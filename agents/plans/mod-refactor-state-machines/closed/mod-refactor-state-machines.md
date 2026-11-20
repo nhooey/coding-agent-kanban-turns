@@ -9,12 +9,12 @@ kind: end-state
 
 With this done:
 
-- **Every state machine is one pure function.** The band's visibility, its position and the items' lifecycle change only through `step(band, event)` in `mod/src/band.ts`, a switch over an exhaustive `BandEvent` union that a `never` check closes. The upcoming basket gets its own `basketStep` the same way.
-- **Hooks don't decide.** Each hook in `mod/hooks/register.tsx` reads its event, reads what it needs from the engine, dispatches one event and draws. No hook sets `position`, `isAway` or `isDismissed` itself, and no event takes two `update`s.
+- **Every state machine is one pure function.** The band's visibility, its position and the items' lifecycle change only through `step(band, event)` in `plugin/src/band.ts`, a switch over an exhaustive `BandEvent` union that a `never` check closes. The upcoming basket gets its own `basketStep` the same way.
+- **Hooks don't decide.** Each hook in `plugin/hooks/register.tsx` reads its event, reads what it needs from the engine, dispatches one event and draws. No hook sets `position`, `isAway` or `isDismissed` itself, and no event takes two `update`s.
 - **What can be derived is a selector.** The band's view mode and an option's picked state are worked out from stored state, not stored beside it. The band atom's stored fields, `settledRefs` and `dismissedRefs` among them, stay as they are until `kanban-band-status` removes the dismissal.
 - **No reachable combination is unhandled.** Dismissed-and-away, a pane open over a dismissed band and a 🧠 press that changes nothing can't happen, or each has a defined transition.
-- **Pure code lives in `mod/src/` with unit tests.** The text the hooks build, the tool's schema and description, the `outstanding.py` argv and its result parsing move out of `register.tsx`.
-- **The option buttons are one component** in `mod/hooks/views.tsx`, taking callbacks, not `$`, ready for `kanban-items-tool-row` and `kanban-band-status` to draw in two places.
+- **Pure code lives in `plugin/src/` with unit tests.** The text the hooks build, the tool's schema and description, the `outstanding.py` argv and its result parsing move out of `register.tsx`.
+- **The option buttons are one component** in `plugin/hooks/views.tsx`, taking callbacks, not `$`, ready for `kanban-items-tool-row` and `kanban-band-status` to draw in two places.
 
 ## The implicit models today
 

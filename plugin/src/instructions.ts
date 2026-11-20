@@ -1,14 +1,14 @@
-// What the mod tells the agent about its own tool: when to call it, what its
+// What the plugin tells the agent about its own tool: when to call it, what its
 // input holds and what a click does. The turn-response format itself is the
 // kanban skill's to teach.
 
 /** The plugin's name, which the engine puts in its tools' names. */
 export const PLUGIN = "coding-agent-kanban-turns";
-/** The tool's name as the mod registers it. */
+/** The tool's name as the plugin registers it. */
 export const TOOL = "kanban_options";
 /** The tool's name as the agent sees and calls it. */
 export const TOOL_CALLED = `mcp__${PLUGIN}__${TOOL}`;
-/** The context block the instructions go in, keyed by the mod's own name. */
+/** The context block the instructions go in, keyed by the plugin's own name. */
 export const BLOCK = "kanbanTurns";
 
 /** The item kinds, in the order the instructions and the schema name them. */
@@ -90,7 +90,7 @@ export const INPUT_SCHEMA = {
 
 /** What the tool does, as the engine lists it to the agent. */
 export const TOOL_DESCRIPTION = [
-  "Draws clickable buttons for this turn's Decide items in the transcript, just under the final response, and lists them in the mod's Decide pane.",
+  "Draws clickable buttons for this turn's Decide items in the transcript, just under the final response, and lists them in the plugin's Decide pane.",
   "Call it once, right before writing the final response, with every Decide item that response will hold, in the shape `outstanding.py decide --json` prints.",
   "A click writes the item's reference into the user's prompt draft; nothing is sent.",
 ].join(" ");
@@ -98,7 +98,7 @@ export const TOOL_DESCRIPTION = [
 /** The instructions for the tool the agent calls as `tool`. */
 export const instructionsFor = (tool: string): string =>
   [
-    `The coding-agent-kanban-turns mod draws clickable buttons for a final response's Decide items, through the tool \`${tool}\`.`,
+    `The coding-agent-kanban-turns plugin draws clickable buttons for a final response's Decide items, through the tool \`${tool}\`.`,
     "",
     `- When: call \`${tool}\` once, right before writing a final response that holds Decide items, so their buttons sit just under the reply and in the Decide pane. Don't call it for a response without Decide items.`,
     '- Input: `{"items": [...]}`, one entry per Decide item of that response, in its order, each with:',
@@ -110,7 +110,7 @@ export const instructionsFor = (tool: string): string =>
     "- Write the final response exactly as you would without the tool: the buttons add to it and replace nothing.",
   ].join("\n");
 
-/** The instructions for the tool the mod registers. */
+/** The instructions for the tool the plugin registers. */
 export const INSTRUCTIONS = instructionsFor(TOOL_CALLED);
 
 type Block = Readonly<{ name: string; text: string }>;

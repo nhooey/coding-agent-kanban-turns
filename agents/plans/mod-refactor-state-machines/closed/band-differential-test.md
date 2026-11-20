@@ -4,7 +4,7 @@ state: superseded
 superseded-by: pane-lists-raised-items
 kind: implementation
 part-of: mod-refactor-state-machines
-touches: [mod/package.json, mod/package-lock.json, mod/test/band-differential.test.ts, flake.nix]
+touches: [plugin/package.json, plugin/package-lock.json, plugin/test/band-differential.test.ts, flake.nix]
 ---
 
 # A differential property test pins today's band behaviour before the reducer replaces it

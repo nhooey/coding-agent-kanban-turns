@@ -3,7 +3,7 @@ title: The text and predicates the hooks build live in the core, with tests
 state: implemented
 kind: implementation
 part-of: mod-refactor-state-machines
-touches: [mod/hooks/register.tsx, mod/src/view.ts, mod/test/view.test.ts]
+touches: [plugin/hooks/register.tsx, plugin/src/view.ts, plugin/test/view.test.ts]
 ---
 
 # The text and predicates the hooks build live in the core, with tests

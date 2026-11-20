@@ -3,7 +3,7 @@ title: The pane and the buttons under a reply draw an item's links as links that
 state: proposed
 kind: implementation
 part-of: kanban-next-chunk
-touches: [mod/src/layout.ts, mod/hooks/register.tsx, mod/test/layout.test.ts]
+touches: [plugin/src/layout.ts, plugin/hooks/register.tsx, plugin/test/layout.test.ts]
 ---
 
 # The pane and the buttons under a reply draw an item's links as links that open on a click

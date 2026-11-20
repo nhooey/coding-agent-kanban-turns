@@ -4,7 +4,7 @@ state: rejected
 kind: implementation
 part-of: mod-refactor-state-machines
 needs: [band-transitions-reducer]
-touches: [mod/src/band.ts, mod/types/index.d.ts, mod/hooks/register.tsx, mod/test/band.test.ts]
+touches: [plugin/src/band.ts, plugin/types/index.d.ts, plugin/hooks/register.tsx, plugin/test/band.test.ts]
 ---
 
 # The band atom stores only what can't be derived
