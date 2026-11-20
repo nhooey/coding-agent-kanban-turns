@@ -21,16 +21,17 @@
 // Any other `turnOrigin` opens no turn: a headless run's prompt, `sdk`, a
 // scheduled one, or a system prompt no plugin names.
 //
-// A turn's id is the first 8 characters of the record's `promptId`. Its
-// replies are the text blocks of the assistant records up to the next
-// prompt, and its Decide items those of the `kanban_options` inputs among
-// their tool uses. A message sent while it ran is a `queued_command`
+// A turn's id is the record's `promptId` cut to the spec's turn-id
+// length. Its replies are the text blocks of the assistant records up to
+// the next prompt, and its Decide items those of the `kanban_options`
+// inputs among their tool uses. A message sent while it ran is a `queued_command`
 // attachment: the user's, a peer's or a task's. A prompt record the file
 // repeats, as a continuation does, folds its replies into the first.
 
 import { itemsOf } from "./items.ts";
 import { PLUGIN, TOOL_CALLED } from "./instructions.ts";
 import { elements } from "./reports.ts";
+import { SPEC } from "./spec.ts";
 import type { DecideItem, Message, Owner, Turn } from "../types/index.d.ts";
 
 /** One record of the transcript, a JSON object; only what the plugin reads is looked at. */
@@ -51,7 +52,7 @@ const QUEUED_OWNERS: ReadonlyMap<unknown, Owner> = new Map([
 // The origin's kind a plugin's prompt carries.
 const PLUGIN_ORIGIN = "plugin";
 // A turn id: the first characters of the prompt's `promptId`.
-const ID_LENGTH = 8;
+const ID_LENGTH = SPEC.reference["turn-id"].length;
 // A shell command's output, which the engine records as a human prompt,
 // though it opens no turn.
 const COMMAND_OUTPUT = /^\s*<bash-(?:stdout|stderr)>/;

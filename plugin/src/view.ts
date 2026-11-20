@@ -8,6 +8,7 @@
 import type { DecideItem, Raised, Settings, Settlement } from "../types/index.d.ts";
 import { answersIn, hasReassess } from "./answers.ts";
 import { refOf } from "./items.ts";
+import { REASSESS, itemLabel } from "./protocol.ts";
 import { problemsOf, stillOpen } from "./raised.ts";
 import { isReassessLine, withoutDraftHeader } from "./transcript.ts";
 
@@ -164,7 +165,7 @@ export const itemTitle = (
   item: DecideItem,
   isDone: boolean,
 ): Readonly<{ label: string; summary: string }> => ({
-  label: ` 🧠 Decide.${item.number} `,
+  label: ` ${itemLabel(item.number)} `,
   summary: `${item.summary}${isDone ? " (done)" : ""}`,
 });
 
@@ -224,7 +225,7 @@ export const draftSummary = (draft: string): string => {
   const parts = [
     ...(answers.length > 0 ? [counted(answers.length, "answer")] : []),
     ...(notes > 0 ? [counted(notes, "note")] : []),
-    ...(hasReassess(body) ? ["reassess"] : []),
+    ...(hasReassess(body) ? [REASSESS] : []),
     ...(ownLines(body).length > 0 ? ["your words"] : []),
   ];
 

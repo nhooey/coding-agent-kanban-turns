@@ -2,6 +2,10 @@
 // input holds and what a click does. The turn-response format itself is the
 // kanban skill's to teach.
 
+import { DECIDE } from "./protocol.ts";
+import { SPEC } from "./spec.ts";
+import type { DecideKind } from "../types/index.d.ts";
+
 /** The plugin's name, which the engine puts in its tools' names. */
 export const PLUGIN = "coding-agent-kanban-turns";
 /** The tool's name as the plugin registers it. */
@@ -12,7 +16,7 @@ export const TOOL_CALLED = `mcp__${PLUGIN}__${TOOL}`;
 export const BLOCK = "kanbanTurns";
 
 /** The item kinds, in the order the instructions and the schema name them. */
-export const KINDS = ["radio", "checkbox", "binary"] as const;
+export const KINDS = Object.keys(SPEC.options.kinds) as readonly DecideKind[];
 
 /** The kinds as the instructions write them: `radio`, `checkbox` or `binary`. */
 const kindsInWords = [
@@ -21,6 +25,43 @@ const kindsInWords = [
     .join(", "),
   `\`${KINDS[KINDS.length - 1]}\``,
 ].join(" or ");
+
+/** The glyphs of a kind's options: its letters' own, joined by "and", else its one glyph. */
+const kindGlyphs = (kind: DecideKind): string => {
+  const lettered: readonly string[] = Object.values<string>(
+    SPEC.options.kinds[kind].letters,
+  );
+
+  return lettered.length > 0
+    ? lettered.join(" and ")
+    : SPEC.options.kinds[kind].glyph;
+};
+
+/** Each kind's glyphs as the instructions write them: `🔘, 🔲, or 👍 and 👎`. */
+export const glyphsInWords = (kinds: readonly DecideKind[]): string => {
+  const glyphs = kinds.map(kindGlyphs);
+
+  return glyphs.length > 1
+    ? `${glyphs.slice(0, -1).join(", ")}, or ${glyphs.at(-1) ?? ""}`
+    : glyphs.join("");
+};
+
+/** The letters an option takes, as the schema describes them: `A, B, C, or Y and N`. */
+const lettersInWords = (): string => {
+  const first = SPEC.reference.letters.first.charCodeAt(0);
+  const binary: readonly string[] = Object.keys(SPEC.options.kinds.binary.letters);
+
+  return `${[0, 1, 2].map((n) => String.fromCharCode(first + n)).join(", ")}, or ${binary.join(" and ")}`;
+};
+
+const { pro: PRO, con: CON } = SPEC.options;
+
+/** Where a turn id comes from, for a turn id `length` characters long: `the first 8 characters`. */
+export const turnIdSource = (length: number): string =>
+  `the first ${length} characters`;
+
+/** Where a turn id comes from, by the spec's length. */
+const TURN_ID_SOURCE = turnIdSource(SPEC.reference["turn-id"].length);
 
 /**
  * One Decide item of the tool's input. Its required fields are the ones
@@ -32,10 +73,9 @@ export const ITEM_SCHEMA = {
   properties: {
     turn: {
       type: "string",
-      description:
-        "The turn id, the first 8 characters of this turn's promptId.",
+      description: `The turn id, ${TURN_ID_SOURCE} of this turn's promptId.`,
     },
-    list: { type: "string", enum: ["Decide"] },
+    list: { type: "string", enum: [DECIDE.header] },
     number: {
       type: "integer",
       description: "The item number in the Decide list.",
@@ -48,7 +88,7 @@ export const ITEM_SCHEMA = {
     },
     ref: {
       type: "string",
-      description: "`<turn>.Decide.<number>`; filled in when left out.",
+      description: `\`<turn>.${DECIDE.header}.<number>\`; filled in when left out.`,
     },
     options: {
       type: "array",
@@ -58,7 +98,7 @@ export const ITEM_SCHEMA = {
         properties: {
           letter: {
             type: "string",
-            description: "The capital letter, A, B, C, or Y and N.",
+            description: `The capital letter, ${lettersInWords()}.`,
           },
           name: { type: "string", description: "The option's bold name." },
           consequence: {
@@ -68,12 +108,12 @@ export const ITEM_SCHEMA = {
           pros: {
             type: "array",
             items: { type: "string" },
-            description: "The option's ➕ lines, without the ➕.",
+            description: `The option's ${PRO} lines, without the ${PRO}.`,
           },
           cons: {
             type: "array",
             items: { type: "string" },
-            description: "The option's ➖ lines, without the ➖.",
+            description: `The option's ${CON} lines, without the ${CON}.`,
           },
         },
       },
@@ -102,11 +142,11 @@ export const instructionsFor = (tool: string): string =>
     "",
     `- When: call \`${tool}\` once, right before writing a final response that holds Decide items, so their buttons sit just under the reply and in the Decide pane. Don't call it for a response without Decide items.`,
     '- Input: `{"items": [...]}`, one entry per Decide item of that response, in its order, each with:',
-    "  - `turn`: the turn id, the first 8 characters of the latest prompt's promptId;",
+    `  - \`turn\`: the turn id, ${TURN_ID_SOURCE} of the latest prompt's promptId;`,
     "  - `number` and `summary`: the item's number in the Decide list and its bold summary;",
-    `  - \`kind\`: ${kindsInWords}, from the item's option glyphs (🔘, 🔲, or 👍 and 👎);`,
-    "  - `options`: each option's `letter`, `name` and `consequence`, and its ➕ and ➖ lines, without the glyph, as `pros` and `cons`.",
-    "- A click on a button writes the answer's reference, such as `0f311c94.Decide.2.B`, into the user's prompt draft and sends nothing.",
+    `  - \`kind\`: ${kindsInWords}, from the item's option glyphs (${glyphsInWords(KINDS)});`,
+    `  - \`options\`: each option's \`letter\`, \`name\` and \`consequence\`, and its ${PRO} and ${CON} lines, without the glyph, as \`pros\` and \`cons\`.`,
+    `- A click on a button writes the answer's reference, such as \`0f311c94.${DECIDE.header}.2.B\`, into the user's prompt draft and sends nothing.`,
     "- Write the final response exactly as you would without the tool: the buttons add to it and replace nothing.",
   ].join("\n");
 

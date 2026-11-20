@@ -11,6 +11,15 @@
 // answer nothing.
 
 import { PLUGIN } from "./instructions.ts";
+import {
+  DECIDE,
+  REASSESS,
+  classOf,
+  escaped,
+  isLineOf,
+  namesOf,
+} from "./protocol.ts";
+import { SPEC } from "./spec.ts";
 import type { Owner, Turn } from "../types/index.d.ts";
 
 /** Whether text its owner wrote is the user's own: the user's, or this plugin's sent for them. */
@@ -21,36 +30,20 @@ export const isOwn = (owner: Owner): boolean =>
 export type Section = Readonly<{ name: string; text: string }>;
 
 /** Each list header followed by its aliases, the names older replies in a transcript still carry. */
-export const SECTION_NAMES = [
-  "Answers",
-  "Questions",
-  "Done",
-  "Pending",
-  "Unfinished",
-  "Open",
-  "Logged",
-  "Waiting",
-  "Authorizations",
-  "Review",
-  "To review",
-  "Todo",
-  "To do",
-  "Decide",
-  "Decisions",
-  "Blocked",
-] as const;
+export const SECTION_NAMES: readonly string[] =
+  Object.values(SPEC.lists).flatMap(namesOf);
 
 /** The Decide list's names, the first its own. */
-export const DECISIONS: readonly string[] = ["Decide", "Decisions", "Blocked"];
+export const DECISIONS: readonly string[] = namesOf(DECIDE);
 
 /** A list's header line: any glyph, then its name in bold with a colon. */
 export const HEADER = new RegExp(
-  String.raw`^\s*\S+\s+\*\*(${SECTION_NAMES.join("|")}):\*\*`,
+  String.raw`^\s*\S+\s+\*\*(${SECTION_NAMES.map(escaped).join("|")}):\*\*`,
 );
-// The line older replies opened their roll-up with, which ends a section.
-const STOP = "Still open from earlier";
+// The lines older replies opened their roll-up with, which end a section.
+const STOPS: readonly string[] = SPEC["roll-up"].aliases;
 // One per column under a topic header, in a reply grouped by topic.
-const TOPIC_RULE = "═";
+const TOPIC_RULE = SPEC.characters["topic-underline"];
 
 // The line a draft the plugin's clicks started opens with: the plugin's
 // name, its marketplace after `@` where the engine gave one, and a colon,
@@ -141,7 +134,7 @@ export const textOfChunks = (chunks: readonly string[]): string =>
 
 /** A topic header's underline: a line of `═` alone. */
 export const isTopicRule = (line: string): boolean =>
-  line.trim() !== "" && [...line.trim()].every((c) => c === TOPIC_RULE);
+  isLineOf(TOPIC_RULE, line);
 
 type Fold = Readonly<{
   open: string | undefined;
@@ -156,7 +149,9 @@ const fold = (
 
   return header !== undefined
     ? { open: header, done: [...done, { name: header, lines: [line] }] }
-    : line.startsWith(STOP) || isTopicRule(line) || isTopicRule(following)
+    : STOPS.some((stop) => line.startsWith(stop)) ||
+        isTopicRule(line) ||
+        isTopicRule(following)
       ? { open: undefined, done }
       : open !== undefined
         ? {
@@ -190,15 +185,21 @@ export const sectionsOf = (text: string): readonly Section[] => {
 };
 
 /** Each command by its names, the primary one first. */
-export const COMMANDS: Readonly<Record<string, readonly string[]>> = {
-  reassess: ["reassess", "recheck", "regenerate", "recalculate"],
-  open: ["open", "pending", "restate"],
-};
+export const COMMANDS: Readonly<Record<string, readonly string[]>> =
+  Object.fromEntries(
+    Object.entries(SPEC.commands.names).map(([command, { synonyms }]) => [
+      command,
+      [command, ...synonyms],
+    ]),
+  );
 // The slash commands that run the skill, whose argument is the command.
-const SKILL_COMMANDS: readonly string[] = [
-  "coding-agent-kanban-turn-responses",
-  "reply-block",
-];
+const SKILL_COMMANDS: readonly string[] = SPEC.commands["skill-commands"];
+// Whether a prefix of one command's names alone runs it, or only a whole name.
+const PREFIX_RUNS: boolean = SPEC.commands["unique-prefix-runs"];
+// The characters a command's word may end on.
+const TRAILING = new RegExp(
+  `${classOf(SPEC.commands["trailing-punctuation"])}+$`,
+);
 
 /** The command a word names: one of its names, or a prefix of them that no other command's name shares. */
 export const commandNamed = (word: string): string | undefined => {
@@ -206,7 +207,10 @@ export const commandNamed = (word: string): string | undefined => {
   const found = Object.entries(COMMANDS)
     .filter(
       ([, names]) =>
-        lowered !== "" && names.some((name) => name.startsWith(lowered)),
+        lowered !== "" &&
+        names.some((name) =>
+          PREFIX_RUNS ? name.startsWith(lowered) : name === lowered,
+        ),
     )
     .map(([command]) => command);
 
@@ -247,29 +251,40 @@ const commandWords = (prompt: string): readonly string[] => {
       : words;
 };
 
-/** The command a word names, its trailing `.,;:!` dropped, where it's only letters. */
+/** The command a word names, its trailing punctuation (`.,;:!`) dropped, where it's only letters. */
 const commandOfWord = (word: string): string | undefined => {
-  const bare = word.trim().replace(/[.,;:!]+$/, "");
+  const bare = word.trim().replace(TRAILING, "");
 
   return /^\p{L}+$/u.test(bare) ? commandNamed(bare) : undefined;
 };
 
 /** Whether a line is only a word naming `reassess`: one of its names or a prefix no other command's name shares, any case, trailing `.,;:!` allowed. */
 export const isReassessLine = (line: string): boolean =>
-  commandOfWord(line) === "reassess";
+  commandOfWord(line) === REASSESS;
+
+/** Whether a command also runs from a prompt's last line, as `reassess` does and `open` doesn't. */
+const runsFromLastLine = (command: string): boolean =>
+  Object.entries(SPEC.commands.names).some(
+    ([name, spec]) => name === command && spec["from-last-line"],
+  );
 
 /**
- * Whether a prompt's last non-blank line names `reassess` alone, as a
- * draft the pane's Reassess button ended does; whatever comes before it,
- * answers or news, is read first.
+ * The command a prompt's last non-blank line names alone, where that
+ * command runs from the last line, as a draft the pane's Reassess button
+ * ended does; whatever comes before it, answers or news, is read first.
  */
-const endsOnReassess = (text: string): boolean =>
-  isReassessLine(
+const lastLineCommand = (text: string): string | undefined => {
+  const command = commandOfWord(
     text
       .split("\n")
       .filter((line) => line.trim() !== "")
       .at(-1) ?? "",
   );
+
+  return command !== undefined && runsFromLastLine(command)
+    ? command
+    : undefined;
+};
 
 /**
  * The command a prompt runs, `reassess` or `open`: by its first word, bare
@@ -281,10 +296,7 @@ const endsOnReassess = (text: string): boolean =>
 export const commandOf = (prompt: string): string | undefined => {
   const text = withoutDraftHeader(prompt);
 
-  return (
-    commandOfWord(commandWords(text)[0] ?? "") ??
-    (endsOnReassess(text) ? "reassess" : undefined)
-  );
+  return commandOfWord(commandWords(text)[0] ?? "") ?? lastLineCommand(text);
 };
 
 /**
@@ -299,7 +311,7 @@ export const reassessStart = (turns: readonly Turn[]): number =>
   Math.max(
     turns.findLastIndex(
       (turn) =>
-        isOwn(turn.prompt.owner) && commandOf(turn.prompt.text) === "reassess",
+        isOwn(turn.prompt.owner) && commandOf(turn.prompt.text) === REASSESS,
     ),
     0,
   );

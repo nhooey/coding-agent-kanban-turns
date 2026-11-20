@@ -6,7 +6,9 @@
     "test": "node --test 'test/*.test.ts'",
     "typecheck": "tsc -p .",
     "typecheck:plugin": "test -f .claude-plugin/types/tsconfig.json || { echo 'no .claude-plugin/types/: load the plugin in Claude Code once (see README)' >&2; exit 1; }; tsc -p tsconfig.plugin.json",
-    "test:plugin": "bash tools/plugin-test.sh"
+    "test:plugin": "bash tools/plugin-test.sh",
+    "spec:build": "node tools/compile-spec.ts",
+    "spec:check": "node tools/compile-spec.ts --check"
   },
   "dependencies": {
     "jsonc-parser": "^3.3.1",
@@ -14,6 +16,7 @@
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
+    "ajv": "^8.20.0",
     "expect": "^30.5.2",
     "typescript": "^7.0.2"
   }

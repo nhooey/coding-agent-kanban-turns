@@ -78,7 +78,8 @@
           nodejs = pkgs.nodejs_26;
 
           # plugin/'s npm dependencies (the YAML and JSONC parsers, and for
-          # development TypeScript, Node's types and Jest's expect), each
+          # development TypeScript, Node's types, Jest's expect and ajv, which
+          # checks the protocol's spec against its schema), each
           # fetched by the integrity hash its
           # package-lock.json records: no `npm ci`, and no hash to keep
           # beside the lock. Built from the two files alone, so an edit
@@ -200,6 +201,12 @@
               }
               {
                 category = "build";
+                name = "spec-build";
+                help = "compile plugin/spec/kanban.yaml into plugin/src/spec.ts and plugin/spec/kanban.json, for a commit after the spec changes";
+                command = ''cd "$PRJ_ROOT/plugin" && npm run --silent spec:build'';
+              }
+              {
+                category = "build";
                 name = "refresh-vendor";
                 help = "lay the flake's bundled parsers in plugin/vendor/, as the dev shell does on entry, for a commit when nix flake check says they differ";
                 command = builtins.readFile ./nix/lay-vendor.sh;
@@ -207,13 +214,15 @@
             ];
           };
 
-          # What a build can run: the core's type-check and its tests, and
-          # the committed bundles against the flake's. The hooks' type-check
-          # and plugin-tests/ need the engine (its API declarations, and
-          # claude plugin test), which a build has not.
+          # What a build can run: the core's type-check and its tests, the
+          # committed bundles against the flake's, and the module and JSON
+          # copy the protocol's spec compiles to against the committed ones.
+          # The hooks' type-check and plugin-tests/ need the engine (its API
+          # declarations, and claude plugin test), which a build has not.
           checks = {
             inherit (config.packages) plugin;
             vendor = vendorCheck;
+            spec = pluginCheck "spec" "spec:check";
             typecheck = pluginCheck "typecheck" "typecheck";
             tests = pluginCheck "tests" "test";
           };

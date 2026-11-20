@@ -3,6 +3,14 @@
 // the draft, calls these, and writes what they return.
 
 import { refOf } from "./items.ts";
+import {
+  DECIDE,
+  LETTER,
+  REASSESS,
+  TURN_ID_PREFIX,
+  escaped,
+} from "./protocol.ts";
+import { SPEC } from "./spec.ts";
 import { isReassessLine } from "./transcript.ts";
 import type { DecideItem } from "../types/index.d.ts";
 
@@ -23,10 +31,14 @@ export type Answer = Readonly<{
 // A turn id of 6 to 8 hex characters (a prefix of the 8 is as good), the item
 // number, then one capital or several joined by commas, a note after `: ` to
 // the end of the line, or both. Not part of a longer word.
-const ANSWER =
-  /(?<![\w.])([0-9a-f]{6,8})\.Decide\.(\d+)(?:\.([A-Z](?:,[A-Z])*)(?!\w))?(?:: ([^\n]*))?/g;
+const ANSWER = new RegExp(
+  String.raw`(?<![\w.])(${TURN_ID_PREFIX})\.${escaped(DECIDE.header)}\.(\d+)(?:\.(${LETTER}(?:,${LETTER})*)(?!\w))?(?:: ([^\n]*))?`,
+  "g",
+);
 // A note that is only letters, `…Decide.2: B`, is the letters written the other way.
-const LETTERS_ONLY = /^([A-Z](?:\s*,\s*[A-Z])*)\s*$/;
+const LETTERS_ONLY = new RegExp(
+  String.raw`^(${LETTER}(?:\s*,\s*${LETTER})*)\s*$`,
+);
 
 const lettersIn = (joined: string): readonly string[] =>
   joined === "" ? [] : joined.split(",");
@@ -96,15 +108,16 @@ const toggled = (
   held.includes(letter) ? held.filter((l) => l !== letter) : [...held, letter];
 
 /**
- * The letters an item holds once `letter` is clicked: a checkbox toggles it;
- * the others take it alone, or drop it when it was already the one chosen.
+ * The letters an item holds once `letter` is clicked: a kind that picks any
+ * number, a checkbox, toggles it; the others take it alone, or drop it when
+ * it was already the one chosen.
  */
 export const lettersAfter = (
   item: DecideItem,
   held: readonly string[],
   letter: string,
 ): readonly string[] =>
-  item.kind === "checkbox"
+  SPEC.options.kinds[item.kind].picks === "any"
     ? inOptionOrder(item, toggled(held, letter))
     : held.includes(letter)
       ? []
@@ -201,7 +214,7 @@ export const headed = (
 };
 
 /** The line the Reassess button adds at the draft's end. */
-export const REASSESS_LINE = "reassess";
+export const REASSESS_LINE: string = REASSESS;
 
 /** The draft parted into what comes before a last line naming `reassess`, and that line; undefined when its last line names none. */
 const reassessSplit = (

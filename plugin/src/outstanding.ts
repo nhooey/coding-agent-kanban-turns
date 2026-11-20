@@ -33,46 +33,50 @@ import {
   sectionsOf,
   withoutDraftHeader,
 } from "./transcript.ts";
+import {
+  LETTER,
+  SUBSCRIPT_CHAR,
+  TURN_ID,
+  escaped,
+  namesOf,
+} from "./protocol.ts";
+import { SPEC } from "./spec.ts";
 import type { DecideItem, Message, Settlement, Turn } from "../types/index.d.ts";
 
+type Lists = typeof SPEC.lists;
+
+/** The lists that roll up into 📌, by their names in code. */
+export type ListKey = {
+  [K in keyof Lists]: Lists[K]["rolls-up"] extends true ? K : never;
+}[keyof Lists];
+
 /** The lists that roll up into 📌, in the skill's order. */
-export const LIST_KEYS = [
-  "pending",
-  "waiting",
-  "authorizations",
-  "review",
-  "todo",
-  "decide",
-] as const;
-
-export type ListKey = (typeof LIST_KEYS)[number];
-
-/** Each list's header names, the later ones aliases older replies carry, and its glyph. */
-export const LISTS: Readonly<
-  Record<ListKey, Readonly<{ names: readonly string[]; glyph: string }>>
-> = {
-  pending: { names: ["Pending", "Unfinished", "Open"], glyph: "🚧" },
-  waiting: { names: ["Waiting"], glyph: "⏳" },
-  authorizations: { names: ["Authorizations"], glyph: "🔑" },
-  review: { names: ["Review", "To review"], glyph: "🔍" },
-  todo: { names: ["Todo", "To do"], glyph: "👉" },
-  decide: { names: DECISIONS, glyph: "🧠" },
-};
+export const LIST_KEYS: readonly ListKey[] = (
+  Object.keys(SPEC.lists) as readonly (keyof Lists)[]
+).filter((key): key is ListKey => SPEC.lists[key]["rolls-up"]);
 
 /** The separator line's character, parting multi-line items. */
-export const SEPARATOR = "⠀";
+export const SEPARATOR: string = SPEC.characters.separator;
 
 const keyOfName = (name: string): ListKey | undefined =>
-  LIST_KEYS.find((key) => LISTS[key].names.includes(name));
+  LIST_KEYS.find((key) => namesOf(SPEC.lists[key]).includes(name));
+
+const ROLL_UP = SPEC["roll-up"];
 
 /** The 📌 roll-up's header, under which the lists' headers repeat. */
-export const PIN =
-  /^\s*📌\s+\*\*(Still open from earlier|Outstanding from previous turns):\*\*/;
+export const PIN = new RegExp(
+  String.raw`^\s*${escaped(ROLL_UP.glyph)}\s+\*\*(${namesOf(ROLL_UP).map(escaped).join("|")}):\*\*`,
+  "u",
+);
 // A top-level bullet or numbered line, the number kept.
 const ITEM = /^ {0,2}(?:[-*]|(\d+)[.)])\s+(.*)$/;
 // An older roll-up's tag before the item, and the 🔖 tag after it.
-const PREFIX = /^🔖\s*\w+[₀-₉₋]*:\s*/u;
-const SUFFIX = /\s*🔖\s+([0-9a-f]{8})[₀-₉₋]*\s*$/u;
+const TAG = escaped(SPEC.tag.glyph);
+const PREFIX = new RegExp(String.raw`^${TAG}\s*\w+${SUBSCRIPT_CHAR}*:\s*`, "u");
+const SUFFIX = new RegExp(
+  String.raw`\s*${TAG}\s+(${TURN_ID})${SUBSCRIPT_CHAR}*\s*$`,
+  "u",
+);
 const BOLD = /\*\*(.+?)\*\*/;
 
 /**
@@ -272,7 +276,19 @@ export const isAnswered = (
 // --- Decide items a reply's own list prints --------------------------------
 
 const DECIDE_ITEM = /^ {0,3}(\d+)[.)]\s+\*\*(.+?)\*\*/gm;
-const DECIDE_OPTION = /^\s*(?:🔘|🔲|👍|👎)\s+[A-Z]\.\s+\*\*.+?\*\*/mu;
+// Every glyph an option is drawn with: each kind's, and each its letters have.
+const OPTION_GLYPHS: readonly string[] = [
+  ...new Set(
+    Object.values(SPEC.options.kinds).flatMap((kind) => [
+      kind.glyph,
+      ...Object.values<string>(kind.letters),
+    ]),
+  ),
+];
+const DECIDE_OPTION = new RegExp(
+  String.raw`^\s*(?:${OPTION_GLYPHS.map(escaped).join("|")})\s+${LETTER}\.\s+\*\*.+?\*\*`,
+  "mu",
+);
 
 /** The numbered items of a reply's Decide lists that carry an option; a 📌 roll-up's bullets carry none. */
 export const decideItemsOfText = (
@@ -504,12 +520,17 @@ export const unsettled = (
 export const countsOf = (items: readonly ListItem[]): string => {
   const shown = LIST_KEYS.map(
     (key) =>
-      [LISTS[key].glyph, items.filter((item) => item.list === key).length] as const,
+      [
+        SPEC.lists[key].glyph,
+        items.filter((item) => item.list === key).length,
+      ] as const,
   )
     .filter(([, count]) => count > 0)
     .map(([glyph, count]) => `${glyph} ${count}`);
 
-  return shown.length > 0 ? `📌 Outstanding: ${shown.join(" · ")}` : "";
+  return shown.length > 0
+    ? `${ROLL_UP.glyph} ${ROLL_UP["count-label"]}: ${shown.join(ROLL_UP["count-separator"])}`
+    : "";
 };
 
 /** The count line over the last `window` turns, given the pull requests that merged. */

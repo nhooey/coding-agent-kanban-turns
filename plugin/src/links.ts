@@ -5,6 +5,8 @@
 
 import { refOf } from "./items.ts";
 import { PIN } from "./outstanding.ts";
+import { LETTER, isLineOf } from "./protocol.ts";
+import { SPEC } from "./spec.ts";
 import { DECISIONS, HEADER, isTopicRule } from "./transcript.ts";
 import type { DecideItem } from "../types/index.d.ts";
 
@@ -68,7 +70,7 @@ export const itemOfLink = (
 const SUMMARY_ONE = /^(\d+\.\s+)\*\*(.+?)\*\*([ \t]*)$/;
 
 // An option, `🔘 A. **Disk**`: its letter and its bold name.
-const OPTION = /(?:^|\s)([A-Z])\.\s+\*\*(.+?)\*\*/;
+const OPTION = new RegExp(String.raw`(?:^|\s)(${LETTER})\.\s+\*\*(.+?)\*\*`);
 
 /** The letter and plain name of each option written in a block of lines. */
 const optionsIn = (block: readonly string[]): readonly string[] =>
@@ -89,7 +91,7 @@ const hasOptionsOf = (item: DecideItem, block: readonly string[]): boolean => {
 
 /** A list header's underline: a line of `▔` alone. */
 const isUnderline = (line: string): boolean =>
-  line.trim() !== "" && [...line.trim()].every((c) => c === "▔");
+  isLineOf(SPEC.characters["header-underline"], line);
 
 /**
  * Whether a line ends the list above it: a blank line, the next header, the

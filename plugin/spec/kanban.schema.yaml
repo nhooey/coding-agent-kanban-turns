@@ -1,0 +1,169 @@
+# The shape of kanban.yaml, as a JSON Schema (draft-07) written in YAML.
+# tools/compile-spec.ts checks the spec against it before writing anything;
+# kanban.yaml's comments say what each key means.
+$schema: http://json-schema.org/draft-07/schema#
+title: The kanban turn-response protocol's checkable rules
+type: object
+additionalProperties: false
+required: [lists, options, commands, reference, roll-up, tag, characters]
+definitions:
+  # One character or emoji, never blank.
+  glyph:
+    type: string
+    minLength: 1
+    pattern: ^\S+$
+  # A list's name: capitalised words, so it reads as a header and in a
+  # reference, and needs no escaping in a pattern.
+  name:
+    type: string
+    pattern: ^[A-Z][a-z]+( [a-z]+)*$
+  # A lowercase word: a command's name or a settling word.
+  word:
+    type: string
+    pattern: ^[a-z]+$
+  # A skill's or a slash command's name.
+  slug:
+    type: string
+    pattern: ^[a-z0-9]+(-[a-z0-9]+)*$
+  # One capital letter.
+  letter:
+    type: string
+    pattern: ^[A-Z]$
+  list:
+    type: object
+    additionalProperties: false
+    required: [header, glyph, aliases, rolls-up, settling-words]
+    properties:
+      header: { $ref: "#/definitions/name" }
+      glyph: { $ref: "#/definitions/glyph" }
+      aliases:
+        type: array
+        items: { $ref: "#/definitions/name" }
+        uniqueItems: true
+      rolls-up: { type: boolean }
+      settling-words:
+        type: object
+        propertyNames: { $ref: "#/definitions/word" }
+        additionalProperties: { type: string, minLength: 1 }
+  kind:
+    type: object
+    additionalProperties: false
+    required: [picks, glyph, letters]
+    properties:
+      picks: { enum: [one, any] }
+      glyph: { $ref: "#/definitions/glyph" }
+      letters:
+        type: object
+        propertyNames: { $ref: "#/definitions/letter" }
+        additionalProperties: { $ref: "#/definitions/glyph" }
+  command:
+    type: object
+    additionalProperties: false
+    required: [synonyms, from-last-line]
+    properties:
+      synonyms:
+        type: array
+        items: { $ref: "#/definitions/word" }
+        uniqueItems: true
+      from-last-line: { type: boolean }
+properties:
+  # The JSON copy's header, naming the file it's generated from.
+  $comment: { type: string }
+  lists:
+    type: object
+    propertyNames: { $ref: "#/definitions/word" }
+    additionalProperties: { $ref: "#/definitions/list" }
+    required: [decide]
+  options:
+    type: object
+    additionalProperties: false
+    required: [pro, con, kinds]
+    properties:
+      pro: { $ref: "#/definitions/glyph" }
+      con: { $ref: "#/definitions/glyph" }
+      kinds:
+        type: object
+        additionalProperties: false
+        required: [radio, checkbox, binary]
+        properties:
+          radio: { $ref: "#/definitions/kind" }
+          checkbox: { $ref: "#/definitions/kind" }
+          binary: { $ref: "#/definitions/kind" }
+  commands:
+    type: object
+    additionalProperties: false
+    required: [names, unique-prefix-runs, trailing-punctuation, skill-commands]
+    properties:
+      names:
+        type: object
+        propertyNames: { $ref: "#/definitions/word" }
+        additionalProperties: { $ref: "#/definitions/command" }
+        required: [reassess, open]
+      unique-prefix-runs: { type: boolean }
+      trailing-punctuation:
+        type: string
+        pattern: ^[.,;:!?]+$
+      skill-commands:
+        type: array
+        items: { $ref: "#/definitions/slug" }
+        uniqueItems: true
+  reference:
+    type: object
+    additionalProperties: false
+    required: [turn-id, letters, turn-after]
+    properties:
+      turn-after:
+        type: array
+        items: { $ref: "#/definitions/word" }
+        minItems: 1
+        uniqueItems: true
+      turn-id:
+        type: object
+        additionalProperties: false
+        required: [length, shortest, alphabet]
+        properties:
+          length: { type: integer, minimum: 1 }
+          shortest: { type: integer, minimum: 1 }
+          alphabet:
+            type: string
+            pattern: ^[0-9a-z]+$
+      letters:
+        type: object
+        additionalProperties: false
+        required: [first, last]
+        properties:
+          first: { $ref: "#/definitions/letter" }
+          last: { $ref: "#/definitions/letter" }
+  roll-up:
+    type: object
+    additionalProperties: false
+    required: [glyph, header, aliases, count-label, count-separator]
+    properties:
+      glyph: { $ref: "#/definitions/glyph" }
+      header: { $ref: "#/definitions/name" }
+      aliases:
+        type: array
+        items: { $ref: "#/definitions/name" }
+        uniqueItems: true
+      count-label: { $ref: "#/definitions/name" }
+      count-separator: { type: string, minLength: 1 }
+  tag:
+    type: object
+    additionalProperties: false
+    required: [glyph, digits, minus]
+    properties:
+      glyph: { $ref: "#/definitions/glyph" }
+      digits:
+        type: string
+        minLength: 10
+        maxLength: 10
+      minus: { type: string, minLength: 1, maxLength: 1 }
+  characters:
+    type: object
+    additionalProperties: false
+    required: [header-underline, roll-up-underline, topic-underline, separator]
+    properties:
+      header-underline: { type: string, minLength: 1, maxLength: 1 }
+      roll-up-underline: { type: string, minLength: 1, maxLength: 1 }
+      topic-underline: { type: string, minLength: 1, maxLength: 1 }
+      separator: { type: string, minLength: 1, maxLength: 1 }
