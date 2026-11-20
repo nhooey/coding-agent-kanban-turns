@@ -17,6 +17,6 @@ touches: [plugin/src/, plugin/hooks/register.tsx, plugin/src/protocol/instructio
 
 Checks:
 
-- the lint expectations in the golden cases ([protocol-golden-cases](protocol-golden-cases.md)) pass;
+- the lint expectations in the golden cases ([protocol-golden-cases](../closed/protocol-golden-cases.md)) pass;
 - an engine test in `plugin/test/engine/` for each tool and for the `turn.complete` lint;
 - `typecheck-plugin` and `plugin-test` pass.

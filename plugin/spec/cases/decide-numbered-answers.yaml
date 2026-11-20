@@ -1,0 +1,76 @@
+title: >-
+  A line of numbered answers settles the turn before's items it numbers, and
+  an agent's message giving answers settles nothing
+turns:
+  - id: 3a7c9e21
+    prompt: Set up the release.
+    replies:
+      - text: "\
+          The release needs 3 choices first.\n\
+          \n\
+          🧠 **Decide:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔\n\
+          1. **The release's version number**  \n\
+          \   🔘 A. **2.4.0**: a minor release.\n\
+          \      ➕ It says the pane is new.\n\
+          \      ➖ Nothing.\n\
+          \   🔘 B. **2.3.1**: a patch release.\n\
+          \      ➕ A smaller notice.\n\
+          \      ➖ It hides the new pane.\n\
+          \   ⠀\n\
+          2. **Who signs the release tag**  \n\
+          \   🔘 A. **The release bot**: its SSH key.\n\
+          \      ➕ No prompt.\n\
+          \      ➖ A key to rotate.\n\
+          \   🔘 B. **You**: your SSH key.\n\
+          \      ➕ A person stands behind it.\n\
+          \      ➖ A 1Password prompt.\n\
+          \   ⠀\n\
+          3. **The release's announcement**  \n\
+          \   🔘 A. **A pull request comment**: on the merged pull request.\n\
+          \      ➕ Where reviewers look.\n\
+          \      ➖ Few read it.\n\
+          \   🔘 B. **The README's top line**: a line of its own.\n\
+          \      ➕ Every reader sees it.\n\
+          \      ➖ It goes stale.\n"
+        lint: []
+    decide:
+      - number: 1
+        summary: The release's version number
+        kind: radio
+        options:
+          - { letter: A, name: "2.4.0" }
+          - { letter: B, name: "2.3.1" }
+      - number: 2
+        summary: Who signs the release tag
+        kind: radio
+        options:
+          - { letter: A, name: The release bot }
+          - { letter: B, name: You }
+      - number: 3
+        summary: The release's announcement
+        kind: radio
+        options:
+          - { letter: A, name: A pull request comment }
+          - { letter: B, name: "The README's top line" }
+  - id: 4b8daf32
+    prompt: 1. A / 3. B
+    messages:
+      - owner: peer
+        text: |-
+          <agent-message from="a48bb9142825233bb">
+          2. A
+          </agent-message>
+    replies:
+      - text: "\
+          ✅ **Done:**  \n\
+          ▔▔▔▔▔▔▔▔\n\
+          1. **The release's version, set to 2.4.0**\n\
+          2. **The README's top line, announcing 2.4.0**\n\
+          \n\
+          📌 Outstanding: 🧠 1\n"
+        lint: []
+expect:
+  open: [3a7c9e21.Decide.2]
+  outstanding: ["Decide: Who signs the release tag"]
+  counts: "📌 Outstanding: 🧠 1"

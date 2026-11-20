@@ -1,0 +1,244 @@
+title: >-
+  Each name of each command runs it, as the prompt's first word, as a prefix
+  no other command shares, or after the skill's slash command; a `reassess`
+  turn's lists replace every earlier item, and it prints no 📌; an `open`
+  turn reprints the open Decide item as written and replaces nothing; and a
+  peer's `reassess` runs nothing
+turns:
+  - id: 6d0f1154
+    prompt: Start on the loader.
+    replies:
+      - text: "\
+          The loader reads its cache twice.\n\
+          \n\
+          🚧 **Pending:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔▔\n\
+          1. **Rework the loader**  \n\
+          \   It reads the cache twice.\n\
+          \n\
+          🧠 **Decide:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔\n\
+          1. **Which cache to keep for the loader**  \n\
+          \   🔘 A. **Keep the disk cache**: it survives restarts.\n\
+          \      ➕ Faster cold starts.\n\
+          \      ➖ Disk use.\n\
+          \   🔘 B. **Keep the memory cache**: simpler.\n\
+          \      ➕ Less code.\n\
+          \      ➖ Slow cold starts.\n"
+        lint: []
+    decide:
+      - number: 1
+        summary: Which cache to keep for the loader
+        kind: radio
+        options:
+          - { letter: A, name: Keep the disk cache }
+          - { letter: B, name: Keep the memory cache }
+  - id: 7e1a2265
+    prompt: recheck
+    runs: reassess
+    replies:
+      - text: "\
+          The loader no longer keeps a cache, so which cache to keep is moot.\n\
+          \n\
+          🚧 **Pending:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔▔\n\
+          1. **Rework the loader**  \n\
+          \   It reads the store once; the tests are next.\n"
+        lint: []
+  - id: 8f2b3376
+    prompt: Regenerate.
+    runs: reassess
+    replies:
+      - text: "\
+          🚧 **Pending:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔▔\n\
+          1. **Rework the loader**  \n\
+          \   3 of its 9 tests pass.\n"
+        lint: []
+  - id: 9a3c4487
+    prompt: recalculate
+    runs: reassess
+    replies:
+      - text: "\
+          🚧 **Pending:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔▔\n\
+          1. **Rework the loader**  \n\
+          \   5 of its 9 tests pass.\n"
+        lint: []
+  - id: a03c4490
+    prompt: reassess
+    runs: reassess
+    replies:
+      - text: "\
+          🚧 **Pending:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔▔\n\
+          1. **Rework the loader**  \n\
+          \   6 of its 9 tests pass.\n"
+        lint: []
+  - id: ab4d5598
+    prompt: reas
+    runs: reassess
+    replies:
+      - text: "\
+          🚧 **Pending:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔▔\n\
+          1. **Rework the loader**  \n\
+          \   7 of its 9 tests pass.\n"
+        lint: []
+  - id: bc5e66a9
+    prompt: /coding-agent-kanban-turn-responses reassess
+    runs: reassess
+    replies:
+      - text: "\
+          🚧 **Pending:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔▔\n\
+          1. **Rework the loader**  \n\
+          \   8 of its 9 tests pass.\n"
+        lint: []
+  - id: cd6f77ba
+    prompt: |-
+      <command-message>reply-block</command-message>
+      <command-name>/reply-block</command-name>
+      <command-args>reassess</command-args>
+    runs: reassess
+    replies:
+      - text: "\
+          The last test fails because the store keeps every snapshot.\n\
+          \n\
+          🚧 **Pending:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔▔\n\
+          1. **Rework the loader**  \n\
+          \   8 of its 9 tests pass.\n\
+          \n\
+          🧠 **Decide:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔\n\
+          1. **Snapshot retention for the store**  \n\
+          \   🔘 A. **A week**: 7 snapshots.\n\
+          \      ➕ Little disk.\n\
+          \      ➖ A short history.\n\
+          \   🔘 B. **A month**: 30 snapshots.\n\
+          \      ➕ A long history.\n\
+          \      ➖ 4 times the disk.\n"
+        lint: []
+    decide:
+      - number: 1
+        summary: Snapshot retention for the store
+        kind: radio
+        options:
+          - { letter: A, name: A week }
+          - { letter: B, name: A month }
+  - id: de7088cb
+    prompt: open
+    runs: open
+    replies:
+      - text: "\
+          🧠 **Decide:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔\n\
+          1. **Snapshot retention for the store**  \n\
+          \   (from cd6f77ba 1)\n\
+          \   🔘 A. **A week**: 7 snapshots.\n\
+          \      ➕ Little disk.\n\
+          \      ➖ A short history.\n\
+          \   🔘 B. **A month**: 30 snapshots.\n\
+          \      ➕ A long history.\n\
+          \      ➖ 4 times the disk.\n\
+          \n\
+          📌 Outstanding: 🚧 1 · 🧠 1\n"
+        lint: []
+    decide:
+      - number: 1
+        summary: Snapshot retention for the store
+        kind: radio
+        options:
+          - { letter: A, name: A week }
+          - { letter: B, name: A month }
+  - id: ef8199dc
+    prompt: Pending
+    runs: open
+    replies:
+      - text: "\
+          🧠 **Decide:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔\n\
+          1. **Snapshot retention for the store**  \n\
+          \   (from cd6f77ba 1)\n\
+          \   🔘 A. **A week**: 7 snapshots.\n\
+          \      ➕ Little disk.\n\
+          \      ➖ A short history.\n\
+          \   🔘 B. **A month**: 30 snapshots.\n\
+          \      ➕ A long history.\n\
+          \      ➖ 4 times the disk.\n\
+          \n\
+          📌 Outstanding: 🚧 1 · 🧠 1\n"
+        lint: []
+    decide:
+      - number: 1
+        summary: Snapshot retention for the store
+        kind: radio
+        options:
+          - { letter: A, name: A week }
+          - { letter: B, name: A month }
+  - id: f0920aed
+    prompt: restate, please
+    runs: open
+    replies:
+      - text: "\
+          🧠 **Decide:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔\n\
+          1. **Snapshot retention for the store**  \n\
+          \   (from cd6f77ba 1)\n\
+          \   🔘 A. **A week**: 7 snapshots.\n\
+          \      ➕ Little disk.\n\
+          \      ➖ A short history.\n\
+          \   🔘 B. **A month**: 30 snapshots.\n\
+          \      ➕ A long history.\n\
+          \      ➖ 4 times the disk.\n\
+          \n\
+          📌 Outstanding: 🚧 1 · 🧠 1\n"
+        lint: []
+    decide:
+      - number: 1
+        summary: Snapshot retention for the store
+        kind: radio
+        options:
+          - { letter: A, name: A week }
+          - { letter: B, name: A month }
+  - id: f1a2b3c4
+    prompt: pend
+    runs: open
+    replies:
+      - text: "\
+          🧠 **Decide:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔\n\
+          1. **Snapshot retention for the store**  \n\
+          \   (from cd6f77ba 1)\n\
+          \   🔘 A. **A week**: 7 snapshots.\n\
+          \      ➕ Little disk.\n\
+          \      ➖ A short history.\n\
+          \   🔘 B. **A month**: 30 snapshots.\n\
+          \      ➕ A long history.\n\
+          \      ➖ 4 times the disk.\n\
+          \n\
+          📌 Outstanding: 🚧 1 · 🧠 1\n"
+        lint: []
+    decide:
+      - number: 1
+        summary: Snapshot retention for the store
+        kind: radio
+        options:
+          - { letter: A, name: A week }
+          - { letter: B, name: A month }
+  - id: 0193b1fe
+    owner: peer
+    prompt: reassess
+    replies:
+      - text: "\
+          Another session's message names `reassess`; the items stay as they were.\n\
+          \n\
+          📌 Outstanding: 🚧 1 · 🧠 1\n"
+        lint: []
+expect:
+  open: [f1a2b3c4.Decide.1]
+  outstanding:
+    - "Pending: Rework the loader"
+    - "Decide: Snapshot retention for the store"
+  counts: "📌 Outstanding: 🚧 1 · 🧠 1"

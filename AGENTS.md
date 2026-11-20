@@ -13,12 +13,15 @@ The `coding-agent-kanban-turns` Claude Code plugin, in TypeScript: a pane that l
     - `pane/`: what the pane and a reply's buttons draw: the text, the turn sections, the layout and the links.
     - `config/`: the settings, read and merged.
   - `spec/`: the protocol's checkable rules, the same for every user: `kanban.yaml` (the lists, the option kinds, the commands, the reference grammar, the roll-up, the 🔖 tag and the rule characters), its JSON Schema `kanban.schema.yaml`, and `kanban.json`, a generated copy for readers that aren't TypeScript. The core reads the rules only from `src/protocol/spec.ts`, never the YAML at run time.
+    - `cases/`: the golden cases, one YAML file each, beside their JSON Schema `case.schema.yaml`: a transcript of neutral turns and what the core gives for it, its open items, outstanding items, count line, each turn's command and each reply's lint findings. A case marked `example: false` breaks a rule on purpose, so it is no worked example.
   - `tools/`: the build step that compiles the spec (`spec/load.ts`, pure, and `spec/compile.ts`, which reads and writes the files), and `plugin-test.sh`.
+    - `spec/strict.ts`: reads a data file and its schema strictly, for both the spec's build step and the golden cases.
+    - `spec/cases.ts`: reads a golden case and works out what the core gives for it.
   - `defaults/config.yaml`: every setting with its default and a comment; a user's own `config.yaml` merges over it.
   - `types/index.d.ts`: the shapes and the `$.state` contract, self-contained as `claude plugin validate` asks.
   - `vendor/`: the runtime libraries the core imports by a relative path, a folder each, `yaml/` alone. The engine loads only the plugin's own files, so the flake bundles each into one ES module in its folder (`nix/scripts/vendor/bundle.sh`), with its `LICENSE` beside it. The bundles are committed, for the marketplace install, beside their self-contained types; `nix flake check` holds them to the flake's byte for byte, and `refresh-vendor` lays the flake's after a change to the libraries, the bundling or the flake's inputs (`update-flake`), for a commit.
   - `test/`: the tests.
-    - `unit/`: the core's tests, `node --test` with Jest's standalone `expect`, in folders mirroring `src/`.
+    - `unit/`: the core's tests, `node --test` with Jest's standalone `expect`, in folders mirroring `src/`; `protocol/golden-cases.test.ts` runs every golden case, so a new case needs no new test code.
     - `engine/`: the pane, the count line above the prompt, a reply's buttons and the tool row driven through the engine, `claude plugin test`.
     - `fixtures/`: the transcript records and neutral turns the tests build on.
     - `types/`: the declarations Node's type-check needs in place of the engine's, and the check that the bundled YAML parser's types match its package's.

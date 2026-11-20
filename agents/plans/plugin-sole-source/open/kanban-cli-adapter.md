@@ -24,5 +24,5 @@ touches: [plugin/cli/, flake.nix, plugin/package.json]
 
 Checks:
 
-- a test runs each subcommand on the golden cases ([protocol-golden-cases](protocol-golden-cases.md)), through stdin and through the Claude Code adapter, and compares its output with the case's expectation;
+- a test runs each subcommand on the golden cases ([protocol-golden-cases](../closed/protocol-golden-cases.md)), through stdin and through the Claude Code adapter, and compares its output with the case's expectation;
 - `nix flake check` builds `kanban.js` and the binary for its own platform, and runs each once on a case.

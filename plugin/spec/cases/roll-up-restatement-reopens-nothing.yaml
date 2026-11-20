@@ -1,0 +1,68 @@
+title: >-
+  A Waiting item a report settled, restated under the 📌 roll-up's header or
+  an older reply's name for it, reopens nothing, since an item under 📌 is
+  pinned, not printed in its own list again; the restating replies carry a
+  settled item, so the case is no worked example
+example: false
+turns:
+  - id: 3c4d5e6f
+    prompt: Run the watcher and the nightly build.
+    replies:
+      - text: "\
+          Two jobs run in the background.\n\
+          \n\
+          ⏳ **Waiting:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔▔\n\
+          1. **Watcher on #143 (`b8a83gfv0`)**\n\
+          2. **The nightly build (`n1ght1y`)**\n"
+        lint: []
+  - id: 4d5e6f70
+    prompt: Meanwhile, look at the pane.
+    messages:
+      - owner: notification
+        text: |-
+          <task-notification>
+          <task-id>b8a83gfv0</task-id>
+          <status>completed</status>
+          </task-notification>
+        report-names: [b8a83gfv0]
+      - owner: notification
+        text: |-
+          <task-notification>
+          <task-id>n1ght1y</task-id>
+          <status>completed</status>
+          </task-notification>
+        report-names: [n1ght1y]
+    replies:
+      - text: "\
+          ✅ **Done:**  \n\
+          ▔▔▔▔▔▔▔▔\n\
+          1. **Watcher on #143, finished**\n\
+          2. **The nightly build, finished**\n"
+        lint: []
+  - id: 5e6f7081
+    prompt: Keep going on the pane.
+    replies:
+      - text: "\
+          The pane draws its buttons once now.\n\
+          \n\
+          📌 **Outstanding from previous turns:**  \n\
+          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\
+          ⏳ **Waiting:**  \n\
+          - **Watcher on #143 (`b8a83gfv0`)** 🔖 3c4d5e6f₋₂\n"
+        lint: []
+  - id: 6f708192
+    prompt: And its notes field.
+    replies:
+      - text: "\
+          The notes field grows to 4 rows.\n\
+          \n\
+          📌 **Still open from earlier:**  \n\
+          ━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\
+          ⏳ **Waiting:**  \n\
+          - **The nightly build (`n1ght1y`)** 🔖 3c4d5e6f₋₃\n"
+        lint: []
+expect:
+  open: []
+  outstanding: []
+  counts: ""
