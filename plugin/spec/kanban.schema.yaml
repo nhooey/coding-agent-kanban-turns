@@ -33,7 +33,7 @@ definitions:
   list:
     type: object
     additionalProperties: false
-    required: [header, glyph, aliases, rolls-up, settling-words]
+    required: [header, glyph, aliases, rolls-up, settled-by, settling-words]
     properties:
       header: { $ref: "#/definitions/name" }
       glyph: { $ref: "#/definitions/glyph" }
@@ -42,6 +42,8 @@ definitions:
         items: { $ref: "#/definitions/name" }
         uniqueItems: true
       rolls-up: { type: boolean }
+      # Each way has its settler in src/items/outstanding.ts's SETTLERS.
+      settled-by: { enum: [answer, merged-pull-request, report, none] }
       settling-words:
         type: object
         propertyNames: { $ref: "#/definitions/word" }

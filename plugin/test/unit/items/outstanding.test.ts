@@ -4,8 +4,11 @@
 
 import { describe, test } from "node:test";
 import { expect } from "expect";
+import { readFileSync } from "node:fs";
 
 import {
+  LIST_KEYS,
+  SETTLERS,
   allItems,
   answeredSubjects,
   answersOfLine,
@@ -24,6 +27,8 @@ import {
   rollUp,
   settlementsIn,
   settlementsOf,
+  settlerOf,
+  settlingOf,
   subjectKey,
   summaryOf,
   unsettled,
@@ -31,7 +36,10 @@ import {
   withRepliedFrees,
   withResolvedFrees,
 } from "../../../src/items/outstanding.ts";
+import type { ListItem, ListKey, Settling } from "../../../src/items/outstanding.ts";
 import { itemsOf } from "../../../src/items/items.ts";
+import { parseYaml } from "../../../src/config/config.ts";
+import { field } from "../../../src/json/fields.ts";
 import type { Owner, Turn } from "../../../types/index.d.ts";
 import { numbered, said, turnOf } from "../../fixtures/turns.ts";
 
@@ -1163,6 +1171,121 @@ describe("the lists nothing but a reassess settles", () => {
         turn(SECOND, "Pending.1 done\nAuthorizations.1 done\nTodo.1 done\n1. A", "Prose."),
       ]),
     ).toBe("📌 Outstanding: 🚧 1 · 🔑 1 · 👉 1");
+  });
+});
+
+/** An item of `list` on `line`, printed by its own list in the turn at `at`. */
+const listItem = (list: ListKey, line: string, at = 0): ListItem => ({
+  list,
+  at,
+  number: 1,
+  isPinned: false,
+  line,
+  frees: [],
+});
+
+/** The key an item's last printing goes by in `lastOwn`: its list and its subject. */
+const ownKey = (item: ListItem): string => `${item.list}\t${subjectKey(summaryOf(item.line))}`;
+
+/** What settles nothing: no merges, answers, reports or printings. */
+const NOTHING: Settling = {
+  merged: new Set(),
+  decided: new Set(),
+  reports: [],
+  lastOwn: new Map(),
+};
+
+describe("the settlers, by the way a list is settled", () => {
+  test("each list that rolls up is settled the way its settled-by names", () => {
+    expect(
+      Object.fromEntries(
+        LIST_KEYS.map((key) => [
+          key,
+          Object.entries(SETTLERS).find(
+            ([, settler]) => settler === settlerOf({ list: key }),
+          )?.[0],
+        ]),
+      ),
+    ).toEqual({
+      pending: "none",
+      waiting: "report",
+      authorizations: "none",
+      review: "merged-pull-request",
+      todo: "none",
+      decide: "answer",
+    });
+  });
+
+  test("cover every way the spec's schema allows, and nothing else", () => {
+    const schema = parseYaml(
+      readFileSync(new URL("../../../spec/kanban.schema.yaml", import.meta.url), "utf8"),
+    );
+    const ways = ["value", "definitions", "list", "properties", "settled-by", "enum"].reduce(
+      field,
+      schema as unknown,
+    );
+    expect(Object.keys(SETTLERS).toSorted()).toEqual(
+      (Array.isArray(ways) ? ways : []).toSorted(),
+    );
+  });
+
+  test("merged-pull-request settles an item once every pull request it names with its repository merged", () => {
+    const { settles, pullRequests } = SETTLERS["merged-pull-request"];
+    const both = listItem("review", "**example/kanban#22 Bump** on example/other#7");
+    const merged = (refs: readonly string[]) => ({ ...NOTHING, merged: new Set(refs) });
+    expect(settles(both, merged(["example/kanban#22", "example/other#7"]))).toBe(true);
+    expect(settles(both, merged(["example/kanban#22"]))).toBe(false);
+    expect(settles(listItem("review", "**#23 The README**"), merged(["example/kanban#23"]))).toBe(false);
+    expect(pullRequests(both)).toEqual(["example/kanban#22", "example/other#7"]);
+  });
+
+  test("answer settles an item whose subject the user answered", () => {
+    const { settles, pullRequests } = SETTLERS.answer;
+    const item = listItem("decide", "**Which cache to keep for the loader**");
+    expect(settles(item, { ...NOTHING, decided: new Set([subjectKey(summaryOf(item.line))]) })).toBe(true);
+    expect(settles(item, NOTHING)).toBe(false);
+    expect(pullRequests(listItem("decide", "**example/kanban#22 Bump**"))).toEqual([]);
+  });
+
+  test("report settles an item a report names after the last turn its own list printed it in", () => {
+    const { settles, pullRequests } = SETTLERS.report;
+    const item = listItem("waiting", "**Watcher (`b8a83gfv0`)**", 1);
+    const reported = (n: number) => ({
+      ...NOTHING,
+      reports: [{ n, names: ["b8a83gfv0"], report: "Done." }],
+      lastOwn: new Map([[ownKey(item), 1]]),
+    });
+    expect(settles(item, reported(2))).toBe(true);
+    expect(settles(item, reported(1))).toBe(false);
+    expect(settles(item, NOTHING)).toBe(false);
+    expect(pullRequests(listItem("waiting", "**example/kanban#22 Bump**"))).toEqual([]);
+  });
+
+  test("none settles nothing and asks about no pull request", () => {
+    const { settles, pullRequests } = SETTLERS.none;
+    const item = listItem("todo", "**example/kanban#22 Bump**");
+    expect(settles(item, { ...NOTHING, merged: new Set(["example/kanban#22"]) })).toBe(false);
+    expect(pullRequests(item)).toEqual([]);
+  });
+
+  test("settlingOf reads the merges, the answered subjects, the reports others sent and each item's last printing since reassess", () => {
+    const found = [
+      turn(FIRST, "go", waiting("Watcher (`b8a83gfv0`)"), DECIDE_REPLY),
+      turnOf(SECOND, "1. A", {
+        replies: [waiting("Watcher (`b8a83gfv0`)")],
+        messages: [said("Done.", "notification", ["b8a83gfv0"]), said("Mine.", "user", ["x"])],
+      }),
+      report(THIRD, "Pushed.", ["a48bb"]),
+    ];
+    const settling = settlingOf(found, new Set(["example/kanban#22"]));
+    expect(settling.merged).toEqual(new Set(["example/kanban#22"]));
+    expect(settling.decided).toEqual(answeredSubjects(found));
+    expect(settling.decided.size).toBeGreaterThan(0);
+    expect(settling.reports).toEqual([
+      { n: 1, names: ["b8a83gfv0"], report: "Done." },
+      { n: 2, names: ["a48bb"], report: "Pushed." },
+    ]);
+    expect(settling.lastOwn.get(ownKey(listItem("waiting", "**Watcher (`b8a83gfv0`)**")))).toBe(1);
   });
 });
 

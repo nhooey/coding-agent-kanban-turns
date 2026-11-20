@@ -6,6 +6,7 @@
       "glyph": "✅",
       "aliases": [],
       "rolls-up": false,
+      "settled-by": "none",
       "settling-words": {}
     },
     "pending": {
@@ -16,6 +17,7 @@
         "Open"
       ],
       "rolls-up": true,
+      "settled-by": "none",
       "settling-words": {}
     },
     "logged": {
@@ -23,6 +25,7 @@
       "glyph": "📝",
       "aliases": [],
       "rolls-up": false,
+      "settled-by": "none",
       "settling-words": {}
     },
     "waiting": {
@@ -30,6 +33,7 @@
       "glyph": "⏳",
       "aliases": [],
       "rolls-up": true,
+      "settled-by": "report",
       "settling-words": {}
     },
     "answers": {
@@ -39,6 +43,7 @@
         "Questions"
       ],
       "rolls-up": false,
+      "settled-by": "none",
       "settling-words": {}
     },
     "authorizations": {
@@ -46,6 +51,7 @@
       "glyph": "🔑",
       "aliases": [],
       "rolls-up": true,
+      "settled-by": "none",
       "settling-words": {}
     },
     "review": {
@@ -55,6 +61,7 @@
         "To review"
       ],
       "rolls-up": true,
+      "settled-by": "merged-pull-request",
       "settling-words": {}
     },
     "todo": {
@@ -64,6 +71,7 @@
         "To do"
       ],
       "rolls-up": true,
+      "settled-by": "none",
       "settling-words": {}
     },
     "decide": {
@@ -74,6 +82,7 @@
         "Blocked"
       ],
       "rolls-up": true,
+      "settled-by": "answer",
       "settling-words": {}
     }
   },
