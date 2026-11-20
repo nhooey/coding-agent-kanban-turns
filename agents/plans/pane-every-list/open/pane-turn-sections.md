@@ -9,7 +9,7 @@ touches: [plugin/hooks/register.tsx, plugin/src/view.ts, plugin/src/sections.ts,
 
 # The pane is one scrolling list, newest turn first, grouped by turn, list and state under headers
 
-- **The grouping.** The pane draws one list, newest turn first; within a turn, its lists in the skill's order; within a list, its Open items, then its Done items. A list that nothing settles, ✅ Done, 📝 Logged and ❓ Answers, has its items straight under its header, with no state groups.
+- **The grouping.** The pane draws one list, newest turn first; within a turn, its lists in the spec's order; within a list, its Open items, then its Done items. A list that nothing settles, ✅ Done, 📝 Logged and ❓ Answers, has its items straight under its header, with no state groups.
 - **Headers.** Each group has a header with its own key. A turn's header carries its id and its index relative to the latest turn, which is `₀`, such as `9efb08a1 ₋3`.
 - **A collapsed Done section** draws one header row with its count and expands on a click, and a second click collapses it again.
 - **Hidden groups aren't drawn.** A group whose items [the filters](pane-list-filters.md) all hide makes no header and no elements.
