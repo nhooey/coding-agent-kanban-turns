@@ -1,6 +1,6 @@
-// The turns read from the session's transcript file, and a reply's sections:
-// the kanban skill's test_reply_turns.py, its command tests and its
-// merge_repeats test, on records shaped like the ones Claude Code writes.
+// What the core reads from a turn's texts: a reply's sections, the command a
+// prompt runs and where the latest `reassess` starts, on neutral turns; the
+// kanban skill's command tests; and a file read in ranges.
 
 import { describe, test } from "node:test";
 import { expect } from "expect";
@@ -9,185 +9,32 @@ import {
   chunkOffsets,
   commandNamed,
   commandOf,
+  isOwn,
   isReassessLine,
   isTopicRule,
-  projectSlug,
   reassessStart,
-  recordsOf,
   sectionsOf,
   textOfChunks,
-  transcriptPathFor,
-  turnsOf,
-  turnsOfText,
   wholeEnd,
   withoutDraftHeader,
 } from "../src/transcript.ts";
-import {
-  assistant,
-  commandOutput,
-  compactSummary,
-  engineRow,
-  human,
-  jsonl,
-  notification,
-  otherPluginPrompt,
-  peer,
-  pluginPrompt,
-  queued,
-  skillBody,
-  toolResult,
-} from "./records.ts";
+import type { Owner } from "../types/index.d.ts";
+import { turnOf } from "./turns.ts";
 
-const FIRST = "aaaa1111";
-const SECOND = "bbbb2222";
-const THIRD = "aaaa1199";
-
-const call = (turn: string) => ({
-  items: [
-    {
-      turn,
-      number: 1,
-      summary: "Which cache",
-      kind: "radio",
-      options: [{ letter: "A", name: "Disk" }],
-    },
-  ],
-});
-
-const RECORDS = [
-  assistant("before any prompt"),
-  human(FIRST, "first prompt\nsecond line"),
-  assistant("one"),
-  toolResult(),
-  assistant("two", [call(FIRST)]),
-  assistant("sidechain", [], { isSidechain: true }),
-  { ...human(SECOND, "a sidechain prompt"), isSidechain: true },
-  compactSummary(SECOND),
-  peer(SECOND, '<agent-message from="a48bb">\nPushed.\n</agent-message>'),
-  assistant("   "),
-  assistant("three"),
-  notification(THIRD, "<task-notification>\n<task-id>b8</task-id>\n</task-notification>"),
-];
-
-describe("turnsOf", () => {
-  test("a human, peer and task notification prompt each open a turn, its id the prompt id's first 8 characters", () => {
-    expect(turnsOf(RECORDS).map((t) => t.id)).toEqual([FIRST, SECOND, THIRD]);
-  });
-
-  test("a reply is its turn's non-sidechain text blocks, blank text and tool results left out", () => {
-    const turns = turnsOf(RECORDS);
-    expect(turns.map((t) => t.replies)).toEqual([["one", "two"], ["three"], []]);
-    expect(turns[0]?.prompt).toBe("first prompt\nsecond line");
-  });
-
-  test("a turn's calls are its kanban_options inputs", () => {
-    expect(turnsOf(RECORDS).map((t) => t.calls)).toEqual([[call(FIRST)], [], []]);
-  });
-
-  test("a message the user sent while a turn ran is one of its asides, a peer's or a task's one of its reports", () => {
-    const turns = turnsOf([
-      human(FIRST, "go"),
-      assistant("one"),
-      queued("Decide.1.Y"),
-      queued("<cross-session-message>x</cross-session-message>", "peer"),
-      queued("<task-notification>y</task-notification>", "task-notification"),
-      queued("/compact", "system"),
-    ]);
-    expect(turns[0]?.asides).toEqual(["Decide.1.Y"]);
-    expect(turns[0]?.reports).toEqual([
-      "<cross-session-message>x</cross-session-message>",
-      "<task-notification>y</task-notification>",
-    ]);
-  });
-
-  test("a prompt a mod submitted opens a turn with the text it sent; another system prompt opens none", () => {
-    const turns = turnsOf([
-      human(FIRST, "go"),
-      assistant("one"),
-      pluginPrompt(SECOND, "reassess"),
-      assistant("two"),
-      { ...human(THIRD, "a system prompt"), turnOrigin: "system" },
-    ]);
-    expect(turns.map((t) => [t.id, t.prompt, t.replies])).toEqual([
-      [FIRST, "go", ["one"]],
-      [SECOND, "reassess", ["two"]],
-    ]);
-  });
-
-  test("a repeated prompt record folds its replies and calls into the first", () => {
-    const turns = turnsOf([
-      human(FIRST, "go"),
-      assistant("one"),
-      human(SECOND, "x"),
-      assistant("two"),
-      human(FIRST, "go"),
-      assistant("three", [call(FIRST)]),
-    ]);
-    expect(turns.map((t) => [t.id, t.replies, t.calls.length])).toEqual([
-      [FIRST, ["one", "three"], 1],
-      [SECOND, ["two"], 0],
-    ]);
-  });
-
-  test("a repeated prompt record folds the messages sent while it ran into the first", () => {
-    const turns = turnsOf([
-      human(FIRST, "go"),
-      queued("Decide.1.A"),
-      human(SECOND, "x"),
-      human(FIRST, "go"),
-      queued("Decide.2.B"),
-      queued("<task-notification>done</task-notification>", "task-notification"),
-    ]);
-    expect(turns.map((t) => [t.id, t.asides, t.reports])).toEqual([
-      [FIRST, ["Decide.1.A", "Decide.2.B"], ["<task-notification>done</task-notification>"]],
-      [SECOND, [], []],
-    ]);
-  });
-
-  test("the engine's own user records open no turn", () => {
-    const turns = turnsOf([
-      human(FIRST, "go"),
-      assistant("one"),
-      engineRow("<system-reminder>\nThe user named this session.\n</system-reminder>", { isMeta: true }),
-      skillBody(),
-      engineRow(
-        "<local-command-caveat>Caveat: the messages below were generated by the user while running local commands.</local-command-caveat>",
-        { isMeta: true },
-      ),
-      engineRow("<bash-input>ls</bash-input>"),
-      commandOutput("cccc3333"),
-      { ...commandOutput("cccc4444"), message: { role: "user", content: "<bash-stderr>no such file</bash-stderr>" } },
-      engineRow("<command-name>/model</command-name>\n<command-message>model</command-message>\n<command-args></command-args>"),
-      engineRow("<local-command-stdout>Set model</local-command-stdout>"),
-      engineRow("[Request interrupted by user for tool use]"),
-      assistant("two"),
-    ]);
-    expect(turns.map((t) => [t.id, t.replies])).toEqual([[FIRST, ["one", "two"]]]);
-  });
-});
+/** The user's turns, one a prompt, each its place as its id. */
+const prompted = (...prompts: readonly string[]) =>
+  prompts.map((prompt, n) => turnOf(String(n + 1).padStart(8, "0"), prompt));
 
 describe("the user's own text", () => {
-  test("is a prompt the user typed", () => {
-    expect(turnsOf([human(FIRST, "1. A")]).map((t) => t.isOwn)).toEqual([true]);
+  test("is a prompt the user typed, or one this plugin submitted for the user, such as its Submit or Reassess", () => {
+    expect(isOwn("user")).toBe(true);
+    expect(isOwn("this-plugin")).toBe(true);
   });
 
-  test("is a prompt this plugin submitted for the user, such as its Submit or Reassess", () => {
-    expect(turnsOf([pluginPrompt(FIRST, "1. A")]).map((t) => [t.id, t.prompt, t.isOwn])).toEqual([
-      [FIRST, "1. A", true],
-    ]);
-  });
-
-  test("is no peer's message, task notification or other mod's prompt", () => {
-    const turns = turnsOf([
-      peer(FIRST, "Another Claude session sent a message:\n1. A"),
-      notification(SECOND, "<task-notification>1. A</task-notification>"),
-      otherPluginPrompt(THIRD, "1. A"),
-    ]);
-    expect(turns.map((t) => [t.id, t.isOwn])).toEqual([
-      [FIRST, false],
-      [SECOND, false],
-      [THIRD, false],
-    ]);
+  test("is no peer's message, task notification or other plugin's prompt", () => {
+    for (const owner of ["peer", "notification", "other-plugin"] as const satisfies readonly Owner[]) {
+      expect(isOwn(owner)).toBe(false);
+    }
   });
 });
 
@@ -214,27 +61,7 @@ describe("the line naming the plugin", () => {
   });
 });
 
-describe("the transcript file", () => {
-  test("is one record a line, a blank line or a line cut short skipped", () => {
-    const text = `${jsonl([human(FIRST, "go"), assistant("one")])}\n${JSON.stringify(human(SECOND, "more")).slice(0, 40)}`;
-    expect(recordsOf(text)).toHaveLength(2);
-    expect(turnsOfText(text).map((t) => [t.id, t.replies])).toEqual([[FIRST, ["one"]]]);
-  });
-
-  test("a line that is no JSON object is skipped", () => {
-    expect(recordsOf('[1]\n"x"\nnull\n{"type":"user"}\n')).toEqual([{ type: "user" }]);
-  });
-
-  test("lies under the project of the working directory, a worktree's main checkout", () => {
-    expect(projectSlug("/Users/a/repo")).toBe("-Users-a-repo");
-    expect(projectSlug("/Users/a/repo/.worktrees/branch")).toBe("-Users-a-repo");
-    expect(projectSlug("/Users/a/repo/.claude/worktrees/agent-1")).toBe("-Users-a-repo");
-    expect(projectSlug("/Users/a/my.repo")).toBe("-Users-a-my-repo");
-    expect(transcriptPathFor("/home/a", "/Users/a/repo", "s-1")).toBe(
-      "/home/a/.claude/projects/-Users-a-repo/s-1.jsonl",
-    );
-  });
-
+describe("a file read in ranges", () => {
   test("is read in ranges that cover it", () => {
     expect(chunkOffsets(0, 4)).toEqual([]);
     expect(chunkOffsets(4, 4)).toEqual([0]);
@@ -406,21 +233,18 @@ describe("commandOf", () => {
 
 describe("reassessStart", () => {
   test("is the latest reassess turn, else the first", () => {
-    const turns = turnsOf([
-      human("00000001", "go"),
-      human("00000002", "recheck"),
-      human("00000003", "more"),
-      human("00000004", "regen"),
-      human("00000005", "open"),
-    ]);
-    expect(reassessStart(turns)).toBe(3);
-    expect(reassessStart(turnsOf([human("00000001", "go"), human("00000002", "open")]))).toBe(0);
+    expect(reassessStart(prompted("go", "recheck", "more", "regen", "open"))).toBe(3);
+    expect(reassessStart(prompted("go", "open"))).toBe(0);
   });
 
   test("is a turn whose prompt ends on a reassess line, with or without answers", () => {
     for (const prompt of ["coding-agent-kanban-turns:\n9efb08a1.Decide.1.A\nreassess\n\n", "Look at the build again.\nreassess"]) {
-      expect(reassessStart(turnsOf([human("00000001", "go"), human("00000002", prompt)]))).toBe(1);
+      expect(reassessStart(prompted("go", prompt))).toBe(1);
     }
+  });
+
+  test("is a turn this plugin's prompt opened, as its Reassess does", () => {
+    expect(reassessStart([turnOf("00000001", "go"), turnOf("00000002", "reassess", { owner: "this-plugin" })])).toBe(1);
   });
 });
 
@@ -472,11 +296,9 @@ describe("a command on the last line", () => {
   });
 
   test("a turn that isn't the user's own, though it ends on reassess, reassesses nothing", () => {
-    const turns = turnsOf([
-      human("00000001", "go"),
-      { ...human("00000002", "The mod sent:\n1. A\nreassess"), turnOrigin: "system", pluginPrompt: { name: "mod", text: "1. A\nreassess" } },
-    ]);
-    expect(reassessStart(turns)).toBe(0);
+    for (const owner of ["other-plugin", "peer", "notification"] as const satisfies readonly Owner[]) {
+      expect(reassessStart([turnOf("00000001", "go"), turnOf("00000002", "1. A\nreassess", { owner })])).toBe(0);
+    }
   });
 
   test("a line is a reassess line when it is only a name of reassess or a prefix no other command shares", () => {

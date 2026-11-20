@@ -22,18 +22,18 @@
 
 import { answersOfLine } from "./answer-lines.ts";
 import type { LineAnswer } from "./answer-lines.ts";
-import { itemsOf, refOf } from "./items.ts";
-import { reportNames, reportNamesItem } from "./reports.ts";
+import { refOf } from "./items.ts";
+import { reportNamesItem } from "./reports.ts";
 import {
   DECISIONS,
   HEADER,
+  isOwn,
   isTopicRule,
   reassessStart,
   sectionsOf,
   withoutDraftHeader,
 } from "./transcript.ts";
-import type { Turn } from "./transcript.ts";
-import type { DecideItem, Settlement } from "../types/index.d.ts";
+import type { DecideItem, Message, Settlement, Turn } from "../types/index.d.ts";
 
 /** The lists that roll up into 📌, in the skill's order. */
 export const LIST_KEYS = [
@@ -222,6 +222,12 @@ export const allItems = (turns: readonly Turn[]): readonly ListItem[] =>
 export { answersOfLine } from "./answer-lines.ts";
 export type { LineAnswer } from "./answer-lines.ts";
 
+/** A turn's prompt, then the messages sent while it ran. */
+export const textsOf = (turn: Turn): readonly Message[] => [
+  turn.prompt,
+  ...turn.messages,
+];
+
 /** An answer as the turns hold it: the line's, with the place `at` of the turn a bare one answers and the id of the turn it was `sent` in. */
 export type Answer = LineAnswer & Readonly<{ at: number; sent: string }>;
 
@@ -235,8 +241,9 @@ export const answered = (turns: readonly Turn[]): readonly Answer[] =>
   turns.flatMap((turn, n) =>
     n === 0
       ? []
-      : [...(turn.isOwn ? [turn.prompt] : []), ...turn.asides]
-          .flatMap((text) => withoutDraftHeader(text).split("\n"))
+      : textsOf(turn)
+          .filter((message) => isOwn(message.owner))
+          .flatMap((message) => withoutDraftHeader(message.text).split("\n"))
           .flatMap(answersOfLine)
           .map((answer) => ({ ...answer, at: n - 1, sent: turn.id })),
   );
@@ -462,12 +469,10 @@ export const unsettled = (
       .map((item) => [keyOf(item), item.at]),
   );
   const reports = turns.flatMap((turn, n) =>
-    [...(turn.isOwn ? [] : [turn.prompt]), ...turn.reports].flatMap(
-      (report) => {
-        const names = reportNames(report);
-
-        return names === undefined ? [] : [{ n, names, report }];
-      },
+    textsOf(turn).flatMap(({ owner, text, reportNames }) =>
+      isOwn(owner) || reportNames === undefined
+        ? []
+        : [{ n, names: reportNames, report: text }],
     ),
   );
   const decided = answeredSubjects(turns);
@@ -552,7 +557,7 @@ export const decideStates = (turns: readonly Turn[]): readonly DecideState[] => 
   const start = reassessStart(turns);
   const answers = answered(turns);
   const raised = turns.flatMap((turn, at) =>
-    turn.calls.flatMap((input) => itemsOf(input).map((item) => ({ item, at }))),
+    turn.decide.map((item) => ({ item, at })),
   );
   const last = new Map(
     raised

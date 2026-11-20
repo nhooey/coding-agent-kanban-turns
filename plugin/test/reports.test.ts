@@ -1,14 +1,10 @@
-// The reports that settle a Waiting item, read out of a turn's prompt.
+// Whether a report names a Waiting item, and the pseudo-XML reader the
+// Claude Code adapter reads reports' names with.
 
 import { describe, test } from "node:test";
 import { expect } from "expect";
 
-import {
-  elements,
-  namesWord,
-  reportNames,
-  reportNamesItem,
-} from "../src/reports.ts";
+import { elements, namesWord, reportNamesItem } from "../src/reports.ts";
 
 describe("elements", () => {
   test("each element with its attributes and its own text, no child's", () => {
@@ -50,47 +46,6 @@ describe("elements", () => {
     expect(elements("<summary>a < b & c &lt; d</summary>")).toEqual([
       { tag: "summary", attrs: {}, text: "a < b & c < d" },
     ]);
-  });
-});
-
-describe("reportNames", () => {
-  test("another session's message goes by the session's name", () => {
-    expect(
-      reportNames('<cross-session-message from="uds:/x" from-name="github-config">\nDone.\n</cross-session-message>'),
-    ).toEqual(["github-config"]);
-  });
-
-  test("an agent's message goes by the agent's id", () => {
-    expect(reportNames('<agent-message from="a48bb">\nPushed.\n</agent-message>')).toEqual(["a48bb"]);
-  });
-
-  test("a finished task goes by its id and the names its summary quotes", () => {
-    for (const status of ["completed", "failed", "killed", "stopped", "cancelled", "Completed"]) {
-      expect(
-        reportNames(
-          `<task-notification>\n<task-id>b8</task-id>\n<status>${status}</status>\n<summary>Agent "x" and "y" ${status}</summary>\n</task-notification>`,
-        ),
-      ).toEqual(["b8", "x", "y"]);
-    }
-  });
-
-  test("an expired Monitor is a report", () => {
-    expect(
-      reportNames(
-        "<task-notification>\n<task-id>b8</task-id>\n<event>[Monitor expired after 1h]</event>\n</task-notification>",
-      ),
-    ).toEqual(["b8"]);
-  });
-
-  test("a task still running, a Monitor's event, or plain text is no report", () => {
-    for (const prompt of [
-      '<task-notification>\n<task-id>b8</task-id>\n<status>completed</status>\n<summary>Agent "x" is waiting on its own background work</summary>\n</task-notification>',
-      "<task-notification>\n<task-id>b8</task-id>\n<event>CHECK ok</event>\n</task-notification>",
-      "<task-notification>\n<task-id>b8</task-id>\n<status>running</status>\n</task-notification>",
-      "go on",
-    ]) {
-      expect(reportNames(prompt)).toBeUndefined();
-    }
   });
 });
 

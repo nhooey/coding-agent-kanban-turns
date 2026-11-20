@@ -90,15 +90,14 @@ import {
   withKeys,
 } from "../src/sections.ts";
 import type { TurnSection } from "../src/sections.ts";
+import { transcriptPathFor, turnsOfText } from "../src/claude-code-transcript.ts";
 import {
   NOT_DECODED,
   chunkOffsets,
   decodedText,
-  transcriptPathFor,
-  turnsOfText,
   withRange,
 } from "../src/transcript.ts";
-import type { Turn } from "../src/transcript.ts";
+import type { Turn } from "../types/index.d.ts";
 import {
   answeredText,
   answersText,

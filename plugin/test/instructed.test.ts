@@ -9,7 +9,7 @@ import {
   isBoundary,
 } from "../src/instructed.ts";
 import { BLOCK, INSTRUCTIONS } from "../src/instructions.ts";
-import type { TranscriptRecord } from "../src/transcript.ts";
+import type { TranscriptRecord } from "../src/claude-code-transcript.ts";
 
 const PATH = "/home/neil/.claude/projects/-work/session-1.jsonl";
 
