@@ -1,6 +1,6 @@
 ## Earlier turns' items
 
-The final response closes, before any ETA line, on what earlier turns left open and no later turn settled: every {{glyphs.rolled-up}} item. It prints in full or as one count line, by the roll-up interval.
+The final response closes, before any ETA line, on what earlier turns left open and no later turn settled: every {{glyphs.rolled-up}} item. It prints in full or as one count line, by the roll-up interval. The tool `{{outstanding-tool}}` drafts both from the session's transcript: the count line as it prints, and the full roll-up, with each item's {{tag.glyph}} tag, to prune of what is settled.
 
 **The roll-up interval.** The full roll-up prints once min(30 min, 5 × the average duration of the last 5 completed turns) has passed since the last final response that printed it in full; otherwise the final response closes on one count line.
 

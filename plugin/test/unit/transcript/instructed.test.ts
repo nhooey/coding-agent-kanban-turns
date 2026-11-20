@@ -4,6 +4,7 @@ import { expect } from "expect";
 import {
   carries,
   conversationKey,
+  conversationKeyOf,
   conversationOf,
   instructing,
   isBoundary,
@@ -80,6 +81,13 @@ describe("a conversation's boundaries", () => {
     expect(conversationKey(PATH, [prompt("a"), compaction, clear])).toBe(
       `${PATH}#2`,
     );
+  });
+
+  test("give the key of a transcript's text, none for a transcript not there yet", () => {
+    expect(conversationKeyOf(PATH, jsonl([prompt("a"), compaction, prompt("b")]))).toBe(
+      `${PATH}#1`,
+    );
+    expect(conversationKeyOf(PATH, "")).toBe(`${PATH}#0`);
   });
 });
 

@@ -35,8 +35,13 @@ const NAME = /^[a-z0-9][A-Za-z0-9.-]*$/;
 /** The example turn id the fragments' examples use, cut to the spec's length. */
 const EXAMPLE_TURN = "0f311c94a7d2b5e8";
 
-/** The placeholders the plugin fills itself, not from the spec: its name and its tool's. */
-export const OWN_PLACEHOLDERS = ["plugin", "tool"] as const;
+/** The placeholders the plugin fills itself, not from the spec: its name and its tools' names as the agent calls them, the buttons' `tool` and the other two. */
+export const OWN_PLACEHOLDERS = [
+  "plugin",
+  "tool",
+  "outstanding-tool",
+  "lint-tool",
+] as const;
 
 /** The plugin's own values, by placeholder. */
 export type OwnValues = Readonly<
@@ -400,7 +405,7 @@ export const valuesOf = (entries: Entries): Readonly<Record<string, string>> => 
  * number in the spec by its path, `lists.decide.header`; the values worked
  * out from them, a header as drawn, `header.decide`, the lists' names in
  * words, `names.lists`, the examples, `example.count-line`; and the
- * plugin's own, `plugin` and `tool`. Throws where two of them name one
+ * plugin's own, `plugin`, `tool`, `outstanding-tool` and `lint-tool`. Throws where two of them name one
  * placeholder.
  */
 export const placeholderValues = (

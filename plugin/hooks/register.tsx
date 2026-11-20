@@ -36,15 +36,33 @@ import {
   toggledReassess,
   withNote,
 } from "../src/items/answers.ts";
-import { instructing } from "../src/transcript/instructed.ts";
+import { conversationKeyOf, instructing } from "../src/transcript/instructed.ts";
+import type { Instructing } from "../src/transcript/instructed.ts";
 import {
   INPUT_SCHEMA,
   INSTRUCTIONS,
+  LINT_CALLED,
+  OUTSTANDING_CALLED,
   TOOL,
   TOOL_CALLED,
   TOOL_DESCRIPTION,
   withInstructions,
 } from "../src/protocol/instructions.ts";
+import {
+  LINT_DESCRIPTION,
+  LINT_SCHEMA,
+  LINT_TOOL,
+  OUTSTANDING_DESCRIPTION,
+  OUTSTANDING_SCHEMA,
+  OUTSTANDING_TOOL,
+} from "../src/protocol/tools.ts";
+import {
+  isKanbanReply,
+  lintReply,
+  lintToolText,
+  replyLintText,
+} from "../src/lint/reply.ts";
+import { outstandingText, unreadText } from "../src/items/roll-up.ts";
 import { CHOSEN_MARK, itemsOf, optionMark, refOf } from "../src/items/items.ts";
 import { freesLineOf } from "../src/items/frees.ts";
 import { INDENT, codeSpans } from "../src/pane/layout.ts";
@@ -60,6 +78,7 @@ import {
 } from "../src/pane/links.ts";
 import {
   countLine,
+  isMergeKnown,
   mergedOfResponse,
   mergedQuery,
   openOf,
@@ -139,6 +158,7 @@ import {
 import type { NotesMode } from "../src/pane/view.ts";
 import type {
   DecideItem,
+  LintNote,
   Loaded,
   Raised,
   Settings,
@@ -236,11 +256,22 @@ const counts = atom(
   { plugin: "coding-agent-kanban-turns", key: "counts" } as const,
   "",
 );
+// What the reply lint found in the main loop's last final response, for the
+// next prompt's context to hand the agent, and the conversation it was
+// found in: a prompt in another, after a `/clear`, a compaction or a
+// resume, carries none. Empty when it found nothing, or once a prompt
+// carrying it has entered. Change the tag when LintNote's fields change.
+const NO_LINT_NOTE: LintNote = { conversation: "", text: "" };
+const lintNote = atom(
+  { plugin: "coding-agent-kanban-turns", key: "lintNote" } as const,
+  NO_LINT_NOTE,
+  { shape: "lint-note-1" },
+);
 // Change the tag when Settings' fields change, as for Raised.
 const settings = atom(
   { plugin: "coding-agent-kanban-turns", key: "settings" } as const,
   UNREAD,
-  { shape: "settings-8" },
+  { shape: "settings-9" },
 );
 
 /** The settings in effect, or none while the defaults file can't be used. */
@@ -329,32 +360,41 @@ const instructed = atom(
 
 /**
  * Whether the hook about to add the agent's instructions should: they are
- * owed to this conversation, which is then marked as having them. A
- * transcript not there yet, as at a new session's first prompt, holds none.
+ * owed to this conversation, which is then marked as having them; and the
+ * conversation's key, read in the same pass. A transcript not there yet, as
+ * at a new session's first prompt, holds none.
  */
-const instructNow = async ($: EngineInterface): Promise<boolean> => {
+const instructNow = async ($: EngineInterface): Promise<Instructing> => {
   const path = await transcriptPath($);
   const text = await transcriptText($, path).catch(() => "");
-  const { key, isOwed } = instructing(path, text, await read($, instructed));
+  const now = instructing(path, text, await read($, instructed));
 
-  if (isOwed) {
-    await update($, instructed, () => key);
+  if (now.isOwed) {
+    await update($, instructed, () => now.key);
   }
 
-  return isOwed;
+  return now;
+};
+
+/** The conversation the agent has now, by `conversationKey`; a transcript not there yet holds no records. */
+const conversationNow = async ($: EngineInterface): Promise<string> => {
+  const path = await transcriptPath($);
+
+  return conversationKeyOf(path, await transcriptText($, path).catch(() => ""));
 };
 
 /**
  * The pull requests among `refs` that GitHub says merged, asked of `gh` in
  * one call; none when there's nothing to ask, or `gh` is missing, fails or
- * outlasts `timeoutMs`. A GraphQL error exits non-zero yet still answers for
+ * outlasts `timeoutMs`; and whether its answer covers every one asked, as
+ * `isMergeKnown` says. A GraphQL error exits non-zero yet still answers for
  * the other pull requests, so the output is read whatever the exit code.
  */
 const mergedNow = async (
   $: EngineInterface,
   refs: readonly string[],
   timeoutMs: number,
-): Promise<ReadonlySet<string>> => {
+): Promise<Readonly<{ found: ReadonlySet<string>; isKnown: boolean }>> => {
   const { ordered, argv } = mergedQuery(refs);
   const stdout =
     ordered.length === 0
@@ -364,7 +404,10 @@ const mergedNow = async (
           () => "",
         );
 
-  return mergedOfResponse(ordered, stdout);
+  return {
+    found: mergedOfResponse(ordered, stdout),
+    isKnown: isMergeKnown(ordered, stdout),
+  };
 };
 
 /** Reads the settings files again, so an edit to either is taken up at the next refresh. */
@@ -411,7 +454,7 @@ const askMerged = async (
   window: Settings["counts"],
 ): Promise<void> => {
   const known = new Set(await read($, merged));
-  const found = await mergedNow(
+  const { found } = await mergedNow(
     $,
     pullRequestsToAsk(turns, window.turns, known),
     window["gh-timeout-ms"],
@@ -428,6 +471,40 @@ const askMerged = async (
       );
     }
   }
+};
+
+/**
+ * `kanban_outstanding`: the count line, the roll-up's draft and the open
+ * Decide items over the window the count line reads, once `gh` has said
+ * which of the Review items' pull requests not yet known merged have; a
+ * merge joins the known ones, and a `gh` that says nothing leaves the
+ * merges unknown, which the result says. Settings that can't be used say
+ * why instead.
+ */
+const outstandingNow = async ($: EngineInterface): Promise<string> => {
+  const { settings: s, problems } = await reloadSettings($);
+
+  if (s === null) {
+    return unreadText(problems.join("; "));
+  }
+  const turns = await turnsNow($);
+  const known = new Set(await read($, merged));
+  const { found, isKnown } = await mergedNow(
+    $,
+    pullRequestsToAsk(turns, s.counts.turns, known),
+    s.counts["gh-timeout-ms"],
+  );
+  const now =
+    found.size === 0
+      ? [...known]
+      : await update($, merged, (m) => [...new Set([...m, ...found])].sort());
+
+  return outstandingText(turns, {
+    window: s.counts.turns,
+    width: s["roll-up"]["summary-width"],
+    merged: new Set(now),
+    isMergeKnown: isKnown,
+  });
 };
 
 /**
@@ -797,7 +874,9 @@ export const register: Register = (on) => {
     // under way finishes as it would have, overtaken, since a hook already
     // running when the plugin reloads still settles. Cleared before the hook
     // registers anything, so a turn.start or a Submit that lands while it
-    // registers stays.
+    // registers stays. What the reply lint found stays: a `/reload-plugins`
+    // starts the session again in the same conversation, and the note's
+    // conversation key keeps it from any other.
     await dispatch($, { type: "session-started" });
     await update($, sent, () => []);
     await update($, focused, () => "");
@@ -816,6 +895,18 @@ export const register: Register = (on) => {
       description: TOOL_DESCRIPTION,
       isDeferred: false,
       inputSchema: INPUT_SCHEMA,
+    });
+    await $.tool.register({
+      name: OUTSTANDING_TOOL,
+      description: OUTSTANDING_DESCRIPTION,
+      isDeferred: false,
+      inputSchema: OUTSTANDING_SCHEMA,
+    });
+    await $.tool.register({
+      name: LINT_TOOL,
+      description: LINT_DESCRIPTION,
+      isDeferred: false,
+      inputSchema: LINT_SCHEMA,
     });
     const session = await $.session.id();
     await update($, raised, (r) => forSession(r, session));
@@ -837,23 +928,54 @@ export const register: Register = (on) => {
   on("prompt.context", async ($, e, next) => {
     const built = await next(e);
 
-    return (await instructNow($)) ? withInstructions(built) : built;
+    return (await instructNow($)).isOwed ? withInstructions(built) : built;
   }).catch(async ($, e, next) => withInstructions(await next(e)));
 
+  // The conversation ending, at a `/clear`, a resume or the session's own
+  // end: what the reply lint found in it is for it alone, and no
+  // `session.start` follows a `/clear` to clear it.
+  on("session.end", async ($, e, next) => {
+    await update($, lintNote, () => NO_LINT_NOTE);
+
+    return next(e);
+  });
+
   // A slash command's prompt may never reach the agent, so the instructions
-  // wait for one that does; a prompt that doesn't enter leaves them owed. A
-  // failure here never holds up the prompt.
+  // wait for one that does; a prompt that doesn't enter leaves them owed.
+  // What the reply lint found in the last final response goes in the same
+  // prompt's context, while the prompt is in the conversation it was found
+  // in, and waits the same way. A failure here never holds up the prompt.
   on("prompt.submit", async ($, e, next) => {
-    if (e.command !== undefined || !(await instructNow($))) {
+    if (e.command !== undefined) {
+      return next(e);
+    }
+    const { isOwed: isInstructing, key } = await instructNow($);
+    const held = await read($, lintNote);
+    const note =
+      held.text !== "" && held.conversation === key ? held.text : "";
+    const added = [
+      ...(isInstructing ? [INSTRUCTIONS] : []),
+      ...(note === "" ? [] : [note]),
+    ];
+
+    if (added.length === 0) {
       return next(e);
     }
     const entered = await next({
       ...e,
-      context: [...(e.context ?? []), INSTRUCTIONS],
+      context: [...(e.context ?? []), ...added],
     });
 
     if (entered.drop !== undefined) {
-      await update($, instructed, () => "");
+      if (isInstructing) {
+        await update($, instructed, () => "");
+      }
+    } else if (note !== "") {
+      await update($, lintNote, (now) =>
+        now.text === held.text && now.conversation === held.conversation
+          ? NO_LINT_NOTE
+          : now,
+      );
     }
 
     return entered;
@@ -878,6 +1000,16 @@ export const register: Register = (on) => {
     result: "The buttons could not be drawn; the reply reads as before.",
   }));
 
+  on("tool.call", { tool: OUTSTANDING_CALLED }, async ($) => ({
+    result: await outstandingNow($),
+  })).catch(($, e, next) => ({
+    result: unreadText(next.error.message ?? next.error.kind),
+  }));
+
+  on("tool.call", { tool: LINT_CALLED }, async ($, e) => ({
+    result: lintToolText(e),
+  }));
+
   // A main-loop turn starting: Submit waits it out, and what the last
   // Submit said no longer applies.
   on("turn.start", async ($, e, next) => {
@@ -895,20 +1027,50 @@ export const register: Register = (on) => {
   // the transcript read again confirms the answers Submit sent or puts their
   // items back among the open ones. Only the answers sent before the read
   // began are taken out: a Submit pressed while it reads keeps its own.
+  // Then the reply lint, on an answer, while the `lint.turn-end` setting is
+  // on: what it finds in one in the protocol's shape is shown beneath it,
+  // after whatever a hook beneath showed there, and waits, keyed by the
+  // conversation, for the next prompt's context, which hands it to the
+  // agent. A clean answer, or one in no list's shape, clears what an
+  // earlier one left waiting. A `/clear` that lands while the hook runs
+  // moves the session to a new id, and the note, the old conversation's, is
+  // then not written; a `/rewind` keeps the conversation's key, so its note
+  // still reaches the next prompt.
   on("turn.complete", async ($, e, next) => {
     const done = await next(e);
 
-    if (e.agentId === undefined) {
-      await dispatch($, { type: "turn-completed", turn: e.turnId });
-      const before = await read($, sent);
+    if (e.agentId !== undefined) {
+      return done;
+    }
+    const session = await $.session.id();
+    await dispatch($, { type: "turn-completed", turn: e.turnId });
+    const before = await read($, sent);
 
-      if (await refresh($)) {
-        await update($, sent, (held) => withoutRead(held, before));
-      }
-      await announce($);
+    if (await refresh($)) {
+      await update($, sent, (held) => withoutRead(held, before));
+    }
+    await announce($);
+    // The refresh has read the settings again.
+    const isLinting =
+      (await read($, settings)).settings?.lint["turn-end"] === true;
+    const note =
+      isLinting && e.reason === "answer" && isKanbanReply(e.answer)
+        ? replyLintText(lintReply(e.answer))
+        : "";
+
+    const held: LintNote =
+      note === "" ? NO_LINT_NOTE : { conversation: await conversationNow($), text: note };
+
+    if (e.reason === "answer" && (await $.session.id()) === session) {
+      await update($, lintNote, () => held);
     }
 
-    return done;
+    return note === ""
+      ? done
+      : {
+          ...done,
+          text: done.text === e.answer ? note : `${done.text}\n\n${note}`,
+        };
   });
 
   // The person closing the pane: its notes field no longer waits for the

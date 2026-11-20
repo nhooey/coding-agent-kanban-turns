@@ -185,7 +185,9 @@ describe("the type a default gives its setting", () => {
     const withoutMarks = Object.fromEntries(Object.entries(shipped).filter(([key]) => key !== "marks"));
     expect(
       loaded({ path: D, text: stringify(withoutMarks) }, { path: U, text: "marks:\n  sent: x\n" }).problems,
-    ).toEqual([`${U}: marks is no setting; the keys here are counts, keys, pane, notes, colors`]);
+    ).toEqual([
+      `${U}: marks is no setting; the keys here are counts, keys, pane, notes, colors, roll-up, lint`,
+    ]);
   });
 });
 

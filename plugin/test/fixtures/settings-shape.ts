@@ -28,4 +28,6 @@ export const SETTINGS_SHAPE: Shape = {
     close: "string",
     kanban: "string",
   },
+  "roll-up": { "summary-width": "number" },
+  lint: { "turn-end": "boolean" },
 };

@@ -1,6 +1,7 @@
 title: >-
   Replies breaking a layout rule, one rule each: a header's underline, the
-  blank line that ends a list, and where a table goes
+  blank line that ends a list, where a table goes, and a list's numbers
+  under topic headers
 example: false
 turns:
   - id: e8f9a0b1
@@ -50,6 +51,23 @@ turns:
         lint:
           - { line: 2, rule: table-not-parted }
           - { line: 5, rule: table-not-parted }
+  - id: 2c3d4e5f
+    prompt: What's done, by topic?
+    replies:
+      - text: "\
+          **The loader**  \n\
+          ══════════\n\
+          ✅ **Done:**  \n\
+          ▔▔▔▔▔▔▔▔\n\
+          1. **Tokenizer fix in commit `a1b2c3d`**\n\
+          \n\
+          **The cache**  \n\
+          ═════════\n\
+          ✅ **Done:**  \n\
+          ▔▔▔▔▔▔▔▔\n\
+          1. **The lock bumped**\n"
+        lint:
+          - { line: 11, rule: list-renumbered }
 expect:
   open: []
   outstanding: []

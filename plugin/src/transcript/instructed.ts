@@ -80,6 +80,13 @@ export const conversationKey = (
 ): string => `${path}#${records.filter(isBoundary).length}`;
 
 /**
+ * The key of the conversation the transcript at `path`, whose text is
+ * `text`, holds now. A `/rewind` writes no boundary, so it keeps the key.
+ */
+export const conversationKeyOf = (path: string, text: string): string =>
+  conversationKey(path, recordsOf(text));
+
+/**
  * Whether the instructions are still owed to the conversation of the
  * transcript at `path`, whose text is `text`: none of its records since the
  * last boundary carries them, and no hook added them under its key, `sent`.

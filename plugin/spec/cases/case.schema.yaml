@@ -128,6 +128,12 @@ definitions:
           # [l] a table with no blank line above it, or a line directly
           # under its last row
           - table-not-parted
+          # [m] a list under a topic header that doesn't number on from
+          # where the same list ended in the topics before
+          - list-renumbered
+          # [n] a Decide option drawn with a kind the instructions no longer
+          # teach: a 👍 or 👎 glyph, or lettered `Y` or `N`
+          - untaught-option
   # One of the agent's responses in the turn, and the lint's findings for
   # it, in line order: empty for a clean reply.
   reply:
