@@ -133,7 +133,7 @@ import type {
 import { loadSettings } from "./settings.ts";
 
 // The pane that lists the items, and its title. The keys and colours are
-// settings, in defaults/config.jsonc.
+// settings, in defaults/config.yaml.
 const PANE = { id: "kanban-turns", title: "🧠 Decide" } as const;
 // The column left of an option's lines that lights while the pointer is over
 // the option, or stays lit once its item is Done: it comes out of the

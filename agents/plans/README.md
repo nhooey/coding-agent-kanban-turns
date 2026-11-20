@@ -6,14 +6,13 @@
 
 - [Submit works as reviewed, a Reassess toggle adds a reassess line, the draft names the plugin, and settled items show their answer](open/pane-submit-review-fixes.md) `pane-submit-review-fixes`, pane-submit-review-fixes
 
-## Ready (6)
+## Ready (5)
 
 - [Kanban items stay in the reply, with the Decide buttons under it and in the pane](kanban-answers-in-transcript/open/kanban-answers-in-transcript.md) `kanban-answers-in-transcript`, part of [The plugin is the only source of the kanban turn-response protocol, and a skill derived from it builds deterministically](plugin-sole-source/open/plugin-sole-source.md)
 - [The pane and the boxes under replies hold every list's items, grouped by turn, list and state, filtered, and answered in grouped references](pane-every-list/open/pane-every-list.md) `pane-every-list`
 - [The core works on harness-neutral turns, and a Claude Code JSONL adapter produces them](plugin-sole-source/open/neutral-turn-stream.md) `neutral-turn-stream`, part of [The plugin is the only source of the kanban turn-response protocol, and a skill derived from it builds deterministically](plugin-sole-source/open/plugin-sole-source.md)
 - [The plugin is the only source of the kanban turn-response protocol, and a skill derived from it builds deterministically](plugin-sole-source/open/plugin-sole-source.md) `plugin-sole-source`
 - [The protocol's checkable rules are one YAML spec, compiled at build time into a typed module the core reads](plugin-sole-source/open/protocol-spec-data.md) `protocol-spec-data`, part of [The plugin is the only source of the kanban turn-response protocol, and a skill derived from it builds deterministically](plugin-sole-source/open/plugin-sole-source.md)
-- [The repository's data and settings files are YAML, read by a well-known YAML library the built plugin carries](plugin-sole-source/open/yaml-data-and-settings.md) `yaml-data-and-settings`, part of [The plugin is the only source of the kanban turn-response protocol, and a skill derived from it builds deterministically](plugin-sole-source/open/plugin-sole-source.md)
 
 ## Blocked (17)
 
@@ -45,4 +44,4 @@
 
 ## Closed
 
-23 in [closed/](closed/): 12 implemented, 1 rejected, 1 abandoned, 9 superseded.
+24 in [closed/](closed/): 13 implemented, 1 rejected, 1 abandoned, 9 superseded.

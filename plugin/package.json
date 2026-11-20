@@ -8,6 +8,10 @@
     "typecheck:plugin": "test -f .claude-plugin/types/tsconfig.json || { echo 'no .claude-plugin/types/: load the plugin in Claude Code once (see README)' >&2; exit 1; }; tsc -p tsconfig.plugin.json",
     "test:plugin": "bash tools/plugin-test.sh"
   },
+  "dependencies": {
+    "jsonc-parser": "^3.3.1",
+    "yaml": "^2.9.1"
+  },
   "devDependencies": {
     "@types/node": "^26.6.5",
     "expect": "^30.5.2",

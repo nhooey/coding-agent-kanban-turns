@@ -31,13 +31,14 @@ The plugin reads the open items from the session's transcript itself, with no Py
 
 ## Settings
 
-Every setting, with its default and what it does, is in [`plugin/defaults/config.jsonc`](plugin/defaults/config.jsonc): how many turns the count line reads, how long `gh` may take to say which pull requests merged, the pane's keys, and the colours the items are drawn in. To change one, write only that key in your own file, `$XDG_CONFIG_HOME/coding-agent-kanban-turns/config.jsonc` (`~/.config/coding-agent-kanban-turns/config.jsonc` when `XDG_CONFIG_HOME` is unset):
+Every setting, with its default and what it does, is in [`plugin/defaults/config.yaml`](plugin/defaults/config.yaml): how many turns the count line reads, how long `gh` may take to say which pull requests merged, the pane's keys, and the colours the items are drawn in. To change one, write only that key in your own file, `$XDG_CONFIG_HOME/coding-agent-kanban-turns/config.yaml` (`~/.config/coding-agent-kanban-turns/config.yaml` when `XDG_CONFIG_HOME` is unset):
 
-```jsonc
-{ "keys": { "dismiss": "x" } }
+```yaml
+keys:
+  dismiss: x
 ```
 
-Sections merge key by key, so everything else follows the defaults as they change. A key that's no setting, a value of the wrong type, a key under `keys` that isn't one lowercase letter or digit, or two settings under `keys` bound to the same key refuses your whole file: the plugin uses the defaults and says why in the pane. An `outstanding` or `pane` section, or a `colors.title`, `colors.expand` or `colors.close-x` setting, which the plugin no longer reads, is the exception: it's left out with a warning naming what to set instead, and the rest of your file is used. `/answers-config` lists every setting in effect and the file it came from. Both files are read again whenever the items refresh.
+Both files are YAML 1.2, read strictly under its core schema: `on` and `yes` are strings, and a key written twice refuses the file. Sections merge key by key, so everything else follows the defaults as they change. A key that's no setting, a value of the wrong type, a key under `keys` that isn't one lowercase letter or digit, or two settings under `keys` bound to the same key refuses your whole file: the plugin uses the defaults and says why in the pane. An `outstanding` or `pane` section, or a `colors.title`, `colors.expand` or `colors.close-x` setting, which the plugin no longer reads, is the exception: it's left out with a warning naming what to set instead, and the rest of your file is used. A `config.jsonc` in the same folder is still read while there's no `config.yaml` beside it, with a warning to convert it. `/answers-config` lists every setting in effect and the file it came from. Both files are read again whenever the items refresh.
 
 ## What it draws
 
@@ -185,7 +186,8 @@ claude --plugin-dir result-plugin
 | [`plugin/hooks/register.tsx`](plugin/hooks/register.tsx)       | the hooks: the pane, the count line, a reply's links and buttons, the tool, its row and its instructions, `/answers`, `/answers-config`, the refreshes                 |
 | [`plugin/hooks/settings.ts`](plugin/hooks/settings.ts)         | reads the defaults file and the user's                                                                                                                                 |
 | [`plugin/src/`](plugin/src/)                                   | the pure core: the draft's answers, the items raised and Done, the pane's turn sections and the stops its keys move between, the count line, the items' layout and links, the cut of a reply's Decide list, the settings, the tool's instructions |
-| [`plugin/defaults/config.jsonc`](plugin/defaults/config.jsonc) | every setting, with its default and what it does                                                                                                                       |
+| [`plugin/defaults/config.yaml`](plugin/defaults/config.yaml)   | every setting, with its default and what it does                                                                                                                       |
+| [`plugin/vendor/`](plugin/vendor/)                             | the YAML and JSONC parsers' types; the flake bundles each parser into one ES module beside them, and the dev shell lays it there                                       |
 | [`plugin/types/index.d.ts`](plugin/types/index.d.ts)           | the item, raised items and settings shapes, and the `$.state` contract                                                                                                 |
 | [`plugin/test/`](plugin/test/)                                 | the core's tests, run by `node --test`                                                                                                                                 |
 | [`plugin/plugin-tests/`](plugin/plugin-tests/)                 | the pane, the count line, a reply's buttons and the tool row driven through the engine, run by `claude plugin test`                                                    |

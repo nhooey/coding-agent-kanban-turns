@@ -109,7 +109,8 @@ const LATER = {
   summary: "Which loader to keep",
 } as const;
 
-// The settings the tests draw with: defaults/config.jsonc's values.
+// The settings the tests draw with: defaults/config.yaml's values, as JSON,
+// which YAML reads too.
 const DEFAULTS = JSON.stringify({
   counts: { turns: 20, "gh-timeout-ms": 20000 },
   keys: { dismiss: "q", next: "j", previous: "k", submit: "s", reassess: "r", help: "h" },
@@ -207,6 +208,10 @@ const replyRecord = (
 // Where the engine says the session's transcript is.
 const TRANSCRIPT = "/home/neil/.claude/projects/-work/session-1.jsonl";
 
+// The folder the user's settings file is in, as $XDG_CONFIG_HOME and $HOME,
+// which the engine below both answers with /home/neil, lead to.
+const USER_FOLDER = "/home/neil/coding-agent-kanban-turns/";
+
 /** The base64 of bytes, as `$.fs.read` gives them. */
 const base64Of = (bytes: Uint8Array): string =>
   btoa(Array.from(bytes, (byte) => String.fromCharCode(byte)).join(""));
@@ -259,10 +264,16 @@ const engine = (
     holdRead: undefined as (() => Promise<void>) | undefined,
     // What each command registration waits on, as the session starts.
     registering: undefined as (() => Promise<void>) | undefined,
-    userConfig: undefined as string | undefined,
+    // The user's settings files, by name, in their folder; none by default.
+    userFiles: {} as Record<string, string>,
     isRingMovable: false,
     focus: [] as string[],
   };
+  /** The user's settings file at `path`, by its name, when `path` is in their folder. */
+  const userFile = (path: string): string | undefined =>
+    path.startsWith(USER_FOLDER)
+      ? state.userFiles[path.slice(USER_FOLDER.length)]
+      : undefined;
   // The pane's focus ring as the engine moves it for the person: nothing
   // beneath the plugins answers, unless a test lets it land, keeping each
   // element it lands on.
@@ -320,22 +331,17 @@ const engine = (
   on("session.cwd", () => ({ value: "/work" }));
   on("session.start", (_, e) => ({ cwd: e.cwd }));
   on("env.get", () => ({ value: "/home/neil" }));
-  // No user settings file is there unless a test writes one, so the shipped
-  // defaults are what's in effect.
-  const isUserConfig = (path: string) =>
-    path.endsWith("/coding-agent-kanban-turns/config.jsonc");
+  // A user settings file is there only where `userFiles` holds it, so by
+  // default the shipped defaults are what's in effect.
   on("fs.exists", (_, e) => ({
-    value: !isUserConfig(e.path) || state.userConfig !== undefined,
+    value: e.path.startsWith(USER_FOLDER) ? userFile(e.path) !== undefined : true,
   }));
   // A test has no files, so the defaults file reads as this; the Node tests
   // (test/config.test.ts) hold the real one to the shape. The transcript is
   // read as bytes, by the range asked for.
   on("fs.read", async (_, e) => {
-    if (isUserConfig(e.path)) {
-      return { value: state.userConfig ?? "" };
-    }
     if (e.path !== TRANSCRIPT) {
-      return { value: DEFAULTS };
+      return { value: userFile(e.path) ?? DEFAULTS };
     }
     const hold = state.holdRead;
     state.holdRead = undefined;
@@ -539,6 +545,37 @@ test("/answers-config lists each setting in effect and its file", async ($, on) 
   expect(JSON.stringify(shown)).toContain('keys.dismiss = \\"q\\"  # defaults: ');
 });
 
+test("a user's config.yaml is read, and wins over a config.jsonc beside it", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  state.userFiles = {
+    "config.yaml": "keys:\n  dismiss: x # mine\n",
+    "config.jsonc": '{"keys": {"dismiss": "z"}}',
+  };
+  const shown = JSON.stringify(
+    await $.command.run({ ...ANSWERS, command: "answers-config" }),
+  );
+
+  expect(shown).toContain(
+    `keys.dismiss = \\"x\\"  # user: ${USER_FOLDER}config.yaml`,
+  );
+  expect(shown).not.toContain("Not used");
+});
+
+test("a user's config.jsonc with no config.yaml is read, with a warning to convert it", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  state.userFiles = { "config.jsonc": '{"keys": {"dismiss": "z"}, // mine\n}' };
+  const shown = JSON.stringify(
+    await $.command.run({ ...ANSWERS, command: "answers-config" }),
+  );
+
+  expect(shown).toContain(
+    `keys.dismiss = \\"z\\"  # user: ${USER_FOLDER}config.jsonc`,
+  );
+  expect(shown).toContain(
+    `${USER_FOLDER}config.jsonc: JSONC is read only while there's no config.yaml beside it; convert this file to config.yaml`,
+  );
+});
+
 test("the pane keeps every item raised, newest turn first, a Done one in its turn's collapsed Done section", async ($, on) => {
   const later: TranscriptRecord[] = [];
   const state = engine(on, () => ITEMS, listsText, () => later);
@@ -693,8 +730,10 @@ test("every key the pane takes is a setting: each button's hotkey, rebound by th
 
   // Each one rebound in the user's file takes effect, and the keys panel
   // lists the rebound key.
-  state.userConfig =
-    '{"keys": {"dismiss": "x", "next": "n", "previous": "p", "submit": "u", "reassess": "e", "help": "o"}}';
+  state.userFiles = {
+    "config.yaml":
+      "keys:\n  dismiss: x\n  next: n\n  previous: p\n  submit: u\n  reassess: e\n  help: o\n",
+  };
   await $.command.run(ANSWERS);
   expect(await hotkeys()).toEqual({
     previous: "p",

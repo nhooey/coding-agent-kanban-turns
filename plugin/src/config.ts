@@ -1,4 +1,4 @@
-// The plugin's settings: the shipped defaults file, defaults/config.jsonc, with
+// The plugin's settings: the shipped defaults file, defaults/config.yaml, with
 // the user's own file merged over it. Pure: hooks/settings.ts reads the two
 // files and hands their text here.
 //
@@ -8,7 +8,18 @@
 // doesn't name, or a value of the wrong type, refuses the user's file whole.
 // A section the plugin no longer reads is the exception: it is left out with a
 // warning, and the rest of the file is used.
+//
+// The files are YAML, read by the `yaml` package; a user's config.jsonc,
+// read only while there's no config.yaml beside it, by `jsonc-parser`. The
+// engine loads only the plugin's own files, so the flake bundles each
+// library into vendor/ as one ES module, which the dev shell lays there too.
 
+import { parseAllDocuments } from "../vendor/yaml.js";
+import {
+  parse as parseJsoncText,
+  printParseErrorCode,
+} from "../vendor/jsonc-parser.js";
+import type { ParseError } from "../vendor/jsonc-parser.js";
 import type { Json, Loaded, Settings } from "../types/index.d.ts";
 
 /**
@@ -104,30 +115,83 @@ export const retiredIn = (value: Json): readonly string[] =>
 export const APP = "coding-agent-kanban-turns";
 
 /** The defaults file, from the plugin's own folder. */
-export const DEFAULTS_FILE = "defaults/config.jsonc";
+export const DEFAULTS_FILE = "defaults/config.yaml";
 
-// A JSON string, kept whole, so what looks like a comment or a comma inside
-// one stays.
-const STRING = String.raw`"(?:\\.|[^"\\])*"`;
-const COMMENT = new RegExp(String.raw`(${STRING})|//[^\n]*|/\*[\s\S]*?\*/`, "g");
-const TRAILING_COMMA = new RegExp(String.raw`(${STRING})|,(\s*[}\]])`, "g");
+/** The user's file's names, in the order they're looked for: the first there is read. */
+export const USER_FILES = ["config.yaml", "config.jsonc"] as const;
 
-/** JSONC as JSON: each comment and each trailing comma dropped, strings untouched. */
-export const jsonOf = (jsonc: string): string =>
-  jsonc
-    .replace(COMMENT, (_, string?: string) => string ?? "")
-    .replace(TRAILING_COMMA, (_, string?: string, close?: string) => string ?? close ?? "");
+/** A file's value, or why it can't be read. */
+type Parsed = Readonly<{ value: Json } | { error: string }>;
 
-/** A JSONC file's value, or why it can't be read. */
-export const parseJsonc = (
-  jsonc: string,
-): Readonly<{ value: Json } | { error: string }> => {
+/**
+ * How a YAML file is read: one document, under YAML 1.2's core schema alone,
+ * so `on` and `yes` are strings; a key written twice, a tag the schema
+ * doesn't hold, or a `<<` merge refuses it. No warning goes to a console.
+ */
+const YAML_OPTIONS = {
+  version: "1.2",
+  schema: "core",
+  strict: true,
+  uniqueKeys: true,
+  merge: false,
+  stringKeys: true,
+  resolveKnownTags: false,
+  prettyErrors: true,
+  logLevel: "silent",
+} as const;
+
+/** An error's first line, where `prettyErrors` puts its position, without the colon before the excerpt. */
+const headline = (message: string): string => {
+  const [first = message] = message.split("\n");
+
+  return first.endsWith(":") ? first.slice(0, -1) : first;
+};
+
+/** A YAML file's value, an empty file's an empty section, or why it can't be read. */
+export const parseYaml = (yaml: string): Parsed => {
+  const documents = parseAllDocuments(yaml, YAML_OPTIONS);
+  const [document] = documents;
+  const errors = documents
+    .flatMap((parsed) => [...parsed.errors, ...parsed.warnings])
+    .map((error) => headline(error.message));
+
   try {
-    return { value: JSON.parse(jsonOf(jsonc)) as Json };
+    return documents.length > 1
+      ? { error: `holds ${documents.length} YAML documents, not one` }
+      : errors.length > 0
+        ? { error: errors.join("; ") }
+        : { value: (document?.toJS() as Json | undefined) ?? {} };
   } catch (error) {
     return { error: error instanceof Error ? error.message : String(error) };
   }
 };
+
+/** A JSONC file's value, comments and trailing commas allowed, or why it can't be read. */
+export const parseJsonc = (jsonc: string): Parsed => {
+  // jsonc-parser reports what it couldn't read into the list it's handed.
+  const errors: ParseError[] = [];
+  const value = parseJsoncText(jsonc, errors, {
+    allowTrailingComma: true,
+  }) as Json | undefined;
+
+  return errors.length === 0 && value !== undefined
+    ? { value }
+    : {
+        error: errors
+          .map(
+            (error) =>
+              `${printParseErrorCode(error.error)} at offset ${error.offset}`,
+          )
+          .join("; "),
+      };
+};
+
+/** Whether the file is the user's old config.jsonc. */
+const isJsonc = (file: ConfigFile): boolean => file.path.endsWith(".jsonc");
+
+/** The warning a user's config.jsonc is read with. */
+const JSONC_WARNING =
+  "JSONC is read only while there's no config.yaml beside it; convert this file to config.yaml";
 
 const isMap = (value: Json | undefined): value is { readonly [key: string]: Json } =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -200,15 +264,21 @@ export const leaves = (
       )
     : [[path.join("."), value]];
 
-/** The user's file: under $XDG_CONFIG_HOME when it's set, else ~/.config; none without either. */
-export const userConfigPath = (
+/**
+ * Where the user's file may be, in the order it's looked for: under
+ * $XDG_CONFIG_HOME when it's set, else ~/.config; nowhere without either.
+ */
+export const userConfigPaths = (
   env: Readonly<{ xdgConfigHome?: string; home?: string }>,
-): string | undefined =>
-  env.xdgConfigHome
-    ? `${env.xdgConfigHome}/${APP}/config.jsonc`
+): readonly string[] => {
+  const folder = env.xdgConfigHome
+    ? `${env.xdgConfigHome}/${APP}`
     : env.home
-      ? `${env.home}/.config/${APP}/config.jsonc`
+      ? `${env.home}/.config/${APP}`
       : undefined;
+
+  return folder === undefined ? [] : USER_FILES.map((name) => `${folder}/${name}`);
+};
 
 /** A file the plugin read: where it is, and its text. */
 export type ConfigFile = Readonly<{ path: string; text: string }>;
@@ -216,15 +286,18 @@ export type ConfigFile = Readonly<{ path: string; text: string }>;
 /**
  * A file's value checked against the shape, without the sections the plugin no
  * longer reads, or what's wrong with it; each problem or warning names the
- * file.
+ * file. A config.jsonc is read with a warning to convert it.
  */
 const checked = (
   file: ConfigFile,
   isSparse: boolean,
 ): Readonly<{ value: Json | undefined; problems: readonly string[] }> => {
-  const parsed = parseJsonc(file.text);
+  const parsed = isJsonc(file) ? parseJsonc(file.text) : parseYaml(file.text);
   const value = "value" in parsed ? withoutRetired(parsed.value) : undefined;
-  const warnings = "value" in parsed ? retiredIn(parsed.value) : [];
+  const warnings = [
+    ...(isJsonc(file) ? [JSONC_WARNING] : []),
+    ...("value" in parsed ? retiredIn(parsed.value) : []),
+  ];
   const problems =
     "error" in parsed
       ? [parsed.error]

@@ -81,7 +81,7 @@ export type Raised = Readonly<{
   warnings: readonly string[];
 }>;
 
-/** A value a JSON or JSONC file holds. */
+/** A value a settings file holds, YAML or JSONC. */
 export type Json =
   | null
   | boolean
@@ -91,7 +91,7 @@ export type Json =
   | { readonly [key: string]: Json };
 
 /**
- * The plugin's settings. defaults/config.jsonc lists each with its default and
+ * The plugin's settings. defaults/config.yaml lists each with its default and
  * what it does; `SETTINGS_SHAPE` in src/config.ts is the same list as a
  * schema.
  */
