@@ -45,6 +45,7 @@ export const SETTINGS_SHAPE: Shape = {
     reassess: "key",
     help: "key",
   },
+  pane: { "close-when-all-submitted": "boolean" },
   notes: { rows: "number" },
   marks: { sent: "string" },
   colors: {
@@ -69,7 +70,8 @@ export const RETIRED: Readonly<Record<string, string>> = {
     "the ↗ beside the count line is gone; colors.kanban colours the 🖥️ Kanban button that opens the pane",
   "colors.close-x":
     "the ✖ is drawn in colors.close, on no background, as every button is",
-  pane: "the pane draws no hint row; its ? Keys button, or keys.help, opens a panel listing every key",
+  "pane.hints":
+    "the pane draws no hint row; its ? Keys button, or keys.help, opens a panel listing every key",
 };
 
 /** The value at a dotted key's path, or undefined where there is none. */

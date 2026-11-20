@@ -165,6 +165,18 @@ export const withoutRead = (
 ): readonly Settlement[] =>
   sent.filter((settled) => !read.some((done) => done.ref === settled.ref));
 
+/**
+ * Whether a Submit that went through closes the pane: with `isEnabled`, the
+ * `pane.close-when-all-submitted` setting, once the answers `sent`, this
+ * Submit's and any earlier one's the turn's end hasn't read, leave no item
+ * open.
+ */
+export const closesOnSubmit = (
+  raised: Raised,
+  sent: readonly Settlement[],
+  isEnabled: boolean,
+): boolean => isEnabled && stillOpen(withSent(raised, sent)).length === 0;
+
 /** How many open items the draft answers. */
 export const answeredCount = (raised: Raised, draft: string): number =>
   stillOpen(raised).filter((item) => isAnswered(draft, item)).length;

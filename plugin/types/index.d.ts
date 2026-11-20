@@ -149,6 +149,7 @@ export type Settings = Readonly<{
     reassess: string;
     help: string;
   }>;
+  pane: Readonly<{ "close-when-all-submitted": boolean }>;
   notes: Readonly<{ rows: number }>;
   marks: Readonly<{ sent: string }>;
   colors: Readonly<{
