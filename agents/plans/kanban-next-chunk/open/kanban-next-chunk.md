@@ -17,12 +17,12 @@ With the coding-agent-kanban-turns plugin loaded:
 - **What an item frees is written down.** Each item that blocks other work names the items it frees by reference, so the chunk is picked from those links, not guessed. Items that free the same amount are taken oldest first, Decide before Todo before Review before Pending and Waiting.
 - **The next chunk follows by itself.** Once every item in the chunk is settled, by a picker answer, a typed answer or a button, the plugin submits `next-chunk` again, and stops when no item is open or after `next-chunk stop`. An item the user skips in the picker stays open and keeps the chunk from finishing, so the plugin waits.
 - **Answers from the picker count.** An AskUserQuestion answer to a Decide item settles it the same as a typed `<turn>.Decide.<n>.<letter>`.
-- **Without the plugin, the derived skill runs it.** The derived skill ([derived-skill-package](../../plugin-sole-source/open/derived-skill-package.md)) picks one chunk through the CLI's `chunk` subcommand ([kanban-cli-adapter](../../plugin-sole-source/open/kanban-cli-adapter.md)), and the user types `next-chunk` again for the next.
+- **The skill inside the plugin runs it where the hooks don't.** The plugin ships the derived skill ([derived-skill-package](../../plugin-sole-source/open/derived-skill-package.md)), the fallback when its hooks fail to load, and the same skill is `packages.skill-standalone` for a harness with no plugins. Either way, the skill picks one chunk through the CLI's `chunk` subcommand ([kanban-cli-adapter](../../plugin-sole-source/open/kanban-cli-adapter.md)), and the user types `next-chunk` again for the next.
 
 Checks: the plugin's repository's checks pass with a test for each bullet above; golden cases ([protocol-golden-cases](../../plugin-sole-source/open/protocol-golden-cases.md)) cover the chunk's pick and the picker's answers, run by the core's tests and through the CLI.
 
 For Neil to look at afresh, before approving:
 
 - **The spec holds the command.** The chunk's size, its lists and its tie-break order move from the plugin's settings and this node's prose into the spec, so they're the same for every user. Whether the size stays a user setting instead is open.
-- **No script of the old skill runs it.** Without the plugin, the chunk comes from the CLI, so a session needs Node or the CLI's standalone binary.
+- **No script of the old skill runs it.** Where the hooks don't load, the chunk comes from the CLI the skill inside the plugin carries, so a session needs Node or the CLI's standalone binary.
 - **The picker's answers are read by the core.** AskUserQuestion results become part of what the neutral turns carry, or the Claude Code adapter reads them; which one is open.

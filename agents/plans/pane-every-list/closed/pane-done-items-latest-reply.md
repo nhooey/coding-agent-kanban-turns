@@ -1,8 +1,9 @@
 ---
 title: The pane holds only the latest turn's ✅ Done list items, and earlier ones stay under their replies
-state: approved
+state: superseded
 kind: implementation
 part-of: pane-every-list
+superseded-by: pane-turn-sections
 needs: [list-actions, pane-turn-navigation]
 touches: [plugin/src/sections.ts, plugin/src/filters.ts, plugin/plugin-tests/]
 ---

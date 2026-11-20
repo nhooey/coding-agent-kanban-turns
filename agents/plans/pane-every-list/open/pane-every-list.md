@@ -19,17 +19,18 @@ With the coding-agent-kanban-turns plugin loaded:
   | 🧠 Decide                                  | its options, and Note                                                                               |
   | 🚧 Pending, ✅ Done, 📝 Logged, ❓ Answers | Note only                                                                                           |
 
-- **One scrolling list, newest turn first.** The pane is one list grouped by turn, then by list in the spec's order, then by state, Open before Done, each group under its own header. A turn's header carries its id and its index relative to the latest turn, such as `9efb08a1 ₋3`.
-- **◀ ▶ scroll between turns.** ◀ and ▶ scroll the pane to the previous or next turn section with an item the filters leave visible, skipping turns whose items they all hide. They don't page.
-- **Filters.** A row at the top holds one toggle per list, one for Done items, and an **Only show this turn** checkbox, off by default, which draws only the turn ◀ and ▶ last reached, so they swap which turn that is. Every toggle is on and the checkbox off by default; a toggle that's off shows how many items it hides across every turn. **Set default** keeps the current set, the checkbox among it, in the plugin's `$.store`, across sessions on this machine, and **Reset** puts every toggle back on and the checkbox off.
-- **Done, in the UI's words.** An item settled any way, by an answer, a merged pull request, a `reassess`, a stopped wait, is Done, in its group's Done section. **Submit** moves the items it answers into their Done sections at once, and the transcript read at the turn's end keeps each there or puts it back. A Done section is collapsed to one header row with its count, and expands on a click.
+- **One scrolling list, newest turn first.** The pane is one list grouped by turn, then by list in the spec's order, then by state, Open before Done, each group under its own header. A turn's header carries its id and its index relative to the latest turn, such as `── 9efb08a1 ₋₃ ──`.
+- **↑ ↓ by item, ◀ ▶ by turn.** `↑ Previous` and `↓ Next` move the focus ring item by item. `◀ Turn` and `▶ Turn` jump it to the turn section above or below with an item the filters leave visible, skipping turns whose items they all hide, and scroll the pane there. They don't page. Each is a setting under `keys`.
+- **Filters.** A row under the header row holds one toggle per list, one for Done items, and an **Only show this turn** checkbox, off by default, which draws only the turn ◀ and ▶ last reached, so they swap which turn that is. Every toggle is on and the checkbox off by default; a toggle that's off shows how many items it hides across every turn. **Set default** keeps the current set, the checkbox among it, in the plugin's `$.store`, across sessions on this machine, and **Reset** puts every toggle back on and the checkbox off.
+- **Done, in the UI's words.** An item settled any way, by an answer, a merged pull request, a `reassess`, a stopped wait, is Done, in its group's Done section. **Submit** moves the items it answers into their Done sections at once, and the transcript read at the turn's end keeps each there or puts it back. A Done section is collapsed to one header row with its count, `▸ Done (n)`, and expands on a click. A Done item's box stays dimmed, says what made it Done, and its actions still write the draft.
 - **Hidden means not drawn.** A filtered-out item or section makes no elements and takes no layout; its count shows on its filter's toggle.
 - **Long lists stay fast.** The pane draws only the groups and items in or near its scroll window, with spacer rows of the right height for the rest, so a session with 2000 Done items and 20 open ones scrolls and refreshes without visible lag.
-- **The ✅ Done list.** The pane holds only the latest turn's ✅ Done items. Earlier turns' ✅ Done items stay under their replies, each with its Note button.
+- **The ✅ Done list.** Every turn's section holds its own ✅ Done list items, under that list's header, each with its Note button.
+- **Boxes in the reply.** A reply's list found intact is cut out and drawn as its items' boxes in its place, as a Decide list is; one that isn't is drawn whole, with the boxes under the reply.
 - **Grouped answers with context.** The buttons write the draft's answers grouped by turn and list, each item line with its context in parentheses, which every reader skips, and a note after `: `:
 
   ```text
-  coding-agent-kanban-turns@nix-pinned:
+  coding-agent-kanban-turns:
   9efb08a1.Decide
     1.A (Which cache to keep → Disk)
     2.A,C (Cleanups to start → Logs, Temp files): start with logs

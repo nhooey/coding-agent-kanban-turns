@@ -4,12 +4,13 @@ state: approved
 kind: implementation
 part-of: pane-every-list
 needs: [pane-turn-sections, pane-turn-navigation]
-touches: [plugin/hooks/register.tsx, plugin/src/window.ts, plugin/src/layout.ts, plugin/defaults/config.jsonc, plugin/plugin-tests/, plugin/test/]
+touches: [plugin/hooks/register.tsx, plugin/src/window.ts, plugin/src/layout.ts, plugin/defaults/config.yaml, plugin/plugin-tests/, plugin/test/]
 ---
 
 # The pane draws only the items in or near its scroll window, from cached item heights
 
-- **Windowed.** The pane's render reads the engine's `SiteScroll`, its `offset` and `bodyRows`, and draws only the headers and items in the window or within a margin of it, with a spacer row above and below of the height of what it leaves out. The margin is a setting in `plugin/defaults/config.jsonc`.
+- **Windowed.** The pane's render reads the engine's `SiteScroll`, its `offset` and `bodyRows`, and draws only the headers and items in the window or within a margin of it, with a spacer row above and below of the height of what it leaves out. The margin is a setting in `plugin/defaults/config.yaml`.
+- **Only the items are windowed.** The header row and the footer stay whole and outside the window's slice, as [pane-controls-stay-visible](../../open/pane-controls-stay-visible.md) keeps them in sight; the window's `offset` and `bodyRows` count the scrolled body alone.
 - **Heights.** A pure function gives an item's and a header's height in rows at a width, and those heights are cached per item and width, so scrolling and a refresh lay out only items that are new or changed and the window's own.
 - **Keys stay reachable.** A turn header ◀ or ▶ scrolls to is drawn, or its offset is known from the heights, so `$.ui.scroll` reaches a turn outside the window.
 
