@@ -1,5 +1,5 @@
-// The types vendor/ declares for its bundled parsers, held to the packages'
-// own: each function the core calls is the package's, so `npm run
+// The types vendor/ declares for its bundled YAML parser, held to the
+// package's own: each function the core calls is the package's, so `npm run
 // typecheck` fails where the two drift apart. Types only; nothing runs.
 
 import type * as YamlPackage from "yaml";

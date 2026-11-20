@@ -82,20 +82,19 @@ describe("/answers's reply", () => {
 });
 
 describe("/answers-config's reply", () => {
-  test("lists the settings in effect, then what wasn't used, then the warnings", () => {
+  test("lists the settings in effect, then what wasn't used", () => {
     expect(
       configText(
         ["keys.dismiss = q", "colors.title = claude"],
         ["bad.yaml: parse error"],
-        ["mine.yaml: a warning"],
       ),
     ).toBe(
-      "keys.dismiss = q\ncolors.title = claude\nNot used: bad.yaml: parse error\nWarning: mine.yaml: a warning",
+      "keys.dismiss = q\ncolors.title = claude\nNot used: bad.yaml: parse error",
     );
   });
 
   test("is empty with nothing to list", () => {
-    expect(configText([], [], [])).toBe("");
+    expect(configText([], [])).toBe("");
   });
 });
 

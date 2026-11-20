@@ -21,7 +21,7 @@ The `coding-agent-kanban-turns` Claude Code plugin, in TypeScript: a pane that l
     - `unit/`: the core's tests, `node --test` with Jest's standalone `expect`, in folders mirroring `src/`.
     - `engine/`: the pane, the count line above the prompt, a reply's buttons and the tool row driven through the engine, `claude plugin test`.
     - `fixtures/`: the transcript records and neutral turns the tests build on.
-    - `types/`: the declarations Node's type-check needs in place of the engine's, and the check that the vendored parsers' types match their packages'.
+    - `types/`: the declarations Node's type-check needs in place of the engine's, and the check that the bundled YAML parser's types match its package's.
     - `oracle/`: the differential test's oracle, which `unit/transcript/neutral-turns.test.ts` compares the adapter and the core against.
 - `nix/`: the flake's helpers.
   - `skills-devshell/`: the sub-flake that installs this repository's skills into `.agents/skills/`: skillspkgs' `claude-code-tools` combination, plus `coding-agent-kanban-turn-responses`, whose rules the plugin shares, and `design-hygiene-find-implicit-models`.
