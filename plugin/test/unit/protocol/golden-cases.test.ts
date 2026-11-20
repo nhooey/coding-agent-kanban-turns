@@ -24,6 +24,7 @@ import {
   CASE_SCHEMA_FILE,
   caseFailures,
   caseOf,
+  lintFailures,
 } from "../../../tools/spec/cases.ts";
 import type { CaseTurn, GoldenCase } from "../../../tools/spec/cases.ts";
 
@@ -125,9 +126,31 @@ describe("the golden cases", () => {
     ).toEqual([]);
   });
 
-  test.todo(
-    "give the lint findings each reply expects, once plugin-tools-replace-skill-scripts adds the reply lint",
-  );
+  test("give the lint findings each reply expects", () => {
+    expect(
+      CASES.flatMap(({ name, golden }) =>
+        golden === undefined
+          ? []
+          : lintFailures(golden).map((failure) => `${name}: ${failure}`),
+      ),
+    ).toEqual([]);
+  });
+
+  test("a lint expectation changed by hand fails", () => {
+    const name = "lint-layout-findings.yaml";
+    const text = read(`${CASES_DIR}/${name}`);
+    const from = "- { line: 2, rule: underline-width }";
+    const result = caseOf(
+      name,
+      text.replace(from, "- { line: 3, rule: underline-width }"),
+      schemaText,
+    );
+
+    expect(text).toContain(from);
+    expect("case" in result ? lintFailures(result.case) : result.problems).toEqual([
+      `turns[0].replies[0].lint: expected [{"line":3,"rule":"underline-width"}], got [{"line":2,"rule":"underline-width"}]`,
+    ]);
+  });
 });
 
 /** A prompt's first word, lowercased, its trailing punctuation dropped, as a command is read from it. */
@@ -338,7 +361,9 @@ describe("the golden cases cover", () => {
         ? ((schema.value as { definitions: { finding: { properties: { rule: { enum: string[] } } } } })
             .definitions.finding.properties.rule.enum)
         : [];
-    const found = REPLIES.flatMap((reply) => reply.lint.map((finding) => finding.rule));
+    const found: readonly string[] = REPLIES.flatMap((reply) =>
+      reply.lint.map((finding) => finding.rule),
+    );
 
     expect(rules.length).toBeGreaterThan(0);
     expect(rules.filter((rule) => !found.includes(rule))).toEqual([]);

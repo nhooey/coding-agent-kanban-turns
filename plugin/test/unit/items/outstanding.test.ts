@@ -15,6 +15,7 @@ import {
   countLine,
   decideItemsOfText,
   decideStates,
+  isMergeKnown,
   itemsOfText,
   listItemRef,
   mergedOfResponse,
@@ -508,12 +509,16 @@ ${RULE}
 `;
 
 describe("itemsOfText", () => {
-  test("the items of the rolled-up lists and of the 📌 roll-up, the roll-up's tag cut off", () => {
+  test("the items of the rolled-up lists and of the 📌 roll-up, the roll-up's tag cut off and the turn it names kept", () => {
     expect(itemsOfText(ITEMS_REPLY)).toEqual([
       { list: "pending", number: 1, isPinned: false, line: "**Rework the loader** It still reads twice.", frees: [] },
       { list: "pending", number: 2, isPinned: false, line: "**Another one**: with its text beside it", frees: [] },
-      { list: "todo", number: undefined, isPinned: true, line: "**Paste the prompt**", frees: [] },
+      { list: "todo", number: undefined, isPinned: true, line: "**Paste the prompt**", frees: [], tagged: "b2c3d4e5" },
     ]);
+  });
+
+  test("an item with no 🔖 tag has no tagged turn", () => {
+    expect(itemsOfText(ITEMS_REPLY)[0]).not.toHaveProperty("tagged");
   });
 
   test("a topic header is no part of the item above", () => {
@@ -959,6 +964,23 @@ describe("a settled Review item", () => {
     for (const broken of ["", "not json", "[]", '{"data": null}']) {
       expect([...mergedOfResponse(ordered, broken)]).toEqual([]);
     }
+  });
+
+  test("the merges are known only where the response's data answers for every pull request asked", () => {
+    const ordered = ["nhooey/kanban#21", "nhooey/kanban#22"];
+    const answered = {
+      pr0: { pullRequest: { state: "MERGED" } },
+      pr1: { pullRequest: { state: "OPEN" } },
+    };
+    expect(isMergeKnown(ordered, JSON.stringify({ data: answered }))).toBe(true);
+    expect(isMergeKnown(ordered, JSON.stringify({ data: { pr0: answered.pr0, pr1: null } }))).toBe(false);
+    expect(
+      isMergeKnown(ordered, JSON.stringify({ errors: [{ message: "Bad credentials" }] })),
+    ).toBe(false);
+    for (const broken of ["", "not json", "[]", '{"data": null}']) {
+      expect(isMergeKnown(ordered, broken)).toBe(false);
+    }
+    expect(isMergeKnown([], "")).toBe(true);
   });
 
   test("GitHub is asked about the Review items' pull requests, in one gh call", () => {

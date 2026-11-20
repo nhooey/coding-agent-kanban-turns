@@ -34,7 +34,9 @@ turns:
           1. **Ship the release tonight?**  \n\
           \   👍 Y. **Ship it**: it goes out.\n\
           \   👎 N. **Hold it**: it waits.\n"
-        lint: []
+        lint:
+          - { line: 24, rule: untaught-option }
+          - { line: 25, rule: untaught-option }
   - id: 2a3b4c5d
     prompt: Keep going on the loader.
     replies:
@@ -60,7 +62,9 @@ turns:
           \n\
           👉 **To do:**  \n\
           - **Rotate the `deploy-bot` key in the cloud console** 🔖 1f2e3d4c₋₁\n"
-        lint: []
+        lint:
+          - { line: 9, rule: untaught-option }
+          - { line: 10, rule: untaught-option }
 expect:
   open: []
   outstanding:

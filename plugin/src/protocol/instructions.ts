@@ -11,14 +11,23 @@ import { lettersInWords } from "./kinds.ts";
 import { assembled, placeholderValues } from "./prose.ts";
 import { DECIDE, DEFAULT_KIND } from "./rules.ts";
 import { SPEC } from "./spec.ts";
+import {
+  LINT_TOOL,
+  OPTIONS_TOOL,
+  OUTSTANDING_TOOL,
+  calledAs,
+} from "./tools.ts";
 import type { DecideKind } from "../../types/index.d.ts";
 
 /** The plugin's name, which the engine puts in its tools' names. */
 export const PLUGIN = "coding-agent-kanban-turns";
 /** The tool's name as the plugin registers it. */
-export const TOOL = "kanban_options";
+export const TOOL = OPTIONS_TOOL;
 /** The tool's name as the agent sees and calls it. */
-export const TOOL_CALLED = `mcp__${PLUGIN}__${TOOL}`;
+export const TOOL_CALLED = calledAs(PLUGIN, TOOL);
+/** The other tools as the agent calls them. */
+export const OUTSTANDING_CALLED = calledAs(PLUGIN, OUTSTANDING_TOOL);
+export const LINT_CALLED = calledAs(PLUGIN, LINT_TOOL);
 /** The context block the instructions go in, keyed by the plugin's own name. */
 export const BLOCK = "kanbanTurns";
 
@@ -112,10 +121,11 @@ export const INPUT_SCHEMA = {
 export const TOOL_DESCRIPTION = [
   `Draws clickable buttons for this turn's ${DECIDE.header} items in the transcript, just under the final response, and lists them in the plugin's ${DECIDE.header} pane.`,
   `Call it once, right before writing the final response, with every ${DECIDE.header} item that response will hold, in its order: each item's turn id, number, summary, kind and frees, and each option's letter, name, consequence, pros and cons.`,
+  `\`${OUTSTANDING_TOOL}\` gives earlier turns' open ${DECIDE.header} items in this shape.`,
   "A click writes the item's reference into the user's prompt draft; nothing is sent.",
 ].join(" ");
 
-/** The fragments the instructions hold, in their order: the format, then the plugin's tool. */
+/** The fragments the instructions hold, in their order: the format, then the plugin's buttons' tool and its other two. */
 export const INSTRUCTION_FRAGMENTS: readonly FragmentName[] = [
   "overview",
   "progress-updates",
@@ -128,17 +138,31 @@ export const INSTRUCTION_FRAGMENTS: readonly FragmentName[] = [
   "commands",
   "around",
   "tool",
+  "tools",
 ];
 
-/** The instructions, for the tool the agent calls as `tool`: the format's fragments and the tool's, filled in from the spec. */
-export const instructionsFor = (tool: string): string =>
+/**
+ * The instructions, for the buttons' tool the agent calls as `tool` and
+ * the other two as `outstanding` and `lint`: the format's fragments and the
+ * tools', filled in from the spec.
+ */
+export const instructionsFor = (
+  tool: string,
+  outstanding: string = OUTSTANDING_CALLED,
+  lint: string = LINT_CALLED,
+): string =>
   assembled(
     FRAGMENTS,
     INSTRUCTION_FRAGMENTS,
-    placeholderValues(SPEC, { plugin: PLUGIN, tool }),
+    placeholderValues(SPEC, {
+      plugin: PLUGIN,
+      tool,
+      "outstanding-tool": outstanding,
+      "lint-tool": lint,
+    }),
   );
 
-/** The instructions for the tool the plugin registers. */
+/** The instructions for the tools the plugin registers. */
 export const INSTRUCTIONS = instructionsFor(TOOL_CALLED);
 
 type Block = Readonly<{ name: string; text: string }>;

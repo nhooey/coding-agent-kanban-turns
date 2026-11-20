@@ -127,6 +127,8 @@ const DEFAULTS = JSON.stringify({
     close: "error",
     kanban: "claude",
   },
+  "roll-up": { "summary-width": 100 },
+  lint: { "turn-end": true },
 });
 
 const ABOVE_PROMPT = {

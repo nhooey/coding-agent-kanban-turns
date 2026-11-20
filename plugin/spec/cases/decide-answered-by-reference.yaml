@@ -32,10 +32,10 @@ turns:
           \      ➖ A large diff.\n\
           \   ⠀\n\
           3. **Ship the release tonight?**  \n\
-          \   👍 Y. **Ship it**: it goes out.\n\
+          \   🔘 A. **Ship it**: it goes out.\n\
           \      ➕ Users get it.\n\
           \      ➖ Risk.\n\
-          \   👎 N. **Hold it**: it waits.\n\
+          \   🔘 B. **Hold it**: it waits.\n\
           \      ➕ Safety.\n\
           \      ➖ Delay.\n"
         lint: []
@@ -55,10 +55,10 @@ turns:
           - { letter: C, name: "Entry 0712, the stale fixtures" }
       - number: 3
         summary: Ship the release tonight?
-        kind: binary
+        kind: radio
         options:
-          - { letter: Y, name: Ship it }
-          - { letter: N, name: Hold it }
+          - { letter: A, name: Ship it }
+          - { letter: B, name: Hold it }
   - id: b2c3d4e5
     prompt: |-
       9efb08a1.Decide.1.A

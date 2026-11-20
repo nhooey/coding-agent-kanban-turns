@@ -20,7 +20,12 @@ import type { ProseSpec } from "../../../src/protocol/prose.ts";
 import { SPEC } from "../../../src/protocol/spec.ts";
 import { decideItemsOfText, itemsOfText } from "../../../src/items/outstanding.ts";
 
-const own = { plugin: "the-plugin", tool: "the_tool" };
+const own = {
+  plugin: "the-plugin",
+  tool: "the_tool",
+  "outstanding-tool": "the_outstanding",
+  "lint-tool": "the_lint",
+};
 const values = placeholderValues(SPEC, own);
 
 /** The spec with the Decide list's header and glyph swapped for others. */

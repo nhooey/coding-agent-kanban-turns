@@ -215,7 +215,16 @@ export type Settings = Readonly<{
     close: string;
     kanban: string;
   }>;
+  "roll-up": Readonly<{ "summary-width": number }>;
+  lint: Readonly<{ "turn-end": boolean }>;
 }>;
+
+/**
+ * What the reply lint found in the main loop's last final response, for the
+ * next prompt's context: the conversation it was found in, by
+ * `conversationKey`, and the note; an empty note when there's none.
+ */
+export type LintNote = Readonly<{ conversation: string; text: string }>;
 
 /** The settings in effect, where each came from, and what was wrong with the files. */
 export type Loaded = Readonly<{
@@ -243,6 +252,7 @@ declare module "claude-code" {
       refreshes: number;
       settings: Shaped<Loaded>;
       instructed: string;
+      lintNote: Shaped<LintNote>;
     };
   }
 }
