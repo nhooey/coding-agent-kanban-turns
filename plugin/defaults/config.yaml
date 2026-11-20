@@ -20,7 +20,7 @@
 # `outstanding` section, or a `pane.hints`, `colors.title`,
 # `colors.expand` or `colors.close-x` setting, which the plugin no longer
 # reads, is left out with a warning instead, and the rest of your file is
-# used. No other file of yours is read: a config.jsonc is not.
+# used. Your own file is `config.yaml`; no other name is read.
 
 # The count line above the prompt, such as `📌 Outstanding: 🚧 2 · 🧠 3`,
 # which the plugin works out from this session's transcript.

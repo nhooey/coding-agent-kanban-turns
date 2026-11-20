@@ -9,7 +9,7 @@
 # node:test and won't load in the plugin's runtime. So the plugin's own files
 # are copied to a scratch folder and the runner pointed at that: the
 # manifest, the hooks, the core they import, the defaults file, the state
-# contract, the bundled parsers the dev shell lays in vendor/ and the
+# contract, the bundled YAML parser the dev shell lays in vendor/ and the
 # engine-driven tests, test/engine/ alone of test/.
 # Nothing is installed and no settings are touched.
 set -euo pipefail
