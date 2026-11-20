@@ -11,9 +11,12 @@ import {
   TOOL,
   TOOL_CALLED,
   TOOL_DESCRIPTION,
+  glyphsInWords,
   instructionsFor,
+  turnIdSource,
   withInstructions,
 } from "../src/instructions.ts";
+import { SPEC } from "../src/spec.ts";
 import { itemsOf } from "../src/items.ts";
 
 const engineBlocks: readonly Readonly<{ name: string; text: string }>[] = [
@@ -39,11 +42,53 @@ describe("the instructions", () => {
       "`turn`",
       "`number` and `summary`",
       "`radio`, `checkbox` or `binary`",
+      "from the item's option glyphs (🔘, 🔲, or 👍 and 👎)",
       "`letter`, `name` and `consequence`",
+      "its ➕ and ➖ lines",
       "`pros` and `cons`",
+      "such as `0f311c94.Decide.2.B`",
       "sends nothing",
       "exactly as you would without the tool",
     ].forEach((phrase) => expect(INSTRUCTIONS).toContain(phrase));
+  });
+});
+
+describe("turnIdSource", () => {
+  test("follows the turn id's length", () => {
+    expect(turnIdSource(8)).toBe("the first 8 characters");
+    expect(turnIdSource(6)).toBe("the first 6 characters");
+  });
+
+  test("is how the instructions and the schema say where the turn id comes from, by the spec's length", () => {
+    const source = turnIdSource(SPEC.reference["turn-id"].length);
+
+    expect(INSTRUCTIONS).toContain(`the turn id, ${source} of the latest prompt's promptId`);
+    expect(ITEM_SCHEMA.properties.turn.description).toBe(
+      `The turn id, ${source} of this turn's promptId.`,
+    );
+  });
+});
+
+describe("glyphsInWords", () => {
+  test("names each kind's glyphs, a kind with lettered glyphs by each", () => {
+    expect(glyphsInWords(["radio", "binary"])).toBe("🔘, or 👍 and 👎");
+    expect(glyphsInWords(["checkbox"])).toBe("🔲");
+  });
+});
+
+describe("the tool's input schema", () => {
+  test("describes an option's letters, list and lines from the spec", () => {
+    const option = ITEM_SCHEMA.properties.options.items.properties;
+
+    expect(option.letter.description).toBe(
+      "The capital letter, A, B, C, or Y and N.",
+    );
+    expect(option.pros.description).toBe("The option's ➕ lines, without the ➕.");
+    expect(option.cons.description).toBe("The option's ➖ lines, without the ➖.");
+    expect(ITEM_SCHEMA.properties.list.enum).toEqual(["Decide"]);
+    expect(ITEM_SCHEMA.properties.ref.description).toBe(
+      "`<turn>.Decide.<number>`; filled in when left out.",
+    );
   });
 });
 

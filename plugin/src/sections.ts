@@ -6,6 +6,8 @@
 
 import { isAnswered } from "./answers.ts";
 import { refOf } from "./items.ts";
+import { itemLabel } from "./protocol.ts";
+import { SPEC } from "./spec.ts";
 import type { DecideItem } from "../types/index.d.ts";
 
 /** One turn's part of the pane: its id, its header, its open items, then its Done ones, each oldest first. */
@@ -31,8 +33,10 @@ export const relativeIndex = (
 };
 
 const SUBSCRIPT: Readonly<Record<string, string>> = {
-  ...Object.fromEntries([..."0123456789"].map((d, n) => [d, "₀₁₂₃₄₅₆₇₈₉"[n] ?? d])),
-  "-": "₋",
+  ...Object.fromEntries(
+    [..."0123456789"].map((d, n) => [d, [...SPEC.tag.digits][n] ?? d]),
+  ),
+  "-": SPEC.tag.minus,
 };
 
 /** A relative index in Unicode subscript, as the kanban skill's 🔖 tag writes it: `₀`, `₋₃`. */
@@ -103,7 +107,7 @@ export const doneLine = (
   item: DecideItem,
   done: string,
 ): Readonly<{ label: string; text: string }> => ({
-  label: `🧠 Decide.${item.number}`,
+  label: itemLabel(item.number),
   text: `${item.summary} · ${done}`,
 });
 

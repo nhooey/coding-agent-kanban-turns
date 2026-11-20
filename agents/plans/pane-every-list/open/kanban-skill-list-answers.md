@@ -9,7 +9,7 @@ touches: [plugin/spec/kanban.yaml, plugin/spec/cases/, plugin/test/]
 
 # The spec holds each list's settling words and the grouped answer syntax
 
-The settling words for every list and the grouped answer syntax are written into `plugin/spec/kanban.yaml`, the protocol's only source ([protocol-spec-data](../../plugin-sole-source/open/protocol-spec-data.md)), and reach the core through the module the spec compiles to. No pull request goes to `coding-agent-skills`: the old skill is retired first ([kanban-skill-retired](../../plugin-sole-source/open/kanban-skill-retired.md)), and the derived skill takes the rules from the spec.
+The settling words for every list and the grouped answer syntax are written into `plugin/spec/kanban.yaml`, the protocol's only source ([protocol-spec-data](../../plugin-sole-source/closed/protocol-spec-data.md)), and reach the core through the module the spec compiles to. No pull request goes to `coding-agent-skills`: the old skill is retired first ([kanban-skill-retired](../../plugin-sole-source/open/kanban-skill-retired.md)), and the derived skill takes the rules from the spec.
 
 - **Settling words.** The spec says which word after an item's reference settles it, and what the session does:
   - 👉 Todo: `done` and `skip`;

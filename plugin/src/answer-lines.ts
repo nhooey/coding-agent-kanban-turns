@@ -3,6 +3,15 @@
 // letters it picks and its note. No `$`, no I/O. Both the transcript's
 // reading of a command and what settles a Decide item read answers here.
 
+import {
+  DECIDE,
+  LETTER,
+  TURN_ID_CHAR,
+  TURN_ID_PREFIX,
+  escaped,
+} from "./protocol.ts";
+import { SPEC } from "./spec.ts";
+
 /**
  * One answer a line of the user's gives: the item's number, and its turn, by
  * an id or a prefix of one, or empty for the turn before the answer's; the
@@ -21,16 +30,20 @@ export type LineAnswer = Readonly<{
 // or `of <turn>` follows, so `Decide.2: A red one` is not option A; or, after
 // a colon, words, `Decide.2: I'd rather wait`, an answer in the user's own
 // words.
-const LETTERS = String.raw`[A-Z](?:\s*,\s*[A-Z])*`;
-const AFTER_REF = String.raw`(?:\.(?<dot>${LETTERS})(?!\w)|(?::\s*|\s+)(?<spaced>${LETTERS})(?=\s*$|\s+(?:of|from)\s|\s+(?:[0-9a-f]{6,8}\.)?Decide\.)|:\s*(?=\S))`;
+const LETTERS = String.raw`${LETTER}(?:\s*,\s*${LETTER})*`;
+// The Decide list's name, as a reference writes it.
+const LIST = escaped(DECIDE.header);
+// The words that name an answer's turn after it: `of` or `from`.
+const OF = `(?:${SPEC.reference["turn-after"].map(escaped).join("|")})`;
+const AFTER_REF = String.raw`(?:\.(?<dot>${LETTERS})(?!\w)|(?::\s*|\s+)(?<spaced>${LETTERS})(?=\s*$|\s+${OF}\s|\s+(?:${TURN_ID_PREFIX}\.)?${LIST}\.)|:\s*(?=\S))`;
 // `9efb08a1.Decide.2.B`, `9efb08a.Decide.2: B,C`, `9efb08a1.Decide.2: <words>`.
 const ANSWER_WITH_ID = new RegExp(
-  String.raw`\b([0-9a-f]{6,8})\.Decide\.(\d+)${AFTER_REF}`,
+  String.raw`\b(${TURN_ID_PREFIX})\.${LIST}\.(\d+)${AFTER_REF}`,
   "g",
 );
 // `Decide.2.B of 9efb08a1`, `Decide.2: B,C from 9efb08a1`.
 const ANSWER_ID_AFTER = new RegExp(
-  String.raw`\bDecide\.(\d+)(?:\.|:\s*|\s+)(${LETTERS})\s+(?:of|from)\s+([0-9a-f]{6,8})\b`,
+  String.raw`\b${LIST}\.(\d+)(?:\.|:\s*|\s+)(${LETTERS})\s+${OF}\s+(${TURN_ID_PREFIX})\b`,
   "g",
 );
 // An answer to the turn before, naming no turn: `Decide.2.B`, `Decide.2: B`
@@ -38,7 +51,7 @@ const ANSWER_ID_AFTER = new RegExp(
 // first, so `Decide.2: B,C of 9efb08a1` can't also pass as words after the
 // colon.
 const ANSWER_BARE = new RegExp(
-  String.raw`(?<![0-9a-f]\.)\bDecide\.(\d+)(?!(?:\.|:\s*|\s+)${LETTERS}\s+(?:of|from)\s+[0-9a-f]{6,8}\b)${AFTER_REF}(?!\s+(?:of|from)\s)`,
+  String.raw`(?<!${TURN_ID_CHAR}\.)\b${LIST}\.(\d+)(?!(?:\.|:\s*|\s+)${LETTERS}\s+${OF}\s+${TURN_ID_PREFIX}\b)${AFTER_REF}(?!\s+${OF}\s)`,
   "g",
 );
 // A line of numbered answers to the turn before, `2. B`, `2. A, C`, or

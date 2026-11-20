@@ -2,16 +2,20 @@
 // glyph an option is drawn with, and the items read out of whatever input a
 // `kanban_options` call handed over.
 
+import { DECIDE } from "./protocol.ts";
+import { SPEC } from "./spec.ts";
 import type { DecideItem, DecideKind } from "../types/index.d.ts";
 
 /** The reference an answer names the item by, without its letters. */
 export const refOf = (item: DecideItem): string =>
-  item.ref || `${item.turn}.Decide.${item.number}`;
+  item.ref || `${item.turn}.${DECIDE.header}.${item.number}`;
 
-const KIND_GLYPH: Readonly<Record<DecideKind, (letter: string) => string>> = {
-  checkbox: () => "🔲",
-  binary: (letter) => (letter === "N" ? "👎" : "👍"),
-  radio: () => "🔘",
+/** The glyph a kind draws an option with: its letter's own, else the kind's. */
+const kindGlyph = (kind: DecideKind, letter: string): string => {
+  const spec = SPEC.options.kinds[kind];
+  const lettered: Readonly<Record<string, string>> = spec.letters;
+
+  return Object.hasOwn(lettered, letter) ? (lettered[letter] ?? spec.glyph) : spec.glyph;
 };
 
 /** The mark a chosen option is drawn with, in place of its glyph. */
@@ -20,7 +24,7 @@ export const CHOSEN_MARK = "✅";
 /** The glyph an option is drawn with: its own, else its item kind's. */
 export const glyphOf = (item: DecideItem, letter: string): string =>
   item.options.find((o) => o.letter === letter)?.glyph ||
-  KIND_GLYPH[item.kind](letter);
+  kindGlyph(item.kind, letter);
 
 /** What an option is drawn with: ✅ while the draft chooses it, else its glyph. */
 export const markOf = (
@@ -58,12 +62,15 @@ const isItem = (value: unknown): value is DecideItem =>
   Array.isArray(value.options) &&
   value.options.every(isOption);
 
+/** An item's kind: the one it names, where the spec has it, else radio. */
 const kindOf = (kind: unknown): DecideKind =>
-  kind === "checkbox" || kind === "binary" ? kind : "radio";
+  typeof kind === "string" && Object.hasOwn(SPEC.options.kinds, kind)
+    ? (kind as DecideKind)
+    : "radio";
 
 const withRef = (item: DecideItem): DecideItem => ({
   ...item,
-  list: "Decide",
+  list: DECIDE.header,
   kind: kindOf(item.kind),
   ref: refOf(item),
 });

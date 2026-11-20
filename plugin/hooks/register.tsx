@@ -47,6 +47,8 @@ import {
 } from "../src/instructions.ts";
 import { CHOSEN_MARK, itemsOf, optionMark, refOf } from "../src/items.ts";
 import { INDENT, cellWidth, codeSpans } from "../src/layout.ts";
+import { DECIDE } from "../src/protocol.ts";
+import { SPEC } from "../src/spec.ts";
 import {
   decideListCut,
   itemOfLink,
@@ -134,7 +136,10 @@ import { loadSettings } from "./settings.ts";
 
 // The pane that lists the items, and its title. The keys and colours are
 // settings, in defaults/config.yaml.
-const PANE = { id: "kanban-turns", title: "🧠 Decide" } as const;
+const PANE = {
+  id: "kanban-turns",
+  title: `${DECIDE.glyph} ${DECIDE.header}`,
+} as const;
 // The column left of an option's lines that lights while the pointer is over
 // the option, or stays lit once its item is Done: it comes out of the
 // option's indent, so its text stays put.
@@ -1666,8 +1671,8 @@ const itemView = (
                 </Button>,
               ),
             )}
-            {under("➕", option.pros, "pro")}
-            {under("➖", option.cons, "con")}
+            {under(SPEC.options.pro, option.pros, "pro")}
+            {under(SPEC.options.con, option.cons, "con")}
             {under("", option.notes, "note")}
           </Box>
         );
