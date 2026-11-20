@@ -37,6 +37,7 @@ import {
   pluginPrompt,
   pluginRow,
   queued,
+  scheduled,
   sdkPrompt,
   skillBody,
   submitted,
@@ -75,7 +76,7 @@ const RECORDS = [
 ];
 
 describe("each record's owner", () => {
-  test("a prompt's owner: the user, this plugin, another plugin, a peer or a notification", () => {
+  test("a prompt's owner: the user, this plugin, another plugin, a peer, a notification or a schedule", () => {
     expect(
       [
         human(FIRST, "go"),
@@ -85,8 +86,20 @@ describe("each record's owner", () => {
         submitted(FIRST, "go", "other-mod"),
         peer(FIRST, "go"),
         notification(FIRST, "go"),
+        scheduled(FIRST, "go"),
+        scheduled(FIRST, "go", "loop_wakeup"),
       ].map(promptOwnerOf),
-    ).toEqual(["user", "this-plugin", "this-plugin", "other-plugin", "other-plugin", "peer", "notification"]);
+    ).toEqual([
+      "user",
+      "this-plugin",
+      "this-plugin",
+      "other-plugin",
+      "other-plugin",
+      "peer",
+      "notification",
+      "scheduled",
+      "scheduled",
+    ]);
   });
 
   test("a record that opens no turn has no prompt owner", () => {
@@ -98,7 +111,7 @@ describe("each record's owner", () => {
       { ...submitted(FIRST, "go"), isSidechain: true },
       { ...human(FIRST, "go"), turnOrigin: "system" },
       sdkPrompt(FIRST, "go"),
-      { ...human(FIRST, "go"), turnOrigin: "scheduled", origin: undefined },
+      { ...scheduled(FIRST, "go"), isSidechain: true },
       { ...pluginPrompt(FIRST, "go"), pluginPrompt: { name: PLUGIN, text: 42 } },
       pluginRow("The terminal is 240 columns wide."),
       engineRow("<system-reminder>x</system-reminder>", { isMeta: true }),
@@ -275,6 +288,24 @@ describe("turnsOf", () => {
     ]);
   });
 
+  test("a scheduled prompt opens a turn with its stored text, which ends the turn before; a headless one opens none", () => {
+    const turns = turnsOf([
+      human(FIRST, "go"),
+      assistant("one"),
+      scheduled(SECOND, "check the deploy"),
+      assistant("two", [call(SECOND)]),
+      sdkPrompt(THIRD, "a headless prompt"),
+      assistant("three"),
+      scheduled(THIRD, "check again", "loop_wakeup"),
+      assistant("four"),
+    ]);
+    expect(turns.map((t) => [t.id, t.prompt.owner, t.prompt.text, t.replies, t.decide])).toEqual([
+      [FIRST, "user", "go", ["one"], []],
+      [SECOND, "scheduled", "check the deploy", ["two", "three"], itemsOf(call(SECOND))],
+      [THIRD, "scheduled", "check again", ["four"], []],
+    ]);
+  });
+
   test("a prompt with no promptId opens a turn with no id", () => {
     expect(turnsOf([{ ...human(FIRST, "go"), promptId: undefined }]).map((t) => t.id)).toEqual([""]);
   });
@@ -378,6 +409,33 @@ describe("the core on the adapter's turns", () => {
     expect(settlementsOf(turns)).toEqual([
       { ref: `${FIRST}.Decide.1`, how: "answered", turn: SECOND, letters: ["A"], note: "" },
     ]);
+  });
+
+  test("a scheduled turn's replies raise Decide items, which are listed", () => {
+    expect(
+      openDecideItems(turnsOf([scheduled(FIRST, "check the deploy"), decided(FIRST)])).map((item) => item.ref),
+    ).toEqual([`${FIRST}.Decide.1`, `${FIRST}.Decide.2`]);
+  });
+
+  test("a scheduled prompt's text answers nothing, though it reads as answers, nor reassesses", () => {
+    for (const text of [`${FIRST}.Decide.1.A`, "1. A / 2. A", "Decide.1: A", `${FIRST}.Decide.1.A\nreassess`]) {
+      const turns = turnsOf([human(FIRST, "go"), decided(FIRST), scheduled(SECOND, text)]);
+      expect(settlementsOf(turns)).toEqual([]);
+      expect(openDecideItems(turns).map((item) => item.ref)).toEqual([`${FIRST}.Decide.1`, `${FIRST}.Decide.2`]);
+      expect(reassessStart(turns)).toBe(0);
+    }
+  });
+
+  test("a bare answer after a scheduled turn means the scheduled turn's reply, not the one before", () => {
+    const turns = turnsOf([
+      human(FIRST, "go"),
+      decided(FIRST),
+      scheduled(SECOND, "check the deploy"),
+      assistant("Checked."),
+      human(THIRD, "Decide.1.A"),
+    ]);
+    expect(settlementsOf(turns)).toEqual([]);
+    expect(openDecideItems(turns).map((item) => item.ref)).toEqual([`${FIRST}.Decide.1`, `${FIRST}.Decide.2`]);
   });
 
   test("a Submit ending on reassess reassesses", () => {

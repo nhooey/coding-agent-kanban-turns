@@ -7,8 +7,8 @@
 // The user's own text is a prompt they typed, or one this plugin submitted
 // for them, such as the pane's Submit sending their draft or its Reassess:
 // it answers items, may run `reassess`, and is never a report. Another
-// plugin's prompt, a report and a notification are not the user's own, and
-// answer nothing.
+// plugin's prompt, a report, a notification and a scheduled prompt are not
+// the user's own, and answer nothing.
 
 import { PLUGIN } from "./instructions.ts";
 import type { Owner, Turn } from "../types/index.d.ts";

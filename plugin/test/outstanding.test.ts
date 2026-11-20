@@ -216,6 +216,7 @@ describe("openDecideItems", () => {
         }),
       ],
       [turn("", "more"), turnOf("", answers, { owner: "other-plugin" })],
+      [turn("", "more"), turnOf("", answers, { owner: "scheduled" })],
       [turnOf("", "more", { messages: [said(answers, "peer")] })],
       [turnOf("", "more", { messages: [said(answers, "notification")] })],
     ]) {
@@ -287,6 +288,7 @@ describe("openDecideItems", () => {
       ["recheck", "peer"],
       ["Recheck: the watcher fired", "notification"],
       ["reassess", "other-plugin"],
+      ["reassess", "scheduled"],
     ] as const) {
       expect(
         openRefs([decided(FIRST), later("", text, decideCall(SECOND, [4], SUMMARIES.slice(0, 1)), owner)]),

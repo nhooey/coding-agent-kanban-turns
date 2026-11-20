@@ -3,11 +3,17 @@
 // are the user's own or not: over random record sequences, after each
 // record, the turns and everything the core reads from them.
 //
-// One difference is deliberate. A prompt a plugin sent as the user, an
-// `origin` of kind `plugin` and no `pluginPrompt`, as this plugin's Submit
-// and Reassess send theirs, opens a turn for the adapter and none for the
-// oracle, which folded it into the turn before. The oracle is handed such a
-// record in the `pluginPrompt` shape it reads, so the rest compares as is.
+// Two differences are deliberate, and the oracle is handed each such record
+// in a shape it reads alike, so the rest compares as is:
+//
+// - A prompt a plugin sent as the user, an `origin` of kind `plugin` and no
+//   `pluginPrompt`, as this plugin's Submit and Reassess send theirs, opens a
+//   turn for the adapter and none for the oracle, which folded it into the
+//   turn before. The oracle is handed it in the `pluginPrompt` shape.
+// - A scheduled prompt, `turnOrigin` `scheduled`, opens a turn for the
+//   adapter, owned by no one whose text answers, and none for the oracle.
+//   The oracle is handed it as a peer's prompt, the one it reads that opens
+//   a turn whose text is not the user's own.
 
 import { describe, test } from "node:test";
 import { expect } from "expect";
@@ -33,6 +39,7 @@ import {
   pluginPrompt,
   pluginRow,
   queued,
+  scheduled,
   sdkPrompt,
   skillBody,
   submitted,
@@ -182,7 +189,9 @@ const record = (at: At): TranscriptRecord => {
     () => pluginRow(text),
     () => ({ ...pluginPrompt(id, text), pluginPrompt: { name: PLUGIN, text: 42 } }),
     () => sdkPrompt(id, text),
-    () => ({ ...human(id, text), turnOrigin: "scheduled", origin: undefined }),
+    () => scheduled(id, text),
+    () => scheduled(id, text, "loop_wakeup"),
+    () => ({ ...scheduled(id, text), isSidechain: true }),
     () => ({ ...peer(id, text), isSidechain: true }),
     () => ({ ...notification(id, text), isSidechain: true }),
     () => ({ ...human(id, text), promptId: undefined }),
@@ -228,7 +237,8 @@ const fieldOf = (value: unknown, key: string): unknown =>
 /**
  * A record as the oracle is handed it: a prompt a plugin sent as the user,
  * which the oracle can't read, in the `pluginPrompt` shape it reads as the
- * same plugin's prompt; any other record as it is.
+ * same plugin's prompt; a scheduled prompt, which it opens no turn for, as
+ * a peer's; any other record as it is.
  */
 const forOracle = (record: TranscriptRecord): TranscriptRecord => {
   const content = fieldOf(record.message, "content");
@@ -243,7 +253,9 @@ const forOracle = (record: TranscriptRecord): TranscriptRecord => {
           text: typeof content === "string" ? content : "",
         },
       }
-    : record;
+    : record.turnOrigin === "scheduled"
+      ? { ...record, turnOrigin: "peer" }
+      : record;
 };
 
 /** A turn as the comparison reads it: the user's own texts apart from the others', and the Decide items raised. */
@@ -339,7 +351,7 @@ describe("the adapter and the core on neutral turns, against the oracle", () => 
 
   test("the sequences reach every owner, repeats and reassess turns", () => {
     expect(new Set(read.flat().map((turn) => turn.prompt.owner))).toEqual(
-      new Set(["user", "this-plugin", "other-plugin", "peer", "notification"]),
+      new Set(["user", "this-plugin", "other-plugin", "peer", "notification", "scheduled"]),
     );
     expect(read.filter((turns) => reassessStart(turns) > 0).length).toBeGreaterThan(SEQUENCES / 10);
     expect(
