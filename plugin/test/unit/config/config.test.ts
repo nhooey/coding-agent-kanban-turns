@@ -223,6 +223,23 @@ describe("the user's file over the defaults", () => {
     ]);
   });
 
+  test("whether the turn's end lints the final response is a boolean setting, on by default", () => {
+    const got = loaded(defaults, undefined);
+    expect(got.settings?.lint["turn-end"]).toBe(true);
+    expect(got.effective).toContain("lint.turn-end = true  # defaults: defaults/config.yaml");
+    const off = loaded(defaults, user("lint:\n  turn-end: false\n"));
+    expect(off.problems).toEqual([]);
+    expect(off.settings?.lint["turn-end"]).toBe(false);
+  });
+
+  test("how wide a summary in the roll-up's draft may be is a number setting, 100 by default", () => {
+    const got = loaded(defaults, undefined);
+    expect(got.settings?.["roll-up"]["summary-width"]).toBe(100);
+    expect(loaded(defaults, user("roll-up:\n  summary-width: 60\n")).settings?.["roll-up"]).toEqual({
+      "summary-width": 60,
+    });
+  });
+
   test("colors.close-x, which no ✖ background is drawn for, is left out with a warning", () => {
     const got = loaded(defaults, user('{"colors": {"close-x": "inverseText", "close": "warning"}}'));
     expect(got.settings?.colors.close).toBe("warning");

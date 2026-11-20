@@ -54,20 +54,20 @@ turns:
           🧠 **Decide:**  \n\
           ▔▔▔▔▔▔▔▔▔▔\n\
           1. **Ship the release tonight?**  \n\
-          \   👍 Y. **Ship it**: it goes out.\n\
+          \   🔘 A. **Ship it**: it goes out.\n\
           \      ➕ Users get it.\n\
           \      ➖ Risk.\n\
-          \   👎 N. **Hold it**: it waits.\n\
+          \   🔘 B. **Hold it**: it waits.\n\
           \      ➕ Safety.\n\
           \      ➖ Delay.\n"
         lint: []
     decide:
       - number: 1
         summary: Ship the release tonight?
-        kind: binary
+        kind: radio
         options:
-          - { letter: Y, name: Ship it }
-          - { letter: N, name: Hold it }
+          - { letter: A, name: Ship it }
+          - { letter: B, name: Hold it }
   - id: 2d3e4f50
     prompt: Look at the pane's notes field meanwhile.
     replies:

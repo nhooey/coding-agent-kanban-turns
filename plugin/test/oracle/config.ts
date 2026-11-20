@@ -1,6 +1,7 @@
 // The settings differential test's oracle: src/config/config.ts as it was
 // while it checked both files against a hand-written SETTINGS_SHAPE, copied
-// unchanged below this header from commit fc64639.
+// below this header from commit fc64639, unchanged but for SETTINGS_SHAPE,
+// which gains each section added since (roll-up, lint).
 //
 // Temporary: the oracle and its test are deleted once the derived shape has
 // shipped in a release.
@@ -62,6 +63,8 @@ export const SETTINGS_SHAPE: Shape = {
     close: "string",
     kanban: "string",
   },
+  "roll-up": { "summary-width": "number" },
+  lint: { "turn-end": "boolean" },
 };
 
 /** The sections and settings the plugin no longer reads, by dotted key, each with what to set instead. */

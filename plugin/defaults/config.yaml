@@ -102,3 +102,21 @@ colors:
   close: error
   # The word Kanban in 🖥️ Kanban, above the prompt and atop the pane.
   kanban: claude
+
+# The draft of the full 📌 roll-up the `kanban_outstanding` tool gives.
+roll-up:
+  # How long an item's summary may be, a whole number of Unicode code
+  # points, a Markdown link counting its label alone, as the kanban
+  # skill's `outstanding.py --width` counts them; a longer one is cut,
+  # ending on `…`, a link kept whole. 0 or less keeps summaries whole.
+  summary-width: 100
+
+# The reply lint, which checks a final response's layout: its separator
+# lines, its summary lines, its Decide options, its underlines and where
+# its tables go. The `kanban_lint` tool lints a draft whatever this says.
+lint:
+  # Whether the plugin lints each final response as its turn ends: what
+  # it finds shows beneath the response, and reaches the agent with the
+  # next prompt in the same conversation. false lints only the drafts the
+  # agent hands `kanban_lint`.
+  turn-end: true

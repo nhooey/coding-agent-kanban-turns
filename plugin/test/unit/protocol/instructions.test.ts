@@ -8,6 +8,8 @@ import {
   INSTRUCTION_FRAGMENTS,
   ITEM_SCHEMA,
   KINDS,
+  LINT_CALLED,
+  OUTSTANDING_CALLED,
   PLUGIN,
   TOOL,
   TOOL_CALLED,
@@ -76,7 +78,12 @@ describe("turnIdSource", () => {
   });
 });
 
-const values = placeholderValues(SPEC, { plugin: PLUGIN, tool: TOOL_CALLED });
+const values = placeholderValues(SPEC, {
+  plugin: PLUGIN,
+  tool: TOOL_CALLED,
+  "outstanding-tool": OUTSTANDING_CALLED,
+  "lint-tool": LINT_CALLED,
+});
 
 describe("the instructions' fragments", () => {
   test("are every fragment, each used", () => {

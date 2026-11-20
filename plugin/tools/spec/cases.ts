@@ -30,6 +30,8 @@ import {
   summaryOf,
   unsettled,
 } from "../../src/items/outstanding.ts";
+import { lintReply } from "../../src/lint/reply.ts";
+import type { Rule } from "../../src/lint/reply.ts";
 import { SPEC } from "../../src/protocol/spec.ts";
 import { commandOf, isOwn } from "../../src/transcript/turns.ts";
 import type { Message, Owner, Turn } from "../../types/index.d.ts";
@@ -41,7 +43,7 @@ export const CASES_DIR = "spec/cases";
 export const CASE_SCHEMA_FILE = `${CASES_DIR}/case.schema.yaml`;
 
 /** One finding of the reply lint: the reply's line, from 1, and the rule it breaks. */
-export type Finding = Readonly<{ line: number; rule: string }>;
+export type Finding = Readonly<{ line: number; rule: Rule }>;
 
 /** One of the agent's responses, and the lint's findings for it. */
 export type CaseReply = Readonly<{ text: string; lint: readonly Finding[] }>;
@@ -374,11 +376,27 @@ const differs = (where: string, expected: unknown, got: unknown): readonly strin
     : [`${where}: expected ${shown(expected)}, got ${shown(got)}`];
 
 /**
+ * Where the reply lint's findings for each reply of a case differ from what
+ * the reply expects, one line each. A case names each finding's line and
+ * rule alone; what a finding says it found there is the lint's own.
+ */
+export const lintFailures = (golden: GoldenCase): readonly string[] =>
+  golden.turns.flatMap((turn, at) =>
+    turn.replies.flatMap((reply, n) =>
+      differs(
+        `turns[${at}].replies[${n}].lint`,
+        reply.lint,
+        lintReply(reply.text).map(({ line, rule }) => ({ line, rule })),
+      ),
+    ),
+  );
+
+/**
  * Where what the core gives for a case differs from what the case expects,
  * one line each: its open items, outstanding items, count line, what each
  * item and each raised Decide item frees, and each turn's command. Empty
- * when the core gives what the case expects. The lint findings wait for
- * the lint.
+ * when the core gives what the case expects. Each reply's lint findings are
+ * `lintFailures`', a test of their own.
  */
 export const caseFailures = (golden: GoldenCase): readonly string[] => {
   const got = outcomeOf(golden);

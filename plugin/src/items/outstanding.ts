@@ -91,6 +91,7 @@ const BOLD = /\*\*(.+?)\*\*/;
  * by reference: those its last line, a `Frees:` line, names. Read from one
  * reply's text, they are the references as written; read from the turns,
  * each names an item of its turn or an earlier one, by the turn's whole id.
+ * `tagged` is the turn id its 🔖 tag named, where it had one.
  */
 export type ListItem = Readonly<{
   list: ListKey;
@@ -99,6 +100,7 @@ export type ListItem = Readonly<{
   isPinned: boolean;
   line: string;
   frees: readonly string[];
+  tagged?: string;
 }>;
 
 /** The item's summary: its bold text without a trailing colon, else its line. */
@@ -266,11 +268,16 @@ export const itemsOfText = (text: string): readonly Omit<ListItem, "at">[] =>
       isInItem: false,
       fence: "",
     } as Scan)
-    .found.map(({ last, ...found }) => ({
-      ...found,
-      line: found.line.replace(SUFFIX, ""),
-      frees: freesOfLine(last ?? "") ?? [],
-    }));
+    .found.map(({ last, ...found }) => {
+      const tagged = SUFFIX.exec(found.line)?.[1];
+
+      return {
+        ...found,
+        line: found.line.replace(SUFFIX, ""),
+        frees: freesOfLine(last ?? "") ?? [],
+        ...(tagged === undefined ? {} : { tagged }),
+      };
+    });
 
 /** The reference an item of a reply's own list goes by, `9efb08a1.Todo.2`, by its turn's id; none for a 📌 roll-up's bullet or an item with no number. */
 export const listItemRef = (
@@ -538,6 +545,28 @@ export const mergedQuery = (
   };
 };
 
+/** A GraphQL response's `data`, its answers by alias; none where the response is no JSON object or holds no `data`. */
+const dataOf = (response: string): Readonly<Record<string, unknown>> => {
+  const body = parsedJson(response);
+
+  return isObject(body) && isObject(body.data) ? body.data : {};
+};
+
+/**
+ * Whether a GraphQL response, aliased `pr<n>` after each pull request's
+ * place in `ordered`, says which of them merged: its `data` holds an entry
+ * for every one. A `gh` that failed, timed out or answered with errors
+ * alone leaves the merges unknown; nothing asked leaves nothing unknown.
+ */
+export const isMergeKnown = (
+  ordered: readonly string[],
+  response: string,
+): boolean => {
+  const data = dataOf(response);
+
+  return ordered.every((_, n) => isObject(data[`pr${n}`]));
+};
+
 /**
  * The pull requests a GraphQL response, aliased `pr<n>` after their place in
  * `ordered`, reports merged; none where the response is no JSON object. A
@@ -548,8 +577,7 @@ export const mergedOfResponse = (
   ordered: readonly string[],
   response: string,
 ): ReadonlySet<string> => {
-  const body = parsedJson(response);
-  const data = isObject(body) && isObject(body.data) ? body.data : {};
+  const data = dataOf(response);
   const stateOf = (key: string): unknown => {
     const value = data[key];
     const pull = isObject(value) ? value.pullRequest : undefined;
@@ -569,7 +597,8 @@ export const windowStart = (turns: readonly Turn[], window: number): number =>
     reassessStart(turns),
   );
 
-const keyOf = (item: Readonly<{ list: ListKey; line: string }>): string =>
+/** What matches an item across turns: its list and its summary's subject key. */
+export const keyOf = (item: Readonly<{ list: ListKey; line: string }>): string =>
   `${item.list}\t${subjectKey(summaryOf(item.line))}`;
 
 /**
