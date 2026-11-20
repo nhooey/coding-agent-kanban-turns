@@ -9,15 +9,12 @@
 // A section the plugin no longer reads is the exception: it is left out with a
 // warning, and the rest of the file is used.
 //
-// The files are YAML, read by the `yaml` package. A user's config.jsonc, read
-// while there's no config.yaml beside it, is YAML too once `jsonc-parser`
-// takes its comments out, as YAML reads JSON. The engine loads only the
-// plugin's own files, so the flake bundles each library into vendor/ as one
-// ES module, committed there.
+// The files are YAML, read by the `yaml` package. The engine loads only the
+// plugin's own files, so the flake bundles the library into vendor/ as one ES
+// module, committed there.
 
 import { parseAllDocuments } from "../../vendor/yaml/yaml.js";
 import type { ParsedDocument } from "../../vendor/yaml/yaml.js";
-import { stripComments } from "../../vendor/jsonc-parser/jsonc-parser.js";
 import type { Json, Loaded, Settings } from "../../types/index.d.ts";
 
 /**
@@ -118,7 +115,7 @@ export const APP = "coding-agent-kanban-turns";
 export const DEFAULTS_FILE = "defaults/config.yaml";
 
 /** The user's file's names, in the order they're looked for: the first there is read. */
-export const USER_FILES = ["config.yaml", "config.jsonc"] as const;
+export const USER_FILES = ["config.yaml"] as const;
 
 /** A file's value, or why it can't be read. */
 type Parsed = Readonly<{ value: Json } | { error: string }>;
@@ -183,22 +180,6 @@ export const parseYaml = (yaml: string): Parsed => {
       ? { error: `holds ${documents.length} YAML documents, not one` }
       : valueOf(documents[0]);
 };
-
-/**
- * A JSONC file's value, comments and trailing commas allowed, or why it can't
- * be read: its comments blanked to spaces, keeping every line break so an
- * error's line and column are the file's, it is YAML, which reads JSON and a
- * trailing comma, so it is read as strictly as a config.yaml.
- */
-export const parseJsonc = (jsonc: string): Parsed =>
-  parseYaml(stripComments(jsonc, " "));
-
-/** Whether the file is the user's old config.jsonc. */
-const isJsonc = (file: ConfigFile): boolean => file.path.endsWith(".jsonc");
-
-/** The warning a user's config.jsonc is read with. */
-const JSONC_WARNING =
-  "read because there's no config.yaml beside it; convert it to config.yaml";
 
 const isMap = (value: Json | undefined): value is { readonly [key: string]: Json } =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -346,7 +327,7 @@ export type ConfigFile = Readonly<{ path: string; text: string }>;
  * A file's value checked against the shape, a null section read as an empty
  * one, without the sections the plugin no longer reads, or what's wrong with
  * it: each problem, a section or setting left out among them, names the file.
- * A config.jsonc is read with a warning to convert it, which is no problem.
+ * Reading a file gives no warnings of its own.
  */
 const checked = (
   file: ConfigFile,
@@ -356,7 +337,7 @@ const checked = (
   problems: readonly string[];
   warnings: readonly string[];
 }> => {
-  const parsed = isJsonc(file) ? parseJsonc(file.text) : parseYaml(file.text);
+  const parsed = parseYaml(file.text);
   const read =
     "value" in parsed ? nullSectionsEmptied(SETTINGS_SHAPE, parsed.value) : undefined;
   const value = read === undefined ? undefined : withoutRetired(read);
@@ -367,7 +348,7 @@ const checked = (
       : problemsIn(SETTINGS_SHAPE, value ?? null, isSparse);
   const inFile = (lines: readonly string[]) =>
     lines.map((line) => `${file.path}: ${line}`);
-  const warnings = inFile(isJsonc(file) ? [JSONC_WARNING] : []);
+  const warnings: readonly string[] = [];
 
   return problems.length === 0 && value !== undefined
     ? { value, problems: inFile(leftOut), warnings }

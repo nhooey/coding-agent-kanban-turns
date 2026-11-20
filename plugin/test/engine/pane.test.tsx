@@ -546,12 +546,9 @@ test("/answers-config lists each setting in effect and its file", async ($, on) 
   expect(JSON.stringify(shown)).toContain('keys.dismiss = \\"q\\"  # defaults: ');
 });
 
-test("a user's config.yaml is read, and wins over a config.jsonc beside it", async ($, on) => {
+test("a user's config.yaml is read", async ($, on) => {
   const state = engine(on, () => ITEMS);
-  state.userFiles = {
-    "config.yaml": "keys:\n  dismiss: x # mine\n",
-    "config.jsonc": '{"keys": {"dismiss": "z"}}',
-  };
+  state.userFiles = { "config.yaml": "keys:\n  dismiss: x # mine\n" };
   const shown = JSON.stringify(
     await $.command.run({ ...ANSWERS, command: "answers-config" }),
   );
@@ -562,18 +559,16 @@ test("a user's config.yaml is read, and wins over a config.jsonc beside it", asy
   expect(shown).not.toContain("Not used");
 });
 
-test("a user's config.jsonc with no config.yaml is read, with a warning to convert it that the pane leaves out", async ($, on) => {
+test("a user's config.jsonc is not read: the defaults are in effect, with no warning", async ($, on) => {
   const state = engine(on, () => []);
-  state.userFiles = { "config.jsonc": '{"keys": {"dismiss": "z"}, // mine\n}' };
+  state.userFiles = { "config.jsonc": '{"keys": {"dismiss": "z"}}' };
   const shown = await $.command.run({ ...ANSWERS, command: "answers-config" });
   const lines = (shown.text ?? "").split("\n");
 
-  expect(lines).toContain(
-    `keys.dismiss = "z"  # user: ${USER_FOLDER}config.jsonc`,
+  expect(lines.find((line) => line.startsWith("keys.dismiss = "))).toMatch(
+    /^keys\.dismiss = "q"  # defaults: /,
   );
-  expect(lines).toContain(
-    `Warning: ${USER_FOLDER}config.jsonc: read because there's no config.yaml beside it; convert it to config.yaml`,
-  );
+  expect(lines.filter((line) => line.startsWith("Warning"))).toEqual([]);
   expect(lines.filter((line) => line.startsWith("Not used"))).toEqual([]);
 
   // /answers's line for no open items, and the pane, name no settings problem.

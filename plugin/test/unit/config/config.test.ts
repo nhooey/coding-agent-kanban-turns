@@ -13,7 +13,6 @@ import {
   leaves,
   loaded,
   mergedOver,
-  parseJsonc,
   parseYaml,
   problemsIn,
   retiredIn,
@@ -27,7 +26,6 @@ const defaultsText = readFileSync(
 );
 const defaults = { path: "defaults/config.yaml", text: defaultsText };
 const user = (text: string) => ({ path: "~/.config/x/config.yaml", text });
-const legacy = (text: string) => ({ path: "~/.config/x/config.jsonc", text });
 
 describe("the shipped defaults file", () => {
   test("is YAML, and holds every setting the shape names and no other", () => {
@@ -290,65 +288,8 @@ describe("the user's file over the defaults", () => {
     ]);
   });
 
-  test("a config.jsonc, read when there's no config.yaml, is used with a warning to convert it, which is no problem", () => {
-    const got = loaded(defaults, legacy('{\n\t"keys": {"dismiss": "x"}, /* mine */ "notes": {"rows": 5,},\n// end\n}'));
-    expect(got.settings?.keys.dismiss).toBe("x");
-    expect(got.settings?.notes.rows).toBe(5);
-    expect(got.effective).toContain('keys.dismiss = "x"  # user: ~/.config/x/config.jsonc');
-    expect(got.problems).toEqual([]);
-    expect(got.warnings).toEqual([
-      "~/.config/x/config.jsonc: read because there's no config.yaml beside it; convert it to config.yaml",
-    ]);
-  });
-
-  test("a config.jsonc that can't be read is named with why, and still warned of", () => {
-    const got = loaded(defaults, legacy('{"keys": {"dismiss" "x"}}'));
-    expect(got.settings?.keys.dismiss).toBe("q");
-    expect(got.problems).toHaveLength(1);
-    expect(got.problems[0]).toMatch(/^~\/\.config\/x\/config\.jsonc: /);
-    expect(got.warnings).toHaveLength(1);
-  });
-
-  test("a config.jsonc's error is placed by its own lines, a block comment's line breaks kept", () => {
-    const text = '{\n  /* one\n     two\n     three */\n  "keys": {"dismiss": "x"},\n  "keys": {}\n}';
-    expect(loaded(defaults, legacy(text)).problems).toEqual([
-      "~/.config/x/config.jsonc: Map keys must be unique at line 6, column 3",
-    ]);
-  });
-
-  test("a key written twice refuses a config.jsonc, as it does a config.yaml", () => {
-    expect(loaded(defaults, legacy('{"keys": {"dismiss": "x", "dismiss": "y"}}')).problems).toEqual([
-      "~/.config/x/config.jsonc: Map keys must be unique at line 1, column 27",
-    ]);
-  });
-
-  test("a config.jsonc indented by tabs, minified onto one long line, or with # and : in its strings reads as JSON", () => {
-    const nested = '{\n\t"keys": {\n\t\t"dismiss": "x",\n\t\t"next": "n"\n\t},\n\t"colors": {\n\t\t"kanban": "red"\n\t}\n}\n';
-    expect(loaded(defaults, legacy(nested)).settings).toMatchObject({
-      keys: { dismiss: "x", next: "n" },
-      colors: { kanban: "red" },
-    });
-
-    // Past YAML's 1024 characters for an implicit key, on the one line.
-    const everything = loaded(defaults, undefined).settings;
-    const long = { ...everything, marks: { sent: "☑".repeat(2000) } };
-    const minified = JSON.stringify(long);
-    expect(minified.length).toBeGreaterThan(2000);
-    expect(minified).not.toContain("\n");
-    const once = loaded(defaults, legacy(minified));
-    expect(once.problems).toEqual([]);
-    expect(once.settings).toEqual(long);
-
-    const marks = loaded(defaults, legacy('{"marks": {"sent": "# not: a comment // nor this"}} // but this'));
-    expect(marks.problems).toEqual([]);
-    expect(marks.settings?.marks.sent).toBe("# not: a comment // nor this");
-  });
-
-  test("a __proto__ or constructor key, in a config.jsonc or a config.yaml, is no setting", () => {
+  test("a __proto__ or constructor key is no setting", () => {
     const shape = "is no setting; the keys here are dismiss, next, previous, submit, reassess, help";
-    expect(loaded(defaults, legacy('{"keys": {"__proto__": {"dismiss": "x"}}}')).problems).toEqual([
-      `~/.config/x/config.jsonc: keys.__proto__ ${shape}`,
-    ]);
     expect(loaded(defaults, user('keys:\n  __proto__:\n    dismiss: x\n')).problems).toEqual([
       `~/.config/x/config.yaml: keys.__proto__ ${shape}`,
     ]);
@@ -457,13 +398,6 @@ describe("the pieces", () => {
     expect(retiredIn(null)).toEqual([]);
   });
 
-  test("JSONC: comments and trailing commas go; strings keep theirs", () => {
-    expect(parseJsonc('{"a": "// no", /* x */ "b": [1,],\n// c\n}')).toEqual({
-      value: { a: "// no", b: [1] },
-    });
-    expect(parseJsonc("")).toEqual({ value: {} });
-  });
-
   test("a boolean that isn't one names what it takes", () => {
     expect(problemsIn("boolean", "no", false, ["pane", "hints"])).toEqual([
       "pane.hints is string, not true or false",
@@ -490,14 +424,12 @@ describe("the pieces", () => {
     ]);
   });
 
-  test("the user's file is under XDG_CONFIG_HOME, else ~/.config, config.yaml before config.jsonc", () => {
+  test("the user's file is config.yaml under XDG_CONFIG_HOME, else ~/.config, and no other", () => {
     expect(userConfigPaths({ xdgConfigHome: "/x", home: "/h" })).toEqual([
       "/x/coding-agent-kanban-turns/config.yaml",
-      "/x/coding-agent-kanban-turns/config.jsonc",
     ]);
     expect(userConfigPaths({ home: "/h" })).toEqual([
       "/h/.config/coding-agent-kanban-turns/config.yaml",
-      "/h/.config/coding-agent-kanban-turns/config.jsonc",
     ]);
     expect(userConfigPaths({})).toEqual([]);
   });

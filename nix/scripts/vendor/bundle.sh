@@ -11,18 +11,13 @@
 # package's name, so no store path is written into a bundle, where it would
 # tie the bundle to this build and keep node_modules in the plugin's
 # closure.
-mkdir -p "$out/yaml" "$out/jsonc-parser"
+mkdir -p "$out/yaml"
 cd "$nodeModules"
 
 esbuild yaml/browser/index.js \
   --bundle --format=esm --platform=neutral --log-level=warning \
   --outfile="$out/yaml/yaml.js"
 cp yaml/LICENSE "$out/yaml/LICENSE"
-
-esbuild jsonc-parser/lib/esm/main.js \
-  --bundle --format=esm --platform=neutral --log-level=warning \
-  --outfile="$out/jsonc-parser/jsonc-parser.js"
-cp jsonc-parser/LICENSE.md "$out/jsonc-parser/LICENSE"
 
 if grep --recursive --files-with-matches "$NIX_STORE" "$out"; then
   echo "vendor/bundle.sh: a store path is left in the files above" >&2

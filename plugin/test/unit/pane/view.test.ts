@@ -87,10 +87,10 @@ describe("/answers-config's reply", () => {
       configText(
         ["keys.dismiss = q", "colors.title = claude"],
         ["bad.yaml: parse error"],
-        ["old.jsonc: convert it"],
+        ["mine.yaml: a warning"],
       ),
     ).toBe(
-      "keys.dismiss = q\ncolors.title = claude\nNot used: bad.yaml: parse error\nWarning: old.jsonc: convert it",
+      "keys.dismiss = q\ncolors.title = claude\nNot used: bad.yaml: parse error\nWarning: mine.yaml: a warning",
     );
   });
 

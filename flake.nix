@@ -78,7 +78,7 @@
           # dev shell and the checks run it.
           nodejs = pkgs.nodejs_26;
 
-          # plugin/'s npm dependencies (the YAML and JSONC parsers, and for
+          # plugin/'s npm dependencies (the YAML parser, and for
           # development TypeScript, Node's types, Jest's expect and ajv, which
           # checks the protocol's spec against its schema), each
           # fetched by the integrity hash its
@@ -91,7 +91,7 @@
             inherit nodejs;
           };
 
-          # The parsers the plugin runs, yaml and jsonc-parser, each bundled
+          # The libraries the plugin runs, yaml alone, each bundled
           # into one ES module file with its licence beside it, for
           # plugin/vendor/<library>/: the engine loads a hooks module's `claude-code`
           # import and the plugin's own files, as plugin-authoring's

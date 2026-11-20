@@ -127,7 +127,7 @@ export type Raised = Readonly<{
   warnings: readonly string[];
 }>;
 
-/** A value a settings file holds, YAML or JSONC. */
+/** A value a settings file holds, as YAML reads it. */
 export type Json =
   | null
   | boolean

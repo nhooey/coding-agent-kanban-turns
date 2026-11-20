@@ -1,7 +1,6 @@
 // Reads the two settings files, the shipped defaults in the plugin's folder and
 // the user's own, and hands their text to the pure merge in src/config/config.ts.
-// The user's own is the first of its names that's there: config.yaml, else
-// an old config.jsonc, which src/config/config.ts reads with a warning.
+// The user's own is config.yaml, under $XDG_CONFIG_HOME or ~/.config.
 //
 // Function declarations, not arrows: `claude plugin validate` follows `$`
 // past an import only into a declaration.
