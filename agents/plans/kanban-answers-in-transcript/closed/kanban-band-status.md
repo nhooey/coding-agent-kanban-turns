@@ -5,7 +5,7 @@ superseded-by: count-line-opens-pane
 kind: implementation
 part-of: kanban-answers-in-transcript
 needs: [kanban-mod-reads-transcript, kanban-items-tool-row, kanban-answers-basket]
-touches: [mod/hooks/register.tsx, mod/src/band.ts, README.md]
+touches: [plugin/hooks/register.tsx, plugin/src/band.ts, README.md]
 ---
 
 # The band shows the open counts, the latest reply's Decide buttons and the answers waiting to be submitted

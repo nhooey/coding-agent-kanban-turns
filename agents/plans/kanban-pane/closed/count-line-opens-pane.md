@@ -4,7 +4,7 @@ state: implemented
 kind: implementation
 part-of: kanban-pane
 needs: [pane-lists-raised-items]
-touches: [mod/hooks/register.tsx, mod/src/counts.ts, mod/src/view.ts, mod/src/layout.ts, mod/defaults/config.jsonc, mod/types/index.d.ts, mod/mod-tests/]
+touches: [plugin/hooks/register.tsx, plugin/src/counts.ts, plugin/src/view.ts, plugin/src/layout.ts, plugin/defaults/config.jsonc, plugin/types/index.d.ts, plugin/plugin-tests/]
 ---
 
 # The line above the prompt is the skill's count line and a window button that opens the pane

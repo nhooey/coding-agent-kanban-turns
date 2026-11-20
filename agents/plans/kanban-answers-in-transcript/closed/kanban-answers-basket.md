@@ -5,7 +5,7 @@ superseded-by: kanban-pane
 kind: implementation
 part-of: kanban-answers-in-transcript
 needs: [kanban-items-tool-row]
-touches: [mod/src/answers.ts, mod/types/index.d.ts]
+touches: [plugin/src/answers.ts, plugin/types/index.d.ts]
 ---
 
 # Answers gather in a basket and go out in one prompt on Submit

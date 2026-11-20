@@ -31,7 +31,7 @@ export type Turn = Readonly<{
   id: string;
   prompt: string;
   isOwn: boolean;
-  /** Whether the prompt may be a command, such as `reassess`: the user's own, or this mod's Reassess. */
+  /** Whether the prompt may be a command, such as `reassess`: the user's own, or this plugin's Reassess. */
   canCommand: boolean;
   replies: readonly string[];
   calls: readonly unknown[];
@@ -42,7 +42,7 @@ export type Turn = Readonly<{
 /** A message sent while a turn ran: the user's own, or a report from an agent, another session or a task. */
 export type Queued = Readonly<{ isOwn: boolean; text: string }>;
 
-/** One record of the transcript, a JSON object; only what the mod reads is looked at. */
+/** One record of the transcript, a JSON object; only what the plugin reads is looked at. */
 export type TranscriptRecord = Readonly<Record<string, unknown>>;
 
 /** One section of a reply: its list's name as the header writes it, and its text, the header first. */
@@ -158,7 +158,7 @@ export const isPrompt = (record: TranscriptRecord): boolean =>
 export const isOwnPrompt = (record: TranscriptRecord): boolean =>
   record.turnOrigin === "human" && pluginText(record) === undefined;
 
-/** Whether a prompt may be a command: the user's own, or one this mod submitted, as the engine names it in `pluginPrompt`. */
+/** Whether a prompt may be a command: the user's own, or one this plugin submitted, as the engine names it in `pluginPrompt`. */
 export const canCommand = (record: TranscriptRecord): boolean =>
   isOwnPrompt(record) ||
   (pluginText(record) !== undefined && field(record.pluginPrompt, "name") === PLUGIN);
@@ -497,7 +497,7 @@ export const commandOf = (prompt: string): string | undefined => {
 
 /**
  * The place of the latest `reassess` turn, whose lists replace every item
- * before it; else 0. Only the user's prompt or this mod's Reassess is one:
+ * before it; else 0. Only the user's prompt or this plugin's Reassess is one:
  * an agent's, another session's or a task's message opening on "Recheck"
  * is not.
  */

@@ -188,7 +188,7 @@ const listsText = (items: readonly Item[]): string =>
     "",
   ].join("\n");
 
-// The count line the mod works out from listsText(ITEMS).
+// The count line the plugin works out from listsText(ITEMS).
 const COUNTS = "📌 Outstanding: 🚧 1 · 🧠 3";
 
 /** A reply raising `items` with a kanban_options call, as a transcript record. */
@@ -465,7 +465,7 @@ test("the session's start opens the pane without the keyboard when items are ope
     isInteractive: true,
   });
   // The refresh runs after the start returns: wait on the engine meanwhile,
-  // with an agent's turn, which the mod passes by.
+  // with an agent's turn, which the plugin passes by.
   for (let n = 0; n < 100 && !state.isPaneOpen; n += 1) {
     await $.turn.complete({ ...replyDone(`w${n}`), agentId: "agent-1" } as never);
   }
@@ -978,7 +978,7 @@ test("the tool's row draws nothing, its items going under the reply, but in ctrl
   await row.unmount();
 });
 
-test("the context tells the agent about the mod's tool, and keeps the rest", async ($, on) => {
+test("the context tells the agent about the plugin's tool, and keeps the rest", async ($, on) => {
   engine(on, () => []);
   on("prompt.context", (_, e) => ({ blocks: e.blocks }));
   const engineBlocks = [

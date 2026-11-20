@@ -1,4 +1,4 @@
-// Reads the two settings files, the shipped defaults in the mod's folder and
+// Reads the two settings files, the shipped defaults in the plugin's folder and
 // the user's own, and hands their text to the pure merge in src/config.ts.
 //
 // Function declarations, not arrows: `claude plugin validate` follows `$`

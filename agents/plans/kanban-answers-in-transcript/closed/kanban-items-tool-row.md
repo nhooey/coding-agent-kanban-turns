@@ -5,7 +5,7 @@ superseded-by: items-after-reply
 kind: implementation
 part-of: kanban-answers-in-transcript
 needs: [kanban-mod-instructions, mod-view-text-in-core, mod-tool-schema-in-core, mod-outstanding-in-core, band-transitions-reducer, option-button-component]
-touches: [mod/hooks/register.tsx, mod/src/items.ts, mod/src/answers.ts]
+touches: [plugin/hooks/register.tsx, plugin/src/items.ts, plugin/src/answers.ts]
 ---
 
 # The tool row draws the turn's Decide items with their buttons, marked by a bar

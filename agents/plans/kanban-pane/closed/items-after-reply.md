@@ -4,7 +4,7 @@ state: implemented
 kind: implementation
 part-of: kanban-pane
 needs: [pane-lists-raised-items]
-touches: [mod/hooks/register.tsx, mod/src/links.ts, mod/mod-tests/]
+touches: [plugin/hooks/register.tsx, plugin/src/links.ts, plugin/plugin-tests/]
 ---
 
 # A reply's Decide items are drawn with their buttons directly under the reply, and the tool row above it draws nothing

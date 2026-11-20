@@ -1,8 +1,8 @@
-# Laid by Claude Code when it loads the mod: the API declarations of
+# Laid by Claude Code when it loads the plugin: the API declarations of
 # whichever build ran last.
-mod/.claude-plugin/types/
+plugin/.claude-plugin/types/
 # A directory from npm, or the dev shell's link into the Nix store.
-mod/node_modules
+plugin/node_modules
 
 # Nix: build outputs, and the dev shell's state.
 result

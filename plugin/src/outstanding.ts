@@ -4,7 +4,7 @@
 // raised. No `$`, no I/O, and nothing of where the turns came from: the hooks
 // build the turns, ask GitHub which pull requests merged, and hand both here.
 //
-// What settles an item is a rule this mod shares with the skill:
+// What settles an item is a rule this plugin shares with the skill:
 //
 // - Review: every pull request it names with its repository, as a GitHub
 //   URL or `owner/repo#N`, has merged; a bare `#N` is never looked up.

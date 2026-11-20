@@ -93,7 +93,7 @@ describe("the user's file over the defaults", () => {
     ]);
   });
 
-  test("a section the mod no longer reads is left out with a warning, and the rest of the file used", () => {
+  test("a section the plugin no longer reads is left out with a warning, and the rest of the file used", () => {
     const got = loaded(
       defaults,
       user('{"outstanding": {"script": "~/x.py", "python": "python3"}, "keys": {"dismiss": "x"}}'),
@@ -101,7 +101,7 @@ describe("the user's file over the defaults", () => {
     expect(got.settings?.keys.dismiss).toBe("x");
     expect(got.settings).not.toHaveProperty("outstanding");
     expect(got.problems).toEqual([
-      "~/.config/x/config.jsonc: outstanding is no longer read and is left out: the mod reads the transcript itself; counts.turns sets how many turns the count line reads",
+      "~/.config/x/config.jsonc: outstanding is no longer read and is left out: the plugin reads the transcript itself; counts.turns sets how many turns the count line reads",
     ]);
     expect(got.effective.some((line) => line.startsWith("outstanding."))).toBe(false);
   });

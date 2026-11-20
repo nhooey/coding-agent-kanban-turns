@@ -13,4 +13,4 @@ With the coding-agent-kanban-turns mod loaded:
 - **Above the prompt, one line.** The line above the prompt holds the skill's count line, as `outstanding.py render --counts` prints it, such as `📌 Outstanding: 🚧 1 · 🔍 2 · 👉 1 · 🧠 5`, then a window button, `🪟 ↗`, that opens the pane. No item is drawn above the prompt, and with no count line nothing is.
 - **A click still only writes the draft.** A button writes the item's reference, on a line of its own and ending in a newline, into the prompt draft, in the pane and in the transcript alike, and sends nothing.
 
-Checks: the repository's checks pass, with an engine test in `mod/mod-tests/` for each bullet above.
+Checks: the repository's checks pass, with an engine test in `plugin/plugin-tests/` for each bullet above.

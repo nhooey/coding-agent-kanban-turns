@@ -4,7 +4,7 @@ state: implemented
 kind: implementation
 part-of: kanban-mod-own-repository
 needs: [kanban-mod-split]
-touches: [mod/src/transcript.ts, mod/src/outstanding.ts]
+touches: [plugin/src/transcript.ts, plugin/src/outstanding.ts]
 ---
 
 # The mod reads the turns, the items and the answers from the transcript in TypeScript

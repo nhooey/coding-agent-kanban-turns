@@ -1,4 +1,4 @@
-// The shapes the mod works on, and its `$.state` contract. Self-contained,
+// The shapes the plugin works on, and its `$.state` contract. Self-contained,
 // as `claude plugin validate` asks: the core in src/ imports its types from
 // here, and Node's type-check reads the `claude-code` module from the stub
 // in test/claude-code.d.ts.
@@ -67,7 +67,7 @@ export type Json =
   | { readonly [key: string]: Json };
 
 /**
- * The mod's settings. defaults/config.jsonc lists each with its default and
+ * The plugin's settings. defaults/config.jsonc lists each with its default and
  * what it does; `SETTINGS_SHAPE` in src/config.ts is the same list as a
  * schema.
  */

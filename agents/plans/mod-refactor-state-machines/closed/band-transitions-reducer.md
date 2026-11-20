@@ -5,7 +5,7 @@ superseded-by: pane-lists-raised-items
 kind: implementation
 part-of: mod-refactor-state-machines
 needs: [mod-view-text-in-core, band-differential-test]
-touches: [mod/src/band.ts, mod/hooks/register.tsx, mod/test/band.test.ts]
+touches: [plugin/src/band.ts, plugin/hooks/register.tsx, plugin/test/band.test.ts]
 ---
 
 # One pure step function moves the band, and hooks dispatch to it
@@ -14,4 +14,4 @@ touches: [mod/src/band.ts, mod/hooks/register.tsx, mod/test/band.test.ts]
 - `register.tsx` gains one `dispatch($, event)`, and fullView's `move` closure, the paired `update`s in turn.complete and `/answers`, and the problem written after `refreshed` all go through it. Reassess, and later the basket's Submit, dispatch `Submitted` themselves, since `$.prompt.submit` skips the prompt.submit hook.
 - The unhandled combinations get defined transitions: `Dismissed` while away, `Reopened` while away, a pane opened over a dismissed band, 🧠 when the items don't fit.
 - Refresh runs one at a time, and a refresh asked for while one runs replaces any already waiting, so overlapping runs can't land out of order.
-- `test/band.test.ts` holds a table of (state, event, expected state) rows; `band-differential-test` passes against the new code with every difference classed; the engine tests in `mod-tests/band.test.tsx` pass unchanged. The atom's shape stays `band-2`.
+- `test/band.test.ts` holds a table of (state, event, expected state) rows; `band-differential-test` passes against the new code with every difference classed; the engine tests in `plugin-tests/band.test.tsx` pass unchanged. The atom's shape stays `band-2`.

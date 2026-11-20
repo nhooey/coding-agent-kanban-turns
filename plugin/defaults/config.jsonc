@@ -1,7 +1,7 @@
-// The defaults of the coding-agent-kanban-turns mod: every setting it
+// The defaults of the coding-agent-kanban-turns plugin: every setting it
 // reads, with the value it uses when no file of yours sets it.
 //
-// The mod reads this file from its own folder each session, and nothing
+// The plugin reads this file from its own folder each session, and nothing
 // else holds these values. To change a setting, write only that key in
 // your own file, $XDG_CONFIG_HOME/coding-agent-kanban-turns/config.jsonc
 // (~/.config/coding-agent-kanban-turns/config.jsonc when XDG_CONFIG_HOME
@@ -11,14 +11,14 @@
 //
 // Sections merge key by key, so every key you leave out comes from here
 // and follows this file as it changes. A key that's no setting here, or a
-// value of the wrong type, refuses your whole file: the mod uses these
+// value of the wrong type, refuses your whole file: the plugin uses these
 // defaults and says why in the pane and in /answers-config, which lists
 // every setting in effect and the file it came from. An `outstanding`
-// section, which the mod no longer reads, is left out with a warning
+// section, which the plugin no longer reads, is left out with a warning
 // instead, and the rest of your file is used.
 {
   // The count line above the prompt, such as `📌 Outstanding: 🚧 2 · 🧠 3`,
-  // which the mod works out from this session's transcript.
+  // which the plugin works out from this session's transcript.
   "counts": {
     // How many of the latest turns it reads the open items from, as the
     // kanban skill's `outstanding.py render --counts` does; never further
