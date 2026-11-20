@@ -131,6 +131,7 @@ declare module "claude-code" {
       merged: readonly string[];
       refreshes: number;
       settings: Shaped<Loaded>;
+      instructed: string;
     };
   }
 }
