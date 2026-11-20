@@ -20,6 +20,7 @@ import {
   placeholderValues,
 } from "../../src/protocol/prose.ts";
 import type { OwnValues, ProseSpec } from "../../src/protocol/prose.ts";
+import { isObject } from "../../src/json/fields.ts";
 import type { Json } from "../../types/index.d.ts";
 
 /** The spec, its schema, the prose fragments and what they compile to, from the plugin's folder. */
@@ -223,10 +224,9 @@ export const moduleText = (value: Json): string =>
 /** The JSON copy, its header in `$comment`: first, and never the spec's own. */
 export const jsonText = (value: Json): string => {
   const header = `The kanban turn-response protocol's checkable rules. ${GENERATED}`;
-  const fields =
-    typeof value === "object" && value !== null && !Array.isArray(value)
-      ? Object.entries(value).filter(([key]) => key !== "$comment")
-      : [];
+  const fields = isObject(value)
+    ? Object.entries(value).filter(([key]) => key !== "$comment")
+    : [];
 
   return `${JSON.stringify({ $comment: header, ...Object.fromEntries(fields) }, null, 2)}\n`;
 };

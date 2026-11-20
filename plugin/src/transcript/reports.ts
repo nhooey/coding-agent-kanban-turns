@@ -3,6 +3,8 @@
 // And a pseudo-XML reader, `elements`, which the Claude Code adapter reads
 // its reports' names with. No `$`, no I/O.
 
+import { escaped } from "../text/patterns.ts";
+
 /** One element of a pseudo-XML text: its tag and attributes, lowercased names, and its own text, no child's. */
 export type Element = Readonly<{
   tag: string;
@@ -164,12 +166,18 @@ export const elements = (text: string): readonly Element[] => {
 export const namesWord = (name: string, text: string): boolean =>
   name.trim() !== "" &&
   new RegExp(
-    String.raw`(?<![\p{L}\p{N}_-])${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\p{L}\p{N}_-])`,
+    String.raw`(?<![\p{L}\p{N}_-])${escaped(name)}(?![\p{L}\p{N}_-])`,
     "iu",
   ).test(text);
 
 const SPAN = /`([^`]+)`/g;
 const BRANCH = /^[a-z0-9]+(?:-[a-z0-9]+)+$/;
+
+/** The text's code spans shaped like a branch name, lowercase words joined by hyphens, in order. */
+export const branchSpans = (text: string): readonly string[] =>
+  [...text.matchAll(SPAN)]
+    .map((m) => m[1] ?? "")
+    .filter((span) => BRANCH.test(span));
 
 /**
  * Whether a report names a Waiting item: the item's summary holds one of the
@@ -182,7 +190,4 @@ export const reportNamesItem = (
   report: string,
 ): boolean =>
   names.some((name) => namesWord(name, summary)) ||
-  [...summary.matchAll(SPAN)]
-    .map((m) => m[1] ?? "")
-    .filter((span) => BRANCH.test(span))
-    .some((branch) => namesWord(branch, report));
+  branchSpans(summary).some((branch) => namesWord(branch, report));

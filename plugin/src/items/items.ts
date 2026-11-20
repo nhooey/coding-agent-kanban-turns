@@ -4,6 +4,7 @@
 
 import { DECIDE, DEFAULT_KIND } from "../protocol/rules.ts";
 import { SPEC } from "../protocol/spec.ts";
+import { isObject } from "../json/fields.ts";
 import type { DecideItem, DecideKind } from "../../types/index.d.ts";
 
 /** The reference an answer names the item by, without its letters. */
@@ -46,16 +47,13 @@ export const optionMark = (
 ): string =>
   is.sent && !is.chosen ? sentMark : markOf(item, letter, is.chosen);
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
-
 const isOption = (value: unknown): boolean =>
-  isRecord(value) &&
+  isObject(value) &&
   typeof value.letter === "string" &&
   typeof value.name === "string";
 
 const isItem = (value: unknown): value is DecideItem =>
-  isRecord(value) &&
+  isObject(value) &&
   typeof value.turn === "string" &&
   typeof value.number === "number" &&
   typeof value.summary === "string" &&
@@ -76,7 +74,7 @@ const withRef = (item: DecideItem): DecideItem => ({
 });
 
 const itemsField = (value: unknown): unknown =>
-  isRecord(value) && "items" in value ? value.items : [];
+  isObject(value) && "items" in value ? value.items : [];
 
 /** The items a `kanban_options` call handed over, whatever else its input held. */
 export const itemsOf = (value: unknown): readonly DecideItem[] => {

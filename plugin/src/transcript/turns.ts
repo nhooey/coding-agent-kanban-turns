@@ -15,11 +15,11 @@ import {
   DECIDE,
   REASSESS,
   classOf,
-  escaped,
   isLineOf,
   namesOf,
 } from "../protocol/rules.ts";
 import { SPEC } from "../protocol/spec.ts";
+import { escaped } from "../text/patterns.ts";
 import type { Owner, Turn } from "../../types/index.d.ts";
 
 /** Whether text its owner wrote is the user's own: the user's, or this plugin's sent for them. */
@@ -49,7 +49,7 @@ const TOPIC_RULE = SPEC.characters["topic-underline"];
 // name, its marketplace after `@` where the engine gave one, and a colon,
 // alone on the first line.
 const DRAFT_HEADER = new RegExp(
-  String.raw`^${PLUGIN.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:@[\w.-]+)?:\r?\n`,
+  String.raw`^${escaped(PLUGIN)}(?:@[\w.-]+)?:\r?\n`,
 );
 
 /** A message's text without the line naming the plugin that a draft its clicks started opens with, so that line is never read as an answer or a note. */
