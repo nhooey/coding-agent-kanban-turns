@@ -218,7 +218,7 @@ const reassessSplit = (
     : undefined;
 };
 
-/** Whether the draft's last line is only a word naming `reassess`, so sending it reassesses after its answers. */
+/** Whether the draft's last line is only a word naming `reassess`, so sending it reassesses, after any answers it holds. */
 export const hasReassess = (draft: string): boolean =>
   reassessSplit(draft) !== undefined;
 

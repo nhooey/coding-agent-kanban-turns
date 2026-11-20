@@ -1,5 +1,5 @@
 import { expect, test } from "claude-code/testing";
-import type { On } from "claude-code";
+import type { On, Register } from "claude-code";
 
 // The transcript's records, trimmed as test/records.ts trims them for the
 // Node tests: the engine's test kit loads this file alone.
@@ -246,7 +246,16 @@ const engine = (
     runs: [] as (readonly string[])[],
     isUnreadable: false,
     isFillRefused: false,
+    // The box takes no text added after a draft, as a dialog opening while
+    // a submit is pending would leave it.
+    isAppendRefused: false,
     submitAnswer: undefined as { drop: string } | Error | undefined,
+    // What the person types into the box while a submit is pending.
+    typedMeanwhile: "",
+    // What the next submit waits on before the engine answers it, once.
+    holdSubmit: undefined as (() => Promise<void>) | undefined,
+    // What each command registration waits on, as the session starts.
+    registering: undefined as (() => Promise<void>) | undefined,
   };
   on("process.run", async (_, e) => {
     state.runs.push(e.argv);
@@ -324,10 +333,10 @@ const engine = (
   }));
   // A box under a dialog takes no text.
   on("prompt.fill", (_, e) => {
-    if (state.isFillRefused) {
+    if (state.isFillRefused || (state.isAppendRefused && e.mode === "append")) {
       return { isFilled: false };
     }
-    state.box = e.text;
+    state.box = e.mode === "append" ? `${state.box}${e.text}` : e.text;
 
     return { isFilled: true };
   });
@@ -335,6 +344,10 @@ const engine = (
   on("prompt.submit", async (_, e) => {
     // A tick, as the engine's own submit takes: a second press can land meanwhile.
     await Promise.resolve();
+    const hold = state.holdSubmit;
+    state.holdSubmit = undefined;
+    await hold?.();
+    state.box = `${state.box}${state.typedMeanwhile}`;
     const answer = state.submitAnswer;
 
     if (answer instanceof Error) {
@@ -350,7 +363,11 @@ const engine = (
   });
   on("turn.start", (_, e) => ({ turnId: e.turnId }));
   on("turn.complete", (_, e) => ({ text: e.answer }));
-  on("command.register", (_, e) => ({ value: { command: e.name } }));
+  on("command.register", async (_, e) => {
+    await state.registering?.();
+
+    return { value: { command: e.name } };
+  });
   on("tool.register", (_, e) => ({
     value: { tool: `mcp__${PLUGIN}__${e.name}` },
   }));
@@ -574,6 +591,7 @@ test("above the prompt: 🖥️ Kanban, a faint divider and the count line, each
 
 type Mounted = {
   find: (q: { type: string; key: string }) => Promise<{ text: string } | undefined>;
+  findAll: (q: { type: string }) => Promise<readonly { key?: string; props: Readonly<Record<string, unknown>> }[]>;
 };
 
 /** The text of the count line a mounted AbovePrompt draws, or none. */
@@ -1158,20 +1176,73 @@ test("two Submit presses at once send the draft once", async ($, on) => {
   await ui.unmount();
 });
 
-test("a draft with an @ mention or a pasted image stays in the box, the pane saying to press Enter", async ($, on) => {
+test("a draft with a file mention, pasted text or a pasted image stays in the box, the pane saying to press Enter", async ($, on) => {
   const state = engine(on, () => ITEMS);
   await $.command.run(ANSWERS);
   const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
 
-  for (const draft of ["9efb08a1.Decide.1: see @plugin/src/view.ts\n", "Decide.1: like [Image #1]\n"]) {
+  for (const draft of [
+    "9efb08a1.Decide.1: see @plugin/src/view.ts\n",
+    "Decide.1: like [Image #1]\n",
+    "Decide.1: the log\n[Pasted text #1 +40 lines]\n",
+  ]) {
     state.box = draft;
     await ui.press({ key: "submit" });
     expect(state.sent).toEqual([]);
     expect(state.box).toBe(draft);
   }
   expect(await sendProblem(ui)).toContain(
-    "press Enter in the prompt to send mentions or images",
+    "press Enter in the prompt to send file mentions, pasted text or images",
   );
+
+  // A name or a package after @ is no file: it goes.
+  state.box = "Decide.1: ask @alice about @types/node\n";
+  await ui.press({ key: "submit" });
+  expect(state.sent).toEqual(["Decide.1: ask @alice about @types/node\n"]);
+  await ui.unmount();
+});
+
+test("a draft of the line naming the plugin alone is empty: Submit is dim and sends nothing", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  state.box = HEADER;
+  await ui.press({ key: "submit" });
+
+  expect(state.sent).toEqual([]);
+  expect(state.box).toBe(HEADER);
+  await ui.unmount();
+});
+
+test("a refused draft goes back after what was typed while the submit was pending", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  await ui.press({ key: "9efb08a1.Decide.1.B" });
+  state.submitAnswer = { drop: "a hook refused it" };
+  state.typedMeanwhile = "my own words";
+  await ui.press({ key: "submit" });
+
+  expect(state.box).toBe(`my own words\n${HEADER}9efb08a1.Decide.1.B\n`);
+  expect(await sendProblem(ui)).toBe(
+    "Not sent, the draft put back in the prompt box after the text typed meanwhile: a hook refused it",
+  );
+  await ui.unmount();
+});
+
+test("a refused draft the box can't take back stays in what the pane says", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  await ui.press({ key: "9efb08a1.Decide.1.B" });
+  state.submitAnswer = { drop: "a hook refused it" };
+  state.isAppendRefused = true;
+  await ui.press({ key: "submit" });
+
+  expect(state.box).toBe("");
+  const said = await sendProblem(ui);
+  expect(said).toContain("the prompt box couldn't take the draft back: a hook refused it");
+  expect(said).toContain(`${HEADER}9efb08a1.Decide.1.B\n`);
   await ui.unmount();
 });
 
@@ -1199,6 +1270,124 @@ test("while a turn runs Submit is dim and does nothing", async ($, on) => {
   });
   await ui.press({ key: "submit" });
   expect(state.sent).toEqual([`${HEADER}9efb08a1.Decide.1.B\n`]);
+  await ui.unmount();
+});
+
+test("an earlier turn's late end leaves a later turn running", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  await ui.press({ key: "9efb08a1.Decide.1.B" });
+  await $.turn.start({ text: "go on", turnId: "t1" });
+  await $.turn.start({ text: "and on", turnId: "t2" });
+  await $.turn.complete(replyDone("t1"));
+
+  await ui.press({ key: "submit" });
+  expect(state.sent).toEqual([]);
+  await $.turn.complete(replyDone("t2"));
+  await ui.press({ key: "submit" });
+  expect(state.sent).toEqual([`${HEADER}9efb08a1.Decide.1.B\n`]);
+  await ui.unmount();
+});
+
+/** A gate a hook of the engine waits at: `reached` once a call stands at it, until `release`. */
+const gate = () => {
+  let reach = () => {};
+  let release = () => {};
+  const reached = new Promise<void>((resolve) => {
+    reach = resolve;
+  });
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const wait = async () => {
+    reach();
+    await released;
+  };
+
+  return { wait, reached, release };
+};
+
+test("the session's start ends a turn and a Submit a reload left running", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+
+  // A Submit under way and a turn running, as a reload mid-turn leaves them.
+  const held = gate();
+  state.holdSubmit = held.wait;
+  state.box = "9efb08a1.Decide.1.B\n";
+  const pending = ui.press({ key: "submit" });
+  await held.reached;
+  await $.turn.start({ text: "go on", turnId: "t1" });
+  state.box = "9efb08a1.Decide.2.A\n";
+  await ui.press({ key: "submit" });
+  expect(state.sent).toEqual([]);
+
+  await $.session.start({ cwd: "/work", surface: "terminal", isInteractive: true });
+  // The start's refresh runs after it returns: /answers waits on one.
+  await $.command.run(ANSWERS);
+  await ui.press({ key: "submit" });
+  expect(state.sent).toEqual(["9efb08a1.Decide.2.A\n"]);
+
+  held.release();
+  await pending;
+  await ui.unmount();
+});
+
+test("the session's start clears what the pane said about the last Submit", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  state.box = "Decide.1: like [Image #1]\n";
+  await ui.press({ key: "submit" });
+  expect(await sendProblem(ui)).toBeDefined();
+
+  await $.session.start({ cwd: "/work", surface: "terminal", isInteractive: true });
+  expect(await sendProblem(ui)).toBeUndefined();
+  await ui.unmount();
+});
+
+test("a turn that starts while the session's start registers keeps Submit waiting", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  await ui.press({ key: "9efb08a1.Decide.1.B" });
+
+  const registering = gate();
+  state.registering = registering.wait;
+  const starting = $.session.start({ cwd: "/work", surface: "terminal", isInteractive: true });
+  await registering.reached;
+  await $.turn.start({ text: "go on", turnId: "t1" });
+  registering.release();
+  await starting;
+  // The start's refresh runs after it returns: /answers waits on one.
+  await $.command.run(ANSWERS);
+
+  await ui.press({ key: "submit" });
+  expect(state.sent).toEqual([]);
+  await $.turn.complete(replyDone("t1"));
+  await ui.press({ key: "submit" });
+  expect(state.sent).toEqual([`${HEADER}9efb08a1.Decide.1.B\n`]);
+  await ui.unmount();
+});
+
+test("raised items stored under an older shape are not drawn", async ($, on) => {
+  engine(on, () => []);
+  // What the plugin kept before Raised gained settlements, as a reload
+  // finds it.
+  const stale = {
+    shape: "raised-2",
+    value: { session: "session-1", items: ITEMS, settledRefs: [], seenRefs: [], problem: "", warnings: [] },
+  };
+  on("state.get", (_, e, next) =>
+    e.key === "raised" ? { value: { value: stale, version: 1 } } : next(e),
+  );
+  await $.command.run({ ...ANSWERS, command: "answers-config" });
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+
+  expect(await titles(ui)).toEqual([]);
+  expect(await ui.find({ type: "Text", text: /^No open Decide items/ })).toBeDefined();
   await ui.unmount();
 });
 
@@ -1358,6 +1547,44 @@ test("✏️ Add a note in a pane already open asks for the ring on the field, w
   // /answers opens the pane for no field: a later drawing focuses nothing.
   await $.command.run(ANSWERS);
   expect(await focused()).toEqual([]);
+  await reply.unmount();
+  await ui.unmount();
+});
+
+/** The notes fields of a drawing that take the focus as it draws, by key. */
+const focusedFields = async (ui: Mounted) =>
+  (await ui.findAll({ type: "Input" }))
+    .filter((found) => found.props.autoFocus === true)
+    .map((found) => found.key);
+
+// A plugin beside this one that closes the pane, as the person's Escape
+// does: the close reaches this plugin at ui.close alone, not through ✖,
+// which clears the wait itself. The kit's `$` has no `ui.close` to raise.
+const CLOSER = {
+  name: "closer",
+  register: ((on) => {
+    on("command.run", { command: "close-kanban" }, async ($) => {
+      await $.ui.close({ id: "kanban-turns" });
+
+      return { text: "" };
+    });
+  }) satisfies Register,
+};
+
+test("the pane closed by anything but ✖ leaves no field waiting for the focus", { plugins: [CLOSER] }, async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  await $.tool.call({ tool: TOOL, items: ITEMS } as never);
+  await $.turn.complete(replyDone("t0"));
+  const reply = await $.ui.mount(REPLY);
+  await reply.press({ key: "9efb08a1.Decide.3.add-note" });
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  expect(await focusedFields(ui)).toEqual(["9efb08a1.Decide.3.notes"]);
+
+  // The drawing is read as it stands, since a reopening clears the wait
+  // itself.
+  await $.command.run({ ...ANSWERS, command: "close-kanban" });
+  expect(state.isPaneOpen).toBe(false);
+  expect(await focusedFields(ui)).toEqual([]);
   await reply.unmount();
   await ui.unmount();
 });

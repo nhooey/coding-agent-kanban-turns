@@ -22,7 +22,6 @@
 // mod's prompt, a report and a notification are not the user's own, and
 // answer nothing.
 
-import { answersOfLine } from "./answer-lines.ts";
 import { PLUGIN, TOOL_CALLED } from "./instructions.ts";
 
 /**
@@ -512,25 +511,24 @@ export const isReassessLine = (line: string): boolean =>
   commandOfWord(line) === "reassess";
 
 /**
- * Whether a prompt holds answers and ends on a line naming `reassess`
- * alone, as a draft the pane's Reassess button ended does: a line before
- * the last that isn't blank gives an answer.
+ * Whether a prompt's last non-blank line names `reassess` alone, as a
+ * draft the pane's Reassess button ended does; whatever comes before it,
+ * answers or news, is read first.
  */
-const endsOnReassess = (text: string): boolean => {
-  const lines = text.split("\n").filter((line) => line.trim() !== "");
-
-  return (
-    isReassessLine(lines.at(-1) ?? "") &&
-    lines.slice(0, -1).some((line) => answersOfLine(line).length > 0)
+const endsOnReassess = (text: string): boolean =>
+  isReassessLine(
+    text
+      .split("\n")
+      .filter((line) => line.trim() !== "")
+      .at(-1) ?? "",
   );
-};
 
 /**
  * The command a prompt runs, `reassess` or `open`: by its first word, bare
- * or after the skill's slash command; else `reassess` where the prompt
- * holds answers and ends on a line naming it alone, its answers counting
- * too. The line naming the plugin that opens a draft its clicks started is
- * left out first. `open` never runs from the last line.
+ * or after the skill's slash command; else `reassess` where the prompt's
+ * last non-blank line names it alone, with or without answers before it,
+ * which count too. The line naming the plugin that opens a draft its clicks
+ * started is left out first. `open` never runs from the last line.
  */
 export const commandOf = (prompt: string): string | undefined => {
   const text = withoutDraftHeader(prompt);
@@ -545,8 +543,9 @@ export const commandOf = (prompt: string): string | undefined => {
  * The place of the latest `reassess` turn, whose lists replace every item
  * before it; else 0. Only the user's own prompt is one, this plugin's
  * prompts among them: an agent's, another session's, a task's or another
- * mod's message opening on "Recheck" is not. A turn that ends on `reassess`
- * after its answers still settles the items they answer.
+ * mod's message opening on "Recheck" or ending on a `reassess` line is not.
+ * A turn that ends on `reassess` after answers still settles the items they
+ * answer.
  */
 export const reassessStart = (turns: readonly Turn[]): number =>
   Math.max(

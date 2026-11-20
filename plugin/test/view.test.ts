@@ -7,18 +7,20 @@ import { expect } from "expect";
 
 import { emptyRaised } from "../src/raised.ts";
 import {
-  MENTIONS_TEXT,
+  NEEDS_ENTER_TEXT,
   answersText,
   configText,
   drewText,
   gutterStyle,
-  hasMentionOrImage,
   isPlainToolRow,
   itemTitle,
   noItemsText,
+  needsEnter,
   noteRows,
+  notPutBackText,
   notSentText,
   notesKey,
+  putBackText,
   notesMode,
   sentLetters,
   settledText,
@@ -156,43 +158,90 @@ describe("the pane's Submit", () => {
     });
   });
 
-  test("does nothing for an empty or blank draft", () => {
-    expect(submitStep("", false)).toEqual({ skip: true });
-    expect(submitStep("  \n\t", false)).toEqual({ skip: true });
+  test("does nothing for an empty or blank draft, or one of the line naming the plugin alone", () => {
+    for (const draft of ["", "  \n\t", "coding-agent-kanban-turns:\n", "coding-agent-kanban-turns@nix-pinned:\n  \n"]) {
+      expect(submitStep(draft, false)).toEqual({ skip: true });
+    }
+  });
+
+  test("sends a draft of the line naming the plugin and a reassess line", () => {
+    expect(submitStep("coding-agent-kanban-turns:\nreassess\n", false)).toEqual({
+      send: "coding-agent-kanban-turns:\nreassess\n",
+    });
   });
 
   test("does nothing while a turn runs or another Submit is under way", () => {
     expect(submitStep("9efb08a1.Decide.1.A\n", true)).toEqual({ skip: true });
   });
 
-  test("keeps a draft with a mention or an image in the box, saying to press Enter", () => {
-    expect(submitStep("9efb08a1.Decide.1: see @src/a.ts", false)).toEqual({
-      refuse: MENTIONS_TEXT,
-    });
-    expect(submitStep("Decide.1: like [Image #1]", false)).toEqual({
-      refuse: MENTIONS_TEXT,
-    });
-    expect(MENTIONS_TEXT).toContain("press Enter in the prompt to send mentions or images");
+  test("keeps a draft with a file mention, pasted text or an image in the box, saying to press Enter", () => {
+    for (const draft of [
+      "9efb08a1.Decide.1: see @src/a.ts",
+      "Decide.1: like [Image #1]",
+      "Decide.1: the log\n[Pasted text #2 +40 lines]",
+    ]) {
+      expect(submitStep(draft, false)).toEqual({ refuse: NEEDS_ENTER_TEXT });
+    }
+    expect(NEEDS_ENTER_TEXT).toContain("press Enter in the prompt to send file mentions, pasted text or images");
   });
 
   test("says why the engine didn't take the prompt", () => {
     expect(notSentText("a hook refused it")).toBe(
       "Not sent, the draft put back in the prompt box: a hook refused it",
     );
+    expect(notSentText("a hook refused it", true)).toBe(
+      "Not sent, the draft put back in the prompt box after the text typed meanwhile: a hook refused it",
+    );
+  });
+
+  test("gives the draft itself when the box couldn't take it back", () => {
+    expect(notPutBackText("a hook refused it", "9efb08a1.Decide.1.B\n")).toBe(
+      "Not sent, and the prompt box couldn't take the draft back: a hook refused it\nThe draft, to copy:\n9efb08a1.Decide.1.B\n",
+    );
+  });
+
+  test("puts the draft back alone into the emptied box, else on its own line after what was typed", () => {
+    expect(putBackText("", "1. A\n")).toBe("1. A\n");
+    expect(putBackText("more words", "1. A\n")).toBe("\n1. A\n");
+    expect(putBackText("more words\n", "1. A\n")).toBe("1. A\n");
   });
 });
 
-describe("a mention or an image in a draft", () => {
-  test("is an @ path at the start or after a blank, or an image's placeholder", () => {
-    expect(hasMentionOrImage("@README.md")).toBe(true);
-    expect(hasMentionOrImage("Decide.1: read\n@plugin/src/view.ts")).toBe(true);
-    expect(hasMentionOrImage("[Image #12] here")).toBe(true);
+describe("what a draft needs Enter for", () => {
+  test("a mention whose path starts as a path does, is quoted, or ends in an extension", () => {
+    for (const draft of [
+      "@README.md",
+      "Decide.1: read\n@plugin/src/view.ts",
+      "Decide.1: see @src/x.ts, then",
+      "Decide.1: see @src/x.ts#L3-9",
+      "@./x",
+      "@../up/x",
+      "@~/notes",
+      "@/etc/hosts",
+      '@"my file.md"',
+    ]) {
+      expect(needsEnter(draft)).toBe(true);
+    }
   });
 
-  test("is not an address, a bare @ or plain text", () => {
-    expect(hasMentionOrImage("Decide.1: mail me@example.com")).toBe(false);
-    expect(hasMentionOrImage("Decide.1: the @ sign")).toBe(false);
-    expect(hasMentionOrImage("9efb08a1.Decide.1.A\n")).toBe(false);
+  test("pasted text or an image left as a placeholder", () => {
+    for (const draft of ["[Image #12] here", "[Pasted text #1 +12 lines]", "a\n[Pasted text #3 +1 line]", "[Pasted text #4]"]) {
+      expect(needsEnter(draft)).toBe(true);
+    }
+  });
+
+  test("not a name, a package, an address, a bare @ or plain text", () => {
+    for (const draft of [
+      "Decide.1: ask @alice",
+      "Decide.1: ask @alice.",
+      "Decide.1: bump @types/node first",
+      "Decide.1: mail me@example.com",
+      "Decide.1: the @ sign",
+      "9efb08a1.Decide.1.A\n",
+      "Decide.1: [Pasted text] in words",
+    ]) {
+      expect(needsEnter(draft)).toBe(false);
+    }
   });
 });
 

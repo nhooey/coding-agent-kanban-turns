@@ -7,6 +7,7 @@
 import type { DecideItem, Raised, Settlement } from "../types/index.d.ts";
 import { refOf } from "./items.ts";
 import { problemsOf, stillOpen } from "./raised.ts";
+import { withoutDraftHeader } from "./transcript.ts";
 
 /** What the pane and /answers say when there are no open items, with why when it's known. */
 export const noItemsText = (problem: string): string =>
@@ -36,26 +37,62 @@ export const drewText = (items: readonly DecideItem[]): string =>
     .map(refOf)
     .join(", ")}.`;
 
-/** What the pane says when Submit finds `@` mentions or pasted images, which a plugin's prompt sends unexpanded. */
-export const MENTIONS_TEXT =
-  "Not sent: press Enter in the prompt to send mentions or images.";
+/** What the pane says when Submit finds a file mention, pasted text or a pasted image, which a plugin's prompt sends unexpanded. */
+export const NEEDS_ENTER_TEXT =
+  "Not sent: press Enter in the prompt to send file mentions, pasted text or images.";
 
 /** What the pane says when the prompt box couldn't be emptied, so Submit sent nothing. */
 export const NOT_EMPTIED_TEXT =
   "Not sent: the prompt box couldn't be emptied, so the draft is still there.";
 
-/** What the pane says when the engine didn't take the prompt Submit sent, the draft put back. */
-export const notSentText = (why: string): string =>
-  `Not sent, the draft put back in the prompt box: ${why}`;
+/** What the pane says when the engine didn't take the prompt Submit sent, the draft put back, after what was typed meanwhile when `isAfterTyped`. */
+export const notSentText = (why: string, isAfterTyped = false): string =>
+  `Not sent, the draft put back in the prompt box${isAfterTyped ? " after the text typed meanwhile" : ""}: ${why}`;
 
-// An `@` mention, `@path` after a blank or at the start, and a pasted
-// image's placeholder in the box, `[Image #1]`.
-const MENTION = /(?:^|\s)@[^\s@]/;
-const IMAGE = /\[Image #\d+\]/;
+/** What the pane says when the engine didn't take the prompt and the box couldn't take the draft back either: the draft itself, so it isn't lost. */
+export const notPutBackText = (why: string, draft: string): string =>
+  `Not sent, and the prompt box couldn't take the draft back: ${why}\nThe draft, to copy:\n${draft}`;
 
-/** Whether a draft holds an `@` mention or a pasted image, which Claude Code expands only for a prompt sent with Enter. */
-export const hasMentionOrImage = (draft: string): boolean =>
-  MENTION.test(draft) || IMAGE.test(draft);
+/**
+ * What a refused draft goes back into the box with, by `append`: the draft
+ * alone into the box Submit emptied, else on a line of its own after what
+ * the person typed while the submit was pending.
+ */
+export const putBackText = (box: string, draft: string): string =>
+  box === "" || box.endsWith("\n") ? draft : `\n${draft}`;
+
+// The placeholders Claude Code leaves in the box for what it expands only
+// on Enter: a pasted image, `[Image #1]`, and collapsed pasted text,
+// `[Pasted text #1 +12 lines]`, which `$.prompt.read()` may give in place
+// of the text.
+const PLACEHOLDERS: readonly RegExp[] = [
+  /\[Image #\d+\]/,
+  /\[Pasted text #\d+(?: \+\d+ lines?)?\]/,
+];
+
+// A mention's path looks like a file when it starts as a path does, `./`,
+// `../`, `~/` or `/`, or is quoted, `@"my file.md"`; or when its last
+// segment has an extension, `@README.md`, `@src/x.ts#L3`. A bare name,
+// `@alice`, or a package, `@types/node`, does not.
+const PATH_START = /^(?:\.{1,2}\/|~\/|\/|")/;
+const EXTENSION = /[^/.]\.[A-Za-z0-9]+$/;
+
+/** The path of an `@` mention without a `#L` line range or the sentence's punctuation after it. */
+const mentionPath = (word: string): string =>
+  word
+    .slice(1)
+    .replace(/#.*$/, "")
+    .replace(/[.,;:!?)]+$/, "");
+
+/** Whether a word is an `@` mention whose path looks like a file. */
+const isFileMention = (word: string): boolean =>
+  word.startsWith("@") &&
+  (PATH_START.test(word.slice(1)) || EXTENSION.test(mentionPath(word)));
+
+/** Whether a draft holds a file mention, or pasted text or an image left as a placeholder, which Claude Code expands only for a prompt sent with Enter. */
+export const needsEnter = (draft: string): boolean =>
+  draft.split(/\s+/).some(isFileMention) ||
+  PLACEHOLDERS.some((placeholder) => placeholder.test(draft));
 
 /** What a press of the pane's Submit does with the box's text. */
 export type SubmitStep = Readonly<
@@ -64,14 +101,15 @@ export type SubmitStep = Readonly<
 
 /**
  * What a press of the pane's Submit does: nothing while a turn runs or
- * another Submit is under way, or for a box of blanks; refuses a draft with
- * a mention or an image; else sends the draft as it is.
+ * another Submit is under way, or for a box of blanks or of the line
+ * naming the plugin alone; refuses a draft with a file mention, pasted text
+ * or an image; else sends the draft as it is.
  */
 export const submitStep = (draft: string, isBusy: boolean): SubmitStep =>
-  isBusy || draft.trim() === ""
+  isBusy || withoutDraftHeader(draft).trim() === ""
     ? { skip: true }
-    : hasMentionOrImage(draft)
-      ? { refuse: MENTIONS_TEXT }
+    : needsEnter(draft)
+      ? { refuse: NEEDS_ENTER_TEXT }
       : { send: draft };
 
 /** The key of an item's notes field in the pane. */
