@@ -16,8 +16,14 @@ export const classOf = (chars: string): string =>
 /** The Decide list, whose items the plugin draws. */
 export const DECIDE = SPEC.lists.decide;
 
+/** The Done list, whose name the pane gives the items settled. */
+export const DONE = SPEC.lists.done;
+
 /** The command a draft's last line names to work the open items out afresh. */
 export const REASSESS = "reassess" satisfies keyof typeof SPEC.commands.names;
+
+/** The kind an item is when its kind isn't given: one option chosen. */
+export const DEFAULT_KIND = "radio" satisfies keyof typeof SPEC.options.kinds;
 
 /** A list's names: its header, then the aliases older replies carry. */
 export const namesOf = (

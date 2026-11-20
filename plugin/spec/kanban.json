@@ -84,12 +84,14 @@
       "radio": {
         "picks": "one",
         "glyph": "🔘",
-        "letters": {}
+        "letters": {},
+        "taught": true
       },
       "checkbox": {
         "picks": "any",
         "glyph": "🔲",
-        "letters": {}
+        "letters": {},
+        "taught": true
       },
       "binary": {
         "picks": "one",
@@ -97,7 +99,8 @@
         "letters": {
           "Y": "👍",
           "N": "👎"
-        }
+        },
+        "taught": false
       }
     }
   },

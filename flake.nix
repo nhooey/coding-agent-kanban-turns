@@ -203,7 +203,7 @@
               {
                 category = "build";
                 name = "spec-build";
-                help = "compile plugin/spec/kanban.yaml into plugin/src/protocol/spec.ts and plugin/spec/kanban.json, for a commit after the spec changes";
+                help = "compile plugin/spec/kanban.yaml into plugin/src/protocol/spec.ts and plugin/spec/kanban.json, and plugin/spec/fragments/ into plugin/src/protocol/fragments.ts, for a commit after either changes";
                 command = ''cd "$PRJ_ROOT/plugin" && npm run --silent spec:build'';
               }
               {

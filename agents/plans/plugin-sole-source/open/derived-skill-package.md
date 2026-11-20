@@ -12,7 +12,7 @@ touches: [flake.nix, plugin/spec/, nix/]
 - **Ships inside the plugin.** `packages.plugin` holds the skill at `skills/coding-agent-kanban-turn-responses/`, beside the manifest and the hooks, so installing the plugin installs the skill. Claude Code loads it as `coding-agent-kanban-turns:coding-agent-kanban-turn-responses`.
 - **A fallback for the hooks.** When the plugin's hooks fail to load, the skill still teaches the format and runs the protocol. When both load, the agent gets the instructions once ([instructions-once-with-skill](instructions-once-with-skill.md)).
 - **What the skill folder holds,** all built from the repository at build time:
-  - `SKILL.md`, assembled from the prose fragments and the spec's JSON copy ([protocol-prose-fragments](protocol-prose-fragments.md), [protocol-spec-data](../closed/protocol-spec-data.md)), with frontmatter in the form skills take, its `name` the folder's;
+  - `SKILL.md`, assembled from the prose fragments and the spec's JSON copy ([protocol-prose-fragments](../closed/protocol-prose-fragments.md), [protocol-spec-data](../closed/protocol-spec-data.md)), with frontmatter in the form skills take, its `name` the folder's;
   - worked examples rendered from chosen golden cases ([protocol-golden-cases](protocol-golden-cases.md));
   - `scripts/`: the CLI from [kanban-cli-adapter](kanban-cli-adapter.md), `kanban.js` and the standalone binary for the platform the plugin is built for.
 - **The fallback runs the plugin's core.** SKILL.md tells the agent to run `scripts/kanban.js` under Node where it can, and the binary otherwise, passing the transcript's path or neutral turns on stdin. Both are the same core functions the hooks call, bundled, so the fallback can't count, roll up or lint differently from the plugin.

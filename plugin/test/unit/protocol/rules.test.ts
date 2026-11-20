@@ -3,6 +3,8 @@ import { expect } from "expect";
 
 import {
   DECIDE,
+  DEFAULT_KIND,
+  DONE,
   LETTER,
   REASSESS,
   SUBSCRIPT_CHAR,
@@ -78,6 +80,20 @@ describe("itemLabel", () => {
 describe("REASSESS", () => {
   test("is a command the spec names", () => {
     expect(Object.keys(SPEC.commands.names)).toContain(REASSESS);
+  });
+});
+
+describe("DONE", () => {
+  test("is the spec's Done list", () => {
+    expect(DONE).toBe(SPEC.lists.done);
+    expect(DONE.header).toBe("Done");
+  });
+});
+
+describe("DEFAULT_KIND", () => {
+  test("is a kind the spec names, one the instructions teach", () => {
+    expect(SPEC.options.kinds[DEFAULT_KIND].taught).toBe(true);
+    expect(SPEC.options.kinds[DEFAULT_KIND].picks).toBe("one");
   });
 });
 

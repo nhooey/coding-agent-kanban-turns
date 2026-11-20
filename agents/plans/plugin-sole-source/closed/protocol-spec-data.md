@@ -27,7 +27,7 @@ touches: [plugin/spec/, plugin/tools/, plugin/src/spec.ts, plugin/src/protocol.t
   - `plugin/src/spec.ts`, exporting the spec as one `as const`, deeply readonly value, `SPEC`, and its type, `Spec`;
   - `plugin/spec/kanban.json`, beside the spec, its header in `$comment`, for readers that aren't TypeScript, such as the derived skill's build ([derived-skill-package](../open/derived-skill-package.md)).
 - **The core imports only the generated module.** Each function in `plugin/src/` that named a glyph, word or character takes it from that module's value instead, directly or through `plugin/src/protocol.ts`, which derives the patterns and labels several core files share. The plugin and its tests import nothing else of the spec. The core stays pure: no file is read at run time, and no YAML library is loaded at run time for the spec.
-- **Prose comes later.** Prose that names a list or a kind in words, such as the instructions, the tool's description and the pane's messages, keeps its words until [protocol-prose-fragments](../open/protocol-prose-fragments.md) assembles it from the spec. Where prose states a value a rule rests on, such as the turn id's length, it reads that value from the spec now.
+- **Prose comes later.** Prose that names a list or a kind in words, such as the instructions, the tool's description and the pane's messages, keeps its words until [protocol-prose-fragments](protocol-prose-fragments.md) assembles it from the spec. Where prose states a value a rule rests on, such as the turn id's length, it reads that value from the spec now.
 - **Out of date fails.** `checks.spec` runs the build step with `--check` and fails when the committed TypeScript module or JSON copy differs from what it writes.
 - **Rules from the pane-every-list plan land here.** [kanban-skill-list-answers](../../pane-every-list/open/kanban-skill-list-answers.md) writes the settling words and the grouped answer syntax into the spec, once the old skill is retired, and [answers-grouped-by-turn-and-list](../../pane-every-list/open/answers-grouped-by-turn-and-list.md) reads them from it, so those nodes come after this one.
 
@@ -37,4 +37,4 @@ Checks:
 - a test feeds the build step a spec with an implicitly typed scalar, a duplicate key and a schema violation, and each is refused;
 - the existing tests in `plugin/test/` pass unchanged, with the core reading the generated module;
 - `nix flake check` fails on a hand edit of either generated file;
-- the search in [the end state](../open/plugin-sole-source.md)'s checks finds no rule left in a pattern or a parser in `plugin/src/` outside the generated module; prose is left to [protocol-prose-fragments](../open/protocol-prose-fragments.md).
+- the search in [the end state](../open/plugin-sole-source.md)'s checks finds no rule left in a pattern or a parser in `plugin/src/` outside the generated module; prose is left to [protocol-prose-fragments](protocol-prose-fragments.md).

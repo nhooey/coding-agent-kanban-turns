@@ -46,8 +46,10 @@ import {
   withInstructions,
 } from "../src/protocol/instructions.ts";
 import { CHOSEN_MARK, itemsOf, optionMark, refOf } from "../src/items/items.ts";
-import { INDENT, cellWidth, codeSpans } from "../src/pane/layout.ts";
-import { DECIDE } from "../src/protocol/rules.ts";
+import { INDENT, codeSpans } from "../src/pane/layout.ts";
+import { cellWidth } from "../src/text/cells.ts";
+import { DECIDE, DONE, REASSESS } from "../src/protocol/rules.ts";
+import { capitalized } from "../src/text/words.ts";
 import { SPEC } from "../src/protocol/spec.ts";
 import {
   decideListCut,
@@ -741,8 +743,7 @@ export const register: Register = (on) => {
     const started = await next(e);
     await $.command.register({
       name: "answers",
-      description:
-        "Open the kanban Decide pane, at the first unanswered item",
+      description: `Open the kanban ${DECIDE.header} pane, at the first unanswered item`,
     });
     await $.command.register({
       name: "answers-config",
@@ -764,8 +765,9 @@ export const register: Register = (on) => {
     return started;
   });
 
-  // The plugin tells the agent about its tool itself, once per conversation,
-  // by whichever route runs first. This hook puts the instructions in the
+  // The plugin teaches the agent the turn-response format and its tool
+  // itself, once per conversation, by whichever route runs first, from the
+  // prose fragments the spec fills. This hook puts the instructions in the
   // conversation's context, after whatever the engine and other hooks put
   // there. A plugin above can send the event on past it, as
   // cc-plugin-sec-default does under managed settings; then the prompt.submit
@@ -1086,9 +1088,9 @@ export const register: Register = (on) => {
                 Submit to send after any answers, or alone, and takes it out
                 again; its glyph is ✅ while the line is there. */}
             {control(elements, {
-              key: "reassess",
+              key: REASSESS,
               glyph: hasReassess(text) ? CHOSEN_MARK : "🔄",
-              label: "Reassess",
+              label: capitalized(REASSESS),
               hotkey: s.keys.reassess,
               onPress: () => toggleReassess($),
             })}
@@ -1221,7 +1223,7 @@ const kanbanLine = (
 
   return (
     <Box key="kanban-line">
-      {piece("kanban", "Open the Decide pane", [
+      {piece("kanban", `Open the ${DECIDE.header} pane`, [
         "🖥️ ",
         <Text key="kanban-word" color={s.colors.kanban}>
           Kanban
@@ -1361,7 +1363,7 @@ const doneSection = (
     <Box key={`${key}-box`} flexDirection="column">
       <Button
         key={key}
-        label={`Done (${section.done.length})`}
+        label={`${DONE.header} (${section.done.length})`}
         plain
         onPress={() => toggleExpanded($, key)}
       >

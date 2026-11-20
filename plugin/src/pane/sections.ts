@@ -6,7 +6,7 @@
 
 import { isAnswered } from "../items/answers.ts";
 import { refOf } from "../items/items.ts";
-import { itemLabel } from "../protocol/rules.ts";
+import { DONE, itemLabel } from "../protocol/rules.ts";
 import { SPEC } from "../protocol/spec.ts";
 import type { DecideItem } from "../../types/index.d.ts";
 
@@ -95,9 +95,9 @@ export const firstUnansweredIn = (
     .flatMap((section) => section.open)
     .find((item) => !isAnswered(draft, item));
 
-/** The header of a turn's Done items: a toggle, `▸ Done (2)` while collapsed, `▾ Done (2)` while expanded. */
+/** The header of a turn's Done items: a toggle, `▸ Done (2)` while collapsed, `▾ Done (2)` while expanded, named as the spec names the Done list. */
 export const doneHeader = (count: number, isExpanded: boolean): string =>
-  `${isExpanded ? "▾" : "▸"} Done (${count})`;
+  `${isExpanded ? "▾" : "▸"} ${DONE.header} (${count})`;
 
 /**
  * A Done item's one line in its expanded section: its label, then its

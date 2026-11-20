@@ -1,7 +1,9 @@
 // The build step that compiles the protocol's spec, spec/kanban.yaml, into
 // the module the core reads, src/protocol/spec.ts, and a JSON copy,
-// spec/kanban.json. Pure: tools/spec/compile.ts reads the files, hands their
-// text here, and writes or checks what comes back.
+// spec/kanban.json; and its prose fragments, spec/fragments/*.md, into
+// src/protocol/fragments.ts, once each placeholder in them has a value in
+// the spec. Pure: tools/spec/compile.ts reads the files, hands their text
+// here, and writes or checks what comes back.
 //
 // The spec and its schema are read as strictly as a settings file, by
 // src/config/config.ts's `parseYaml`: YAML 1.2's core schema, so `no`, `Y` and `N`
@@ -12,13 +14,21 @@
 
 import { Ajv } from "ajv";
 import { parseYaml } from "../../src/config/config.ts";
+import {
+  OWN_PLACEHOLDERS,
+  fragmentProblems,
+  placeholderValues,
+} from "../../src/protocol/prose.ts";
+import type { OwnValues, ProseSpec } from "../../src/protocol/prose.ts";
 import type { Json } from "../../types/index.d.ts";
 
-/** The spec, its schema and what they compile to, from the plugin's folder. */
+/** The spec, its schema, the prose fragments and what they compile to, from the plugin's folder. */
 export const SPEC_FILE = "spec/kanban.yaml";
 export const SCHEMA_FILE = "spec/kanban.schema.yaml";
 export const MODULE_FILE = "src/protocol/spec.ts";
 export const JSON_FILE = "spec/kanban.json";
+export const FRAGMENTS_DIR = "spec/fragments";
+export const FRAGMENTS_MODULE_FILE = "src/protocol/fragments.ts";
 
 /** How many lists the protocol has. */
 const LIST_COUNT = 9;
@@ -230,6 +240,9 @@ const schemaProblems = (schema: Json, value: Json): readonly string[] => {
 /** The header each generated file opens with, naming what it's generated from. */
 const GENERATED = `Generated from plugin/${SPEC_FILE} by plugin/tools/spec/compile.ts: edit the spec and run spec-build, never this file.`;
 
+/** The header the fragments' module opens with. */
+const FRAGMENTS_GENERATED = `Generated from plugin/${FRAGMENTS_DIR}/ by plugin/tools/spec/compile.ts: edit the fragments and run spec-build, never this file.`;
+
 /** The module the core reads: the spec as one deeply readonly value, and its type. */
 export const moduleText = (value: Json): string =>
   [
@@ -253,18 +266,88 @@ export const jsonText = (value: Json): string => {
   return `${JSON.stringify({ $comment: header, ...Object.fromEntries(fields) }, null, 2)}\n`;
 };
 
+/** The fragments' module: each fragment's text by its name, in the order given, without its trailing blank lines. */
+export const fragmentsModuleText = (
+  fragments: Readonly<Record<string, string>>,
+): string =>
+  [
+    `// The kanban turn-response protocol's prose rules, a fragment per topic, their placeholders unfilled. ${FRAGMENTS_GENERATED}`,
+    "",
+    `export const FRAGMENTS = ${JSON.stringify(
+      Object.fromEntries(
+        Object.entries(fragments).map(([name, text]) => [name, text.trimEnd()]),
+      ),
+      null,
+      2,
+    )} as const;`,
+    "",
+    "/** A fragment's name: its file's, without `.md`. */",
+    "export type FragmentName = keyof typeof FRAGMENTS;",
+    "",
+  ].join("\n");
+
+/** A fragment's name, as a plan node's id is: lower-case words and dashes. */
+const FRAGMENT_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/** The values the plugin fills its own placeholders with, for the check alone. */
+const OWN_FOR_CHECK = Object.fromEntries(
+  OWN_PLACEHOLDERS.map((name) => [name, name]),
+) as OwnValues;
+
+/**
+ * What's wrong with each fragment, naming its file: a name that isn't an
+ * id, a fragment that doesn't read, or a placeholder the spec has no value
+ * for. Or, when the prose can't be filled from the spec, why: a schema too
+ * loose to shape the spec let through one the prose can't read, or two of
+ * the spec's values name one placeholder.
+ */
+const fragmentFileProblems = (
+  spec: Json,
+  fragments: Readonly<Record<string, string>>,
+): readonly string[] => {
+  try {
+    return [
+      ...Object.keys(fragments)
+        .filter((name) => !FRAGMENT_NAME.test(name))
+        .map(
+          (name) =>
+            `${FRAGMENTS_DIR}/${name}.md: isn't named in lower-case words and dashes`,
+        ),
+      ...fragmentProblems(
+        Object.fromEntries(
+          Object.entries(fragments).map(([name, text]) => [
+            `${FRAGMENTS_DIR}/${name}.md`,
+            text,
+          ]),
+        ),
+        placeholderValues(spec as unknown as ProseSpec, OWN_FOR_CHECK),
+      ),
+    ];
+  } catch (error) {
+    return [
+      `${FRAGMENTS_DIR}/: can't be filled from ${SPEC_FILE}: ${error instanceof Error ? error.message : String(error)}`,
+    ];
+  }
+};
+
 /** The generated files' text, by path, or why the spec doesn't compile. */
 export type Compiled = Readonly<
-  | { files: Readonly<{ module: string; json: string }> }
+  | { files: Readonly<{ module: string; json: string; fragments: string }> }
   | { problems: readonly string[] }
 >;
 
 /**
- * The spec's text compiled against its schema's: the module and the JSON
- * copy, or every problem with either, each naming its file. The spec is
- * checked for consistency only once its schema holds.
+ * The spec's text compiled against its schema's, with the prose
+ * fragments' text by name: the spec's module, its JSON copy and the
+ * fragments' module, or every problem with any, each naming its file. The
+ * spec is checked for consistency only once its schema holds, and the
+ * fragments against the spec only once it's consistent.
  */
-export const compiled = (specText: string, schemaText: string): Compiled => {
+export const compiled = (
+  specText: string,
+  schemaText: string,
+  fragments: Readonly<Record<string, string>>,
+): Compiled => {
   const schema = parseYaml(schemaText);
   const spec = parseYaml(specText);
   const unread = [
@@ -287,11 +370,19 @@ export const compiled = (specText: string, schemaText: string): Compiled => {
         : "value" in spec
           ? consistencyProblems(spec.value)
           : [];
+  const all =
+    problems.length === 0 && "value" in spec
+      ? fragmentFileProblems(spec.value, fragments)
+      : problems;
 
-  return problems.length > 0 || !("value" in spec)
-    ? { problems }
+  return all.length > 0 || !("value" in spec)
+    ? { problems: all }
     : {
-        files: { module: moduleText(spec.value), json: jsonText(spec.value) },
+        files: {
+          module: moduleText(spec.value),
+          json: jsonText(spec.value),
+          fragments: fragmentsModuleText(fragments),
+        },
       };
 };
 

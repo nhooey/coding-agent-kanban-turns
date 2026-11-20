@@ -40,6 +40,7 @@ import {
   escaped,
   namesOf,
 } from "../protocol/rules.ts";
+import { optionGlyphs } from "../protocol/kinds.ts";
 import { SPEC } from "../protocol/spec.ts";
 import type { DecideItem, Message, Settlement, Turn } from "../../types/index.d.ts";
 
@@ -276,15 +277,9 @@ export const isAnswered = (
 // --- Decide items a reply's own list prints --------------------------------
 
 const DECIDE_ITEM = /^ {0,3}(\d+)[.)]\s+\*\*(.+?)\*\*/gm;
-// Every glyph an option is drawn with: each kind's, and each its letters have.
-const OPTION_GLYPHS: readonly string[] = [
-  ...new Set(
-    Object.values(SPEC.options.kinds).flatMap((kind) => [
-      kind.glyph,
-      ...Object.values<string>(kind.letters),
-    ]),
-  ),
-];
+// Every glyph an option is drawn with, a kind not taught's among them, so
+// an older reply's options still read.
+const OPTION_GLYPHS = optionGlyphs(SPEC.options.kinds);
 const DECIDE_OPTION = new RegExp(
   String.raw`^\s*(?:${OPTION_GLYPHS.map(escaped).join("|")})\s+${LETTER}\.\s+\*\*.+?\*\*`,
   "mu",
