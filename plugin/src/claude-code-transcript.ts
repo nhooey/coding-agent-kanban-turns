@@ -12,14 +12,17 @@
 // - the user: `turnOrigin` `human`;
 // - a peer, an agent's or another session's message: `turnOrigin` `peer`;
 // - a task's notification: `turnOrigin` `task_notification`;
+// - a schedule: `turnOrigin` `scheduled`, a meta message with no `origin`
+//   whose message is the stored prompt, which a `/loop` or `ScheduleWakeup`
+//   wakeup, a `CronCreate` task or a cloud scheduled task sends;
 // - a plugin: a `pluginPrompt`, read as the text it sent, for a prompt sent
 //   in the plugin's own name; else an `origin` of kind `plugin`, read as
 //   the message, for one sent as the user, as this plugin's Submit and
 //   Reassess send theirs. A plugin's meta message with no `turnOrigin`,
 //   such as the terminal's width, opens none.
 //
-// Any other `turnOrigin` opens no turn: a headless run's prompt, `sdk`, a
-// scheduled one, or a system prompt no plugin names.
+// Any other `turnOrigin` opens no turn: a headless run's prompt, `sdk`, or
+// a system prompt no plugin names.
 //
 // A turn's id is the record's `promptId` cut to the spec's turn-id
 // length. Its replies are the text blocks of the assistant records up to
@@ -42,6 +45,7 @@ const ORIGIN_OWNERS: ReadonlyMap<unknown, Owner> = new Map([
   ["human", "user"],
   ["peer", "peer"],
   ["task_notification", "notification"],
+  ["scheduled", "scheduled"],
 ]);
 // Who sent a queued message, by its origin's kind.
 const QUEUED_OWNERS: ReadonlyMap<unknown, Owner> = new Map([

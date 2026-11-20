@@ -113,6 +113,27 @@ export const pluginRow = (text: string, name = "terminal-width"): TranscriptReco
 export const sdkPrompt = (id: string, text: string): TranscriptRecord =>
   user({ promptId: promptId(id), promptSource: "sdk", turnOrigin: "sdk" }, text);
 
+/**
+ * A scheduled prompt, a `/loop` wakeup or a `ScheduleWakeup`, unless
+ * `wakeupSource` says another: a meta message with no `origin`, its stored
+ * prompt the message.
+ */
+export const scheduled = (
+  id: string,
+  text: string,
+  wakeupSource = "schedule_wakeup",
+): TranscriptRecord =>
+  user(
+    {
+      promptId: promptId(id),
+      isMeta: true,
+      promptSource: "system",
+      turnOrigin: "scheduled",
+      wakeupSource,
+    },
+    text,
+  );
+
 /** A compaction's summary, recorded with the turn's own origin. */
 export const compactSummary = (id: string): TranscriptRecord =>
   user(

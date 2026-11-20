@@ -59,8 +59,9 @@ export type Settlement = Readonly<
 /**
  * Who wrote a turn's prompt, or a message sent while it ran: the user;
  * this plugin, sending the user's draft or Reassess for them; another
- * plugin; a peer, an agent's report or another session's message; or a
- * task's notification. The user's and this plugin's are the user's own
+ * plugin; a peer, an agent's report or another session's message; a
+ * task's notification; or a schedule, whose stored prompt a wakeup or a
+ * scheduled task sends. The user's and this plugin's are the user's own
  * text, which answers items and runs commands; the others answer nothing.
  */
 export type Owner =
@@ -68,7 +69,8 @@ export type Owner =
   | "this-plugin"
   | "other-plugin"
   | "peer"
-  | "notification";
+  | "notification"
+  | "scheduled";
 
 /**
  * A turn's prompt, or a message sent while the turn ran: who wrote it, its

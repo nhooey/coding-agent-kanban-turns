@@ -31,8 +31,8 @@ describe("the user's own text", () => {
     expect(isOwn("this-plugin")).toBe(true);
   });
 
-  test("is no peer's message, task notification or other plugin's prompt", () => {
-    for (const owner of ["peer", "notification", "other-plugin"] as const satisfies readonly Owner[]) {
+  test("is no peer's message, task notification, other plugin's prompt or scheduled prompt", () => {
+    for (const owner of ["peer", "notification", "other-plugin", "scheduled"] as const satisfies readonly Owner[]) {
       expect(isOwn(owner)).toBe(false);
     }
   });
@@ -296,7 +296,7 @@ describe("a command on the last line", () => {
   });
 
   test("a turn that isn't the user's own, though it ends on reassess, reassesses nothing", () => {
-    for (const owner of ["other-plugin", "peer", "notification"] as const satisfies readonly Owner[]) {
+    for (const owner of ["other-plugin", "peer", "notification", "scheduled"] as const satisfies readonly Owner[]) {
       expect(reassessStart([turnOf("00000001", "go"), turnOf("00000002", "1. A\nreassess", { owner })])).toBe(0);
     }
   });
