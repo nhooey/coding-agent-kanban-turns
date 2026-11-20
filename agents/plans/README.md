@@ -2,9 +2,9 @@
 
 <!-- Written by plans.py overview; edit the nodes, not this file. -->
 
-## In progress (1)
+## In progress (0)
 
-- [The mod reads the turns, the items and the answers from the transcript in TypeScript](kanban-answers-in-transcript/open/kanban-mod-reads-transcript.md) `kanban-mod-reads-transcript`, part of [The kanban turns mod lives in its own repository, in TypeScript only, beside the kanban skill](kanban-answers-in-transcript/open/kanban-mod-own-repository.md)
+None.
 
 ## Ready (3)
 
@@ -26,4 +26,4 @@ None.
 
 ## Closed
 
-18 in [closed/](closed/): 9 implemented, 1 rejected, 1 abandoned, 7 superseded.
+19 in [closed/](closed/): 10 implemented, 1 rejected, 1 abandoned, 7 superseded.

@@ -26,29 +26,36 @@ import {
   withInstructions,
 } from "../src/instructions.ts";
 import { glyphOf, itemsOf, refOf } from "../src/items.ts";
-import { countsArgv, countsOf } from "../src/counts.ts";
 import { INDENT, codeSpans } from "../src/layout.ts";
 import { itemOfLink, linkedItems, linkedQuestions } from "../src/links.ts";
 import {
-  NOTHING,
-  failedRun,
-  foundFrom,
-  missingScript,
-  outstandingArgv,
-  scriptPath,
-  withProblems,
+  countLine,
+  mergedOfResponse,
+  mergedQuery,
+  openOf,
+  pullRequestsToAsk,
 } from "../src/outstanding.ts";
-import type { Found } from "../src/outstanding.ts";
 import {
   emptyRaised,
   firstUnanswered,
   forSession,
   isSettled,
+  problemsOf,
   refreshed,
   seen,
+  unread,
   unseen,
   withItems,
 } from "../src/raised.ts";
+import {
+  NOT_DECODED,
+  chunkOffsets,
+  decodedText,
+  transcriptPathFor,
+  turnsOfText,
+  withRange,
+} from "../src/transcript.ts";
+import type { Turn } from "../src/transcript.ts";
 import {
   answersText,
   configText,
@@ -72,6 +79,9 @@ const PANE = { id: "kanban-turns", title: "🧠 Decide" } as const;
 // The column left of an option's lines that lights while the pointer is over
 // the option: it comes out of the option's indent, so its text stays put.
 const GUTTER = 1;
+// The most bytes one `$.fs.read` returns: the transcript is read in ranges
+// this long.
+const READ_BYTES = 4 * 1024 * 1024;
 // Nothing read yet: no settings until session.start reads the files.
 const UNREAD: Loaded = { settings: null, effective: [], problems: [] };
 
@@ -80,74 +90,102 @@ const UNREAD: Loaded = { settings: null, effective: [], problems: [] };
 const raised = atom(
   { plugin: "coding-agent-kanban-turns", key: "raised" } as const,
   emptyRaised,
-  { shape: "raised-1" },
+  { shape: "raised-2" },
+);
+// How many refreshes have started: a `gh` answer redraws the count line only
+// while the refresh that asked is the latest.
+const refreshes = atom(
+  { plugin: "coding-agent-kanban-turns", key: "refreshes" } as const,
+  0,
+);
+// The pull requests `gh` said merged, as `owner/repo#N`: a merge stays, so
+// none is asked about again.
+const merged = atom(
+  { plugin: "coding-agent-kanban-turns", key: "merged" } as const,
+  [] as readonly string[],
 );
 const draft = atom(
   { plugin: "coding-agent-kanban-turns", key: "draft" } as const,
   "",
 );
 // The skill's count line, `📌 Outstanding: 🚧 2 · … · 🧠 3`, from the last
-// refresh; empty when the script gave none.
+// refresh; empty when nothing is open.
 const counts = atom(
   { plugin: "coding-agent-kanban-turns", key: "counts" } as const,
   "",
 );
+// Change the tag when Settings' fields change, as for Raised.
 const settings = atom(
   { plugin: "coding-agent-kanban-turns", key: "settings" } as const,
   UNREAD,
-  { shape: "settings-1" },
+  { shape: "settings-2" },
 );
 
 /** The settings in effect, or none while the defaults file can't be used. */
 const settingsNow = async ($: EngineInterface): Promise<Settings | null> =>
   (await read($, settings)).settings;
 
-/** Runs `outstanding.py decide --json` over this session's transcript, as `outstanding` sets it: the open items, or why there are none. */
-const openItems = async (
-  $: EngineInterface,
-  outstanding: Settings["outstanding"],
-): Promise<Found> => {
-  const home = await $.env.get("HOME");
-  const script = scriptPath(outstanding, home);
-
-  return (await $.fs.exists(script))
-    ? foundFrom(
-        await $.process.run(
-          outstandingArgv(outstanding, home, await $.session.id()),
-          { cwd: await $.session.cwd(), timeoutMs: outstanding["timeout-ms"] },
-        ),
-      )
-    : missingScript(script);
-};
-
-/** Runs `outstanding.py render --counts` over this session's transcript: the skill's count line, or none. */
-const countLine = async (
-  $: EngineInterface,
-  outstanding: Settings["outstanding"],
-): Promise<string> => {
-  const script = scriptPath(outstanding, await $.env.get("HOME"));
-
-  return (await $.fs.exists(script))
-    ? countsOf(
-        await $.process.run(
-          countsArgv(outstanding.python, script, await $.session.id()),
-          {
-            cwd: await $.session.cwd(),
-            timeoutMs: outstanding["timeout-ms"],
-          },
-        ),
-      )
-    : "";
-};
-
-/** The open items, or why there are none: the settings' problems first, then the script's. */
-const found = async ($: EngineInterface): Promise<Found> => {
-  const { settings: s, problems } = await read($, settings);
-
-  return withProblems(
-    problems,
-    s === null ? NOTHING : await openItems($, s.outstanding).catch(failedRun),
+/** This session's transcript file: where the engine says it is, else, when it can't say, where Claude Code keeps it. */
+const transcriptPath = async ($: EngineInterface): Promise<string> => {
+  const given = await $.session.info().then(
+    (info) => info.transcriptPath,
+    () => undefined,
   );
+
+  return typeof given === "string" && given !== ""
+    ? given
+    : transcriptPathFor(
+        (await $.env.get("HOME")) ?? "",
+        await $.session.cwd(),
+        await $.session.id(),
+      );
+};
+
+/**
+ * This session's turns, read from its whole transcript file in ranges the
+ * engine's reads allow, one after another, each decoded as it comes.
+ */
+const turnsNow = async ($: EngineInterface): Promise<readonly Turn[]> => {
+  const path = await transcriptPath($);
+  const { size } = await $.fs.stat(path);
+  const decoded = await chunkOffsets(size, READ_BYTES).reduce(
+    async (before, offset) => {
+      const sofar = await before;
+      const range = await $.fs.read(path, {
+        as: "bytes",
+        offset,
+        length: READ_BYTES,
+      });
+
+      return withRange(sofar, range.base64);
+    },
+    Promise.resolve(NOT_DECODED),
+  );
+
+  return turnsOfText(decodedText(decoded));
+};
+
+/**
+ * The pull requests among `refs` that GitHub says merged, asked of `gh` in
+ * one call; none when there's nothing to ask, or `gh` is missing, fails or
+ * outlasts `timeoutMs`. A GraphQL error exits non-zero yet still answers for
+ * the other pull requests, so the output is read whatever the exit code.
+ */
+const mergedNow = async (
+  $: EngineInterface,
+  refs: readonly string[],
+  timeoutMs: number,
+): Promise<ReadonlySet<string>> => {
+  const { ordered, argv } = mergedQuery(refs);
+  const stdout =
+    ordered.length === 0
+      ? ""
+      : await $.process.run(argv, { timeoutMs }).then(
+          (done) => done.stdout,
+          () => "",
+        );
+
+  return mergedOfResponse(ordered, stdout);
 };
 
 /** Reads the settings files again, so an edit to either is taken up at the next refresh. */
@@ -160,15 +198,76 @@ const reloadSettings = async ($: EngineInterface): Promise<Loaded> => {
   return now;
 };
 
-/** Reads the settings, the open items and the count line again: open items join the raised ones, and raised ones no longer open settle. */
+/** Sets the count line and the raised items from what `turns` leave open, given the pull requests known merged. */
+const settle = async (
+  $: EngineInterface,
+  turns: readonly Turn[],
+  window: number,
+  warnings: readonly string[],
+): Promise<void> => {
+  const open = openOf(turns, window, new Set(await read($, merged)));
+  await update($, counts, () => open.counts);
+  await update($, raised, (r) => refreshed(r, open.items, warnings));
+};
+
+/**
+ * Asks `gh` which of the Review items' pull requests not yet known merged
+ * have merged since, the pane and the count line drawn without waiting for
+ * it. A merge joins the known ones, and redraws the count line from the
+ * refresh's turns while no later refresh has started; one that has reads
+ * the merge itself. The raised items don't hang on merges, so they stay.
+ */
+const askMerged = async (
+  $: EngineInterface,
+  stamp: number,
+  turns: readonly Turn[],
+  window: Settings["counts"],
+): Promise<void> => {
+  const known = new Set(await read($, merged));
+  const found = await mergedNow(
+    $,
+    pullRequestsToAsk(turns, window.turns, known),
+    window["gh-timeout-ms"],
+  );
+
+  if (found.size > 0) {
+    const now = await update($, merged, (m) =>
+      [...new Set([...m, ...found])].sort(),
+    );
+
+    if ((await read($, refreshes)) === stamp) {
+      await update($, counts, () =>
+        countLine(turns, window.turns, new Set(now)),
+      );
+    }
+  }
+};
+
+/**
+ * Reads the settings, the open items and the count line again: open items
+ * join the raised ones, and raised ones no longer open settle. A transcript
+ * that can't be read, or settings that can't be used, settle nothing.
+ */
 const refresh = async ($: EngineInterface): Promise<void> => {
-  const { settings: s } = await reloadSettings($);
-  const [open, line] = await Promise.all([
-    found($),
-    s === null ? "" : countLine($, s.outstanding).catch(() => ""),
-  ]);
-  await update($, counts, () => line);
-  await update($, raised, (r) => refreshed(r, open.items, open.problem));
+  const stamp = await update($, refreshes, (n) => n + 1);
+  const { settings: s, problems } = await reloadSettings($);
+  // Without settings there's no window to read: the settings' problems say why.
+  const found: Readonly<{ turns: readonly Turn[] } | { problem: string }> =
+    s === null
+      ? { problem: "" }
+      : await turnsNow($).then(
+          (turns) => ({ turns }),
+          (error: unknown) => ({ problem: String(error) }),
+        );
+
+  if (s === null || "problem" in found) {
+    const problem = "problem" in found ? found.problem : "";
+    await update($, raised, (r) => unread(r, problem, problems));
+
+    return;
+  }
+  await settle($, found.turns, s.counts.turns, problems);
+  void askMerged($, stamp, found.turns, s.counts).catch(() => undefined);
 };
 
 /** Rewrites the prompt draft with `edit`: the one way a click or a note reaches the draft. */
@@ -311,7 +410,7 @@ export const register: Register = (on) => {
   });
 
   // Above the prompt: the skill's count line, then 🪟 ↗, both opening the
-  // pane with the keyboard. Nothing when the script gives no line. Claude
+  // pane with the keyboard. Nothing when nothing is open. Claude
   // Code stacks each plugin's drawing here itself, so another plugin's band,
   // such as the usage mod's agents tree, is drawn beside this one.
   on("ui.render", { component: "AbovePrompt" }, async ($, e, next) => {
@@ -382,7 +481,7 @@ export const register: Register = (on) => {
     const s = await settingsNow($);
 
     if (r.items.length === 0 || s === null) {
-      return <Text dimColor>{noItemsText(r.problem)}</Text>;
+      return <Text dimColor>{noItemsText(problemsOf(r))}</Text>;
     }
 
     return (
@@ -407,7 +506,7 @@ export const register: Register = (on) => {
             onPress={() => $.ui.close({ id: PANE.id })}
           />
         </Box>
-        {r.problem ? <Text dimColor>{r.problem}</Text> : null}
+        {problemsOf(r) ? <Text dimColor>{problemsOf(r)}</Text> : null}
         {itemBoxes($, elements, s, r, r.items, await read($, draft))}
       </Box>
     );

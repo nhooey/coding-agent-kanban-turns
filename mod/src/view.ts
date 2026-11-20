@@ -5,7 +5,7 @@
 
 import type { DecideItem, Raised } from "../types/index.d.ts";
 import { refOf } from "./items.ts";
-import { stillOpen } from "./raised.ts";
+import { problemsOf, stillOpen } from "./raised.ts";
 
 /** What the pane and /answers say when there are no open items, with why when it's known. */
 export const noItemsText = (problem: string): string =>
@@ -16,7 +16,7 @@ export const answersText = (raised: Raised): string => {
   const open = stillOpen(raised).length;
 
   return open === 0
-    ? noItemsText(raised.problem)
+    ? noItemsText(problemsOf(raised))
     : `Decide pane opened: ${open} open Decide items.`;
 };
 

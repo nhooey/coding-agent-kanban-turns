@@ -235,7 +235,7 @@ describe("an item's text", () => {
   });
 });
 
-describe("the items a tool call or the script hands over", () => {
+describe("the items a kanban_options call hands over", () => {
   test("a ref and a kind left out are filled in, and a malformed item dropped", () => {
     const found = itemsOf({
       items: [

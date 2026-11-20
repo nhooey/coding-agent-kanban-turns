@@ -6,6 +6,8 @@
 // those values must have, so a default is written in one place. Sections
 // merge key by key, a scalar or a list replaces, and a key the shape
 // doesn't name, or a value of the wrong type, refuses the user's file whole.
+// A section the mod no longer reads is the exception: it is left out with a
+// warning, and the rest of the file is used.
 
 import type { Json, Loaded, Settings } from "../types/index.d.ts";
 
@@ -14,7 +16,7 @@ type Shape = "string" | "number" | { readonly [key: string]: Shape };
 
 /** Every setting the mod reads, by the type its value must have. */
 export const SETTINGS_SHAPE: Shape = {
-  outstanding: { script: "string", python: "string", "timeout-ms": "number" },
+  counts: { turns: "number", "gh-timeout-ms": "number" },
   keys: { dismiss: "string" },
   colors: {
     border: "string",
@@ -25,6 +27,28 @@ export const SETTINGS_SHAPE: Shape = {
     expand: "string",
   },
 };
+
+/** The top-level sections the mod no longer reads, each with what to set instead. */
+export const RETIRED: Readonly<Record<string, string>> = {
+  outstanding:
+    "the mod reads the transcript itself; counts.turns sets how many turns the count line reads",
+};
+
+/** The file's value without the sections the mod no longer reads. */
+export const withoutRetired = (value: Json): Json =>
+  isMap(value)
+    ? Object.fromEntries(
+        Object.entries(value).filter(([key]) => !(key in RETIRED)),
+      )
+    : value;
+
+/** A warning for each section the mod no longer reads that the file still holds. */
+export const retiredIn = (value: Json): readonly string[] =>
+  isMap(value)
+    ? Object.keys(value)
+        .filter((key) => key in RETIRED)
+        .map((key) => `${key} is no longer read and is left out: ${RETIRED[key] ?? ""}`)
+    : [];
 
 /** The folder under $XDG_CONFIG_HOME, or ~/.config, the user's file sits in. */
 export const APP = "coding-agent-kanban-turns";
@@ -130,32 +154,31 @@ export const userConfigPath = (
       ? `${env.home}/.config/${APP}/config.jsonc`
       : undefined;
 
-/** `path` with a leading `~/` made the home directory. */
-export const expandHome = (path: string, home: string | undefined): string =>
-  home !== undefined && path.startsWith("~/")
-    ? `${home}/${path.slice(2)}`
-    : path;
-
 /** A file the mod read: where it is, and its text. */
 export type ConfigFile = Readonly<{ path: string; text: string }>;
 
-/** A file's value checked against the shape, or what's wrong with it, the file named. */
+/**
+ * A file's value checked against the shape, without the sections the mod no
+ * longer reads, or what's wrong with it; each problem or warning names the
+ * file.
+ */
 const checked = (
   file: ConfigFile,
   isSparse: boolean,
 ): Readonly<{ value: Json | undefined; problems: readonly string[] }> => {
   const parsed = parseJsonc(file.text);
+  const value = "value" in parsed ? withoutRetired(parsed.value) : undefined;
+  const warnings = "value" in parsed ? retiredIn(parsed.value) : [];
   const problems =
     "error" in parsed
       ? [parsed.error]
-      : problemsIn(SETTINGS_SHAPE, parsed.value, isSparse);
+      : problemsIn(SETTINGS_SHAPE, value ?? null, isSparse);
+  const inFile = (lines: readonly string[]) =>
+    lines.map((line) => `${file.path}: ${line}`);
 
-  return problems.length === 0 && "value" in parsed
-    ? { value: parsed.value, problems: [] }
-    : {
-        value: undefined,
-        problems: problems.map((problem) => `${file.path}: ${problem}`),
-      };
+  return problems.length === 0 && value !== undefined
+    ? { value, problems: inFile(warnings) }
+    : { value: undefined, problems: inFile([...warnings, ...problems]) };
 };
 
 const keyOf = ([key]: readonly [string, Json]): string => key;

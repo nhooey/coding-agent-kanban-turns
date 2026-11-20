@@ -8,7 +8,6 @@ import { expect } from "expect";
 import {
   DEFAULTS_FILE,
   SETTINGS_SHAPE,
-  expandHome,
   jsonOf,
   leaves,
   loaded,
@@ -77,9 +76,9 @@ describe("the user's file over the defaults", () => {
   });
 
   test("a value of the wrong type refuses the file", () => {
-    const got = loaded(defaults, user('{"outstanding": {"timeout-ms": "soon"}}'));
+    const got = loaded(defaults, user('{"counts": {"turns": "all"}}'));
     expect(got.problems).toEqual([
-      "~/.config/x/config.jsonc: outstanding.timeout-ms is string, not a number",
+      "~/.config/x/config.jsonc: counts.turns is string, not a number",
     ]);
   });
 
@@ -94,6 +93,29 @@ describe("the user's file over the defaults", () => {
     ]);
   });
 
+  test("a section the mod no longer reads is left out with a warning, and the rest of the file used", () => {
+    const got = loaded(
+      defaults,
+      user('{"outstanding": {"script": "~/x.py", "python": "python3"}, "keys": {"dismiss": "x"}}'),
+    );
+    expect(got.settings?.keys.dismiss).toBe("x");
+    expect(got.settings).not.toHaveProperty("outstanding");
+    expect(got.problems).toEqual([
+      "~/.config/x/config.jsonc: outstanding is no longer read and is left out: the mod reads the transcript itself; counts.turns sets how many turns the count line reads",
+    ]);
+    expect(got.effective.some((line) => line.startsWith("outstanding."))).toBe(false);
+  });
+
+  test("a retired section beside a broken key still refuses the file, with both said", () => {
+    const got = loaded(defaults, user('{"outstanding": {}, "keys": {"prev": "h"}}'));
+    expect(got.settings?.keys.dismiss).toBe("q");
+    expect(got.problems).toHaveLength(2);
+  });
+
+  test("the count line's window and gh's time are settings", () => {
+    expect(loaded(defaults, undefined).settings?.counts).toEqual({ turns: 20, "gh-timeout-ms": 20000 });
+  });
+
   test("a file that isn't JSONC is named with why", () => {
     expect(loaded(defaults, user("{")).problems[0]).toMatch(/^~\/\.config\/x\/config\.jsonc: /);
   });
@@ -101,7 +123,7 @@ describe("the user's file over the defaults", () => {
   test("a broken defaults file leaves no settings at all", () => {
     const got = loaded({ path: "d", text: '{"keys": {}}' }, undefined);
     expect(got.settings).toBeNull();
-    expect(got.problems).toContain("d: outstanding is missing");
+    expect(got.problems).toContain("d: counts is missing");
   });
 });
 
@@ -135,11 +157,5 @@ describe("the pieces", () => {
       "/h/.config/coding-agent-kanban-turns/config.jsonc",
     );
     expect(userConfigPath({})).toBeUndefined();
-  });
-
-  test("a leading ~/ is the home directory", () => {
-    expect(expandHome("~/a/b", "/h")).toBe("/h/a/b");
-    expect(expandHome("/a/~/b", "/h")).toBe("/a/~/b");
-    expect(expandHome("~/a", undefined)).toBe("~/a");
   });
 });

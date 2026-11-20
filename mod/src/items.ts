@@ -1,6 +1,6 @@
 // The Decide items themselves: the reference an answer names one by, the
-// glyph an option is drawn with, and the items read out of whatever JSON a
-// tool call or outstanding.py handed over.
+// glyph an option is drawn with, and the items read out of whatever input a
+// `kanban_options` call handed over.
 
 import type { DecideItem, DecideKind } from "../types/index.d.ts";
 
@@ -48,7 +48,7 @@ const withRef = (item: DecideItem): DecideItem => ({
 const itemsField = (value: unknown): unknown =>
   isRecord(value) && "items" in value ? value.items : [];
 
-/** The items a tool call or the script handed over, whatever else the JSON held. */
+/** The items a `kanban_options` call handed over, whatever else its input held. */
 export const itemsOf = (value: unknown): readonly DecideItem[] => {
   const items = itemsField(value);
 
