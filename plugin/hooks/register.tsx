@@ -25,7 +25,7 @@ import {
   TOOL_DESCRIPTION,
   withInstructions,
 } from "../src/instructions.ts";
-import { glyphOf, itemsOf, refOf } from "../src/items.ts";
+import { itemsOf, markOf, refOf } from "../src/items.ts";
 import { INDENT, codeSpans } from "../src/layout.ts";
 import { itemOfLink, linkedItems, linkedQuestions } from "../src/links.ts";
 import {
@@ -669,7 +669,9 @@ const itemView = (
       {lines("", item.note, undefined, "note")}
       {item.options.map((option) => {
         const isChosen = view.chosen.includes(option.letter);
-        const pick = isChosen ? { backgroundColor: colors.chosen } : {};
+        // A chosen option's line is underlined, its glyph turned to ✅;
+        // nothing of it, and none of its ➕ and ➖ lines, is highlighted.
+        const pick = isChosen ? { underline: true } : {};
         const key = view.keyOf(option.letter);
         // A Button holds only text, so each of the option's lines is a button
         // of its own that picks it. They share a hover group, so the pointer
@@ -707,8 +709,8 @@ const itemView = (
               `${key}-${part}-${n}`,
               <Box key={`${key}-${part}-${n}-box`} marginLeft={INDENT}>
                 <Button key={`${key}-${part}-${n}`} label={line} {...press}>
-                  <Text {...pick}>{prefix ? `${prefix} ` : ""}</Text>
-                  {inline(line, `${key}-${part}-${n}`, pick)}
+                  <Text>{prefix ? `${prefix} ` : ""}</Text>
+                  {inline(line, `${key}-${part}-${n}`)}
                 </Button>
               </Box>,
             ),
@@ -723,8 +725,8 @@ const itemView = (
             {row(
               key,
               <Button key={key} label={option.name} {...press}>
-                <Text {...pick}>
-                  {glyphOf(item, option.letter)} {option.letter}.{" "}
+                <Text>
+                  {markOf(item, option.letter, isChosen)} {option.letter}.{" "}
                 </Text>
                 {inline(option.name, `${option.letter}-name`, {
                   ...pick,

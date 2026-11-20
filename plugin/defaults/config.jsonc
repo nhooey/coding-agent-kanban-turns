@@ -48,8 +48,6 @@
     "title": "claude",
     // Code spans in a summary, note or option.
     "code": "permission",
-    // The background of the option the draft picks.
-    "chosen": "diffAddedWord",
     // The bar in the column left of an option, lit down the option's
     // full height while the pointer is over any of its lines.
     "hover": "suggestion",

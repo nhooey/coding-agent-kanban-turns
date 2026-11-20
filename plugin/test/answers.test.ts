@@ -70,6 +70,18 @@ describe("building and replacing references in the draft", () => {
     );
   });
 
+  test("a second click on the chosen option takes its answer out", () => {
+    const once = choose("Go ahead: ", radio, "A");
+    expect(choose(once, radio, "A")).toBe("Go ahead:\n");
+    expect(choose(choose("", binary, "Y"), binary, "Y")).toBe("");
+  });
+
+  test("a second click keeps the answer's note, without a letter", () => {
+    expect(choose("9efb08a1.Decide.1.A: soon", radio, "A")).toBe(
+      "9efb08a1.Decide.1: soon",
+    );
+  });
+
   test("each click on another item adds a line of its own", () => {
     const once = choose("", radio, "A");
     expect(choose(once, binary, "Y")).toBe(
@@ -90,11 +102,6 @@ describe("building and replacing references in the draft", () => {
     );
   });
 
-  test("the same option clicked again leaves the draft as it was", () => {
-    expect(choose("9efb08a1.Decide.1.A", radio, "A")).toBe(
-      "9efb08a1.Decide.1.A",
-    );
-  });
 
   test("an item of another turn with the same number is not touched", () => {
     expect(choose("0f311c94.Decide.1.A", radio, "B")).toBe(

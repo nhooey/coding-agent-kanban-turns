@@ -94,7 +94,10 @@ const toggled = (
 ): readonly string[] =>
   held.includes(letter) ? held.filter((l) => l !== letter) : [...held, letter];
 
-/** The letters an item holds once `letter` is clicked: a checkbox toggles it, the others take it alone. */
+/**
+ * The letters an item holds once `letter` is clicked: a checkbox toggles it;
+ * the others take it alone, or drop it when it was already the one chosen.
+ */
 export const lettersAfter = (
   item: DecideItem,
   held: readonly string[],
@@ -102,7 +105,9 @@ export const lettersAfter = (
 ): readonly string[] =>
   item.kind === "checkbox"
     ? inOptionOrder(item, toggled(held, letter))
-    : [letter];
+    : held.includes(letter)
+      ? []
+      : [letter];
 
 /** The draft with `text` in place of the answer. */
 const replaced = (draft: string, answer: Answer, text: string): string =>
@@ -164,8 +169,9 @@ export const withNote = (
 
 /**
  * The draft once an option is clicked: the item's answer written in place of
- * the one the draft held, or added on a line of its own at the end; a checkbox item's letter
- * toggled, its answer dropped when no letter is left.
+ * the one the draft held, or added on a line of its own at the end; a click
+ * on a chosen letter unchooses it, and the answer is dropped when no letter
+ * and no note is left.
  */
 export const choose = (
   draft: string,

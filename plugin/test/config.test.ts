@@ -87,7 +87,7 @@ describe("the user's file over the defaults", () => {
     const got = loaded(defaults, user('{"colors": {"hover": "claude"}}'));
     expect(got.problems).toEqual([]);
     expect(got.settings?.colors.hover).toBe("claude");
-    expect(got.settings?.colors.chosen).toBe("diffAddedWord");
+    expect(got.settings?.colors.title).toBe("claude");
     expect(loaded(defaults, user('{"colors": {"hover": 3}}')).problems).toEqual([
       "~/.config/x/config.jsonc: colors.hover is number, not a string",
     ]);

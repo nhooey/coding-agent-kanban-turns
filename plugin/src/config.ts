@@ -22,7 +22,6 @@ export const SETTINGS_SHAPE: Shape = {
     border: "string",
     title: "string",
     code: "string",
-    chosen: "string",
     hover: "string",
     expand: "string",
   },

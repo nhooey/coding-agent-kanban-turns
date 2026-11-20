@@ -78,7 +78,6 @@ export type Settings = Readonly<{
     border: string;
     title: string;
     code: string;
-    chosen: string;
     hover: string;
     expand: string;
   }>;
