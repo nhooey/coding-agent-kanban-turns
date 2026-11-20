@@ -3,6 +3,7 @@ title: The kanban skill reads each list's settling words and the grouped answer 
 state: approved
 kind: implementation
 part-of: pane-every-list
+needs: [protocol-spec-data]
 touches: [coding-agent-skills/skills/coding-agent-kanban-turn-responses/SKILL.md, coding-agent-skills/skills/coding-agent-kanban-turn-responses/scripts/reply_turns.py, coding-agent-skills/skills/coding-agent-kanban-turn-responses/scripts/outstanding.py, coding-agent-skills/AGENTS.md]
 ---
 

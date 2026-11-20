@@ -1,7 +1,8 @@
 ---
 title: The kanban turns plugin lives in its own repository, in TypeScript only, beside the kanban skill
-state: approved
+state: superseded
 kind: end-state
+superseded-by: plugin-sole-source
 ---
 
 # The kanban turns plugin lives in its own repository, in TypeScript only, beside the kanban skill

@@ -3,7 +3,7 @@ title: The draft's answers are grouped by turn and list, with context in parenth
 state: approved
 kind: implementation
 part-of: pane-every-list
-needs: [kanban-skill-list-answers, pane-submit-review-fixes]
+needs: [kanban-skill-list-answers, pane-submit-review-fixes, protocol-spec-data]
 touches: [plugin/src/answers.ts, plugin/src/outstanding.ts, plugin/test/]
 ---
 
