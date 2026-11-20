@@ -3,7 +3,7 @@ title: The pane draws only the items in or near its scroll window, from cached i
 state: approved
 kind: implementation
 part-of: pane-every-list
-needs: [pane-turn-sections, pane-turn-navigation]
+needs: [pane-turn-sections, pane-turn-navigation, pane-state-reducer]
 touches: [plugin/hooks/register.tsx, plugin/src/window.ts, plugin/src/layout.ts, plugin/defaults/config.yaml, plugin/plugin-tests/, plugin/test/]
 ---
 

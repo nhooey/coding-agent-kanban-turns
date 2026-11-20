@@ -3,7 +3,7 @@ title: Each item's box, in the pane and in its reply, carries its list's actions
 state: approved
 kind: implementation
 part-of: pane-every-list
-needs: [items-of-every-list, answers-grouped-by-turn-and-list, pane-ui-harmonize]
+needs: [items-of-every-list, answers-grouped-by-turn-and-list, pane-ui-harmonize, pane-state-reducer]
 touches: [plugin/hooks/register.tsx, plugin/src/view.ts, plugin/src/items.ts, plugin/defaults/config.yaml, plugin/plugin-tests/]
 ---
 

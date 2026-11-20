@@ -4,6 +4,7 @@ state: implemented
 kind: implementation
 part-of: plugin-sole-source
 touches: [plugin/hooks/register.tsx, plugin/src/instructed.ts, plugin/types/index.d.ts, plugin/plugin-tests/, plugin/test/, README.md]
+implemented-by: nhooey/coding-agent-kanban-turns#39
 ---
 
 # The plugin's instructions reach the agent once per conversation, whatever other plugins run before it

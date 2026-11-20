@@ -3,7 +3,7 @@ title: ◀ and ▶ jump the pane between turns with a visible item, and Only sho
 state: approved
 kind: implementation
 part-of: pane-every-list
-needs: [pane-turn-sections, pane-list-filters]
+needs: [pane-turn-sections, pane-list-filters, pane-state-reducer]
 touches: [plugin/hooks/register.tsx, plugin/src/view.ts, plugin/src/sections.ts, plugin/defaults/config.yaml, plugin/types/index.d.ts, plugin/plugin-tests/]
 ---
 
