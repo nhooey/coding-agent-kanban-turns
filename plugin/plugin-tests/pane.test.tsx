@@ -15,12 +15,12 @@ const human = (id: string, text: string): TranscriptRecord => ({
   message: { role: "user", content: text },
 });
 
-/** A prompt a mod submitted: its text in `pluginPrompt`, the engine's words round it in the message. */
-const pluginPrompt = (id: string, text: string): TranscriptRecord => ({
-  ...human(id, `The coding-agent-kanban-tur… plugin sent a message:\n${text}`),
+/** A draft this plugin's Submit or Reassess sent as the user: the text as it is, the plugin named only in `origin`. */
+const submitted = (id: string, text: string): TranscriptRecord => ({
+  ...human(id, text),
   turnOrigin: "system",
-  origin: undefined,
-  pluginPrompt: { name: "coding-agent-kanban-turns", text },
+  promptSource: "system",
+  origin: { kind: "plugin", name: "coding-agent-kanban-turns", asUser: true },
 });
 
 /** A reply: its text, and a `kanban_options` call for each of `calls`. */
@@ -980,7 +980,7 @@ test("an item a reassess made Done says so", async ($, on) => {
   await $.turn.complete(replyDone("t1"));
   // A prompt that answers item 1 and ends on reassess: its answer stands,
   // and the reassess makes the rest Done.
-  later.push(pluginPrompt("b2c3d4e5", `${HEADER}9efb08a1.Decide.1.B\nreassess\n`), assistant("Reassessed."));
+  later.push(submitted("b2c3d4e5", `${HEADER}9efb08a1.Decide.1.B\nreassess\n`), assistant("Reassessed."));
   await $.turn.complete(replyDone("t2"));
   const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
   await openDone(ui);
@@ -1020,7 +1020,7 @@ test("the Reassess button's prompt replaces every earlier item", async ($, on) =
   engine(on, () => ITEMS, listsText, () => later);
   await $.turn.complete(replyDone("t1"));
   later.push(
-    pluginPrompt("b2c3d4e5", "reassess"),
+    submitted("b2c3d4e5", "reassess"),
     replyRecord([LATER], listsText([LATER])),
   );
   await $.turn.complete(replyDone("t2"));
@@ -1905,7 +1905,7 @@ test("Submit moves the items its draft answers to Done at once, and the turn's e
 
   // The engine records the sent draft as this plugin's prompt; the turn's
   // end reads it, and the items stay Done, now as answered.
-  later.push(pluginPrompt("b2c3d4e5", state.sent[0] ?? ""), assistant("On it."));
+  later.push(submitted("b2c3d4e5", state.sent[0] ?? ""), assistant("On it."));
   await $.turn.start({ text: state.sent[0] ?? "", turnId: "t2" });
   await $.turn.complete(replyDone("t2"));
   const line = await $.ui.mount({ ...ABOVE_PROMPT, surface: "terminal" });
@@ -1927,7 +1927,7 @@ test("a Submit pressed while the turn's end reads the transcript keeps its answe
   const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
   await ui.press({ key: "9efb08a1.Decide.1.A" });
   await ui.press({ key: "submit" });
-  later.push(pluginPrompt("b2c3d4e5", state.sent[0] ?? ""), assistant("On it."));
+  later.push(submitted("b2c3d4e5", state.sent[0] ?? ""), assistant("On it."));
   await $.turn.start({ text: state.sent[0] ?? "", turnId: "t2" });
 
   // The turn ends, and while its refresh reads the transcript, another

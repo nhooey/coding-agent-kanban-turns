@@ -1,7 +1,7 @@
-// The reports that settle a Waiting item: an agent's message, another
-// session's message, or a task notification for a finished task or an
-// expired Monitor, read out of a turn's prompt; the kanban skill's
-// `report_names` and `report_names_item`, in TypeScript. No `$`, no I/O.
+// Whether a report names a Waiting item, by the names an adapter read the
+// report to go by: the kanban skill's `report_names_item`, in TypeScript.
+// And a pseudo-XML reader, `elements`, which the Claude Code adapter reads
+// its reports' names with. No `$`, no I/O.
 
 /** One element of a pseudo-XML text: its tag and attributes, lowercased names, and its own text, no child's. */
 export type Element = Readonly<{
@@ -158,49 +158,6 @@ export const elements = (text: string): readonly Element[] => {
     attrs,
     text: (texts.get(at) ?? "").trim(),
   }));
-};
-
-// A task notification reports a finished task by its status, unless its
-// agent still waits on work of its own; a Monitor reports its end in its
-// event.
-const DONE_STATUSES: readonly string[] = [
-  "completed",
-  "failed",
-  "killed",
-  "stopped",
-  "cancelled",
-];
-const STILL_WAITING = "is waiting on its own background work";
-const MONITOR_ENDED = "[Monitor expired";
-const QUOTED = /"([^"]+)"/g;
-
-/**
- * The names a report goes by, where a turn's prompt is one: the sending
- * session's name, the agent's id, or a finished task's id and the quoted
- * names in its summary. Undefined where the prompt is no report, such as a
- * notification for a task still running or a Monitor's event.
- */
-export const reportNames = (prompt: string): readonly string[] | undefined => {
-  const found = prompt.includes("<") ? elements(prompt) : [];
-  const first = (tag: string) => found.find((element) => element.tag === tag);
-  const summary = first("summary")?.text ?? "";
-  const isFinished =
-    (DONE_STATUSES.includes((first("status")?.text ?? "").toLowerCase()) &&
-      !summary.includes(STILL_WAITING)) ||
-    (first("event")?.text ?? "").startsWith(MONITOR_ENDED);
-  const session = first("cross-session-message");
-  const agent = first("agent-message");
-
-  return session !== undefined
-    ? [session.attrs["from-name"] ?? ""]
-    : agent !== undefined
-      ? [agent.attrs["from"] ?? ""]
-      : first("task-notification") !== undefined && isFinished
-        ? [
-            first("task-id")?.text ?? "",
-            ...[...summary.matchAll(QUOTED)].map((m) => m[1] ?? ""),
-          ]
-        : undefined;
 };
 
 /** Whether `text` holds `name` as a whole word, ignoring case; a word may hold hyphens, as a branch name does. */

@@ -3,7 +3,7 @@
 // made-up content.
 
 import { PLUGIN, TOOL_CALLED } from "../src/instructions.ts";
-import type { TranscriptRecord } from "../src/transcript.ts";
+import type { TranscriptRecord } from "../src/claude-code-transcript.ts";
 
 /** A whole prompt id from the 8 characters a turn id holds; empty stays empty. */
 export const promptId = (id: string): string =>
@@ -56,9 +56,9 @@ export const notification = (id: string, text: string): TranscriptRecord =>
   );
 
 /**
- * A prompt a mod submitted, this plugin unless `name` says another, as the
- * engine records it: its text in `pluginPrompt`, the engine's words round it
- * in the message.
+ * A prompt a plugin submitted in its own name, this plugin unless `name`
+ * says another, as the engine records it: its text in `pluginPrompt`, the
+ * engine's words round it in the message.
  */
 export const pluginPrompt = (
   id: string,
@@ -68,15 +68,50 @@ export const pluginPrompt = (
   user(
     {
       promptId: promptId(id),
+      origin: { kind: "plugin", name },
+      promptSource: "system",
       turnOrigin: "system",
+      promptRewritten: true,
       pluginPrompt: { name, text },
     },
     `The ${name.slice(0, 23)}… plugin sent a message:\n${text}\n\nThis is how Claude Code surfaces a prompt a plugin submits between turns — it starts this turn in the user's place. Address the message above.`,
   );
 
-/** Another mod's prompt, which is never the user's own text. */
+/** Another plugin's prompt, which is never the user's own text. */
 export const otherPluginPrompt = (id: string, text: string): TranscriptRecord =>
   pluginPrompt(id, text, "other-mod");
+
+/**
+ * A prompt a plugin submitted as the user, `$.prompt.submit({ asUser: true })`,
+ * as this plugin's Submit and Reassess send the draft: the text as it is,
+ * and the plugin named only in `origin`.
+ */
+export const submitted = (
+  id: string,
+  text: string,
+  name = PLUGIN,
+): TranscriptRecord =>
+  user(
+    {
+      promptId: promptId(id),
+      origin: { kind: "plugin", name, asUser: true },
+      promptSource: "system",
+      turnOrigin: "system",
+      queuePriority: "later",
+    },
+    text,
+  );
+
+/** A meta message a plugin adds to the context, such as the terminal's width, which opens no turn. */
+export const pluginRow = (text: string, name = "terminal-width"): TranscriptRecord =>
+  user(
+    { promptId: promptId("0000aaaa"), isMeta: true, origin: { kind: "plugin", name } },
+    [{ type: "text", text }],
+  );
+
+/** A prompt a headless run's caller sent, which opens no turn. */
+export const sdkPrompt = (id: string, text: string): TranscriptRecord =>
+  user({ promptId: promptId(id), promptSource: "sdk", turnOrigin: "sdk" }, text);
 
 /** A compaction's summary, recorded with the turn's own origin. */
 export const compactSummary = (id: string): TranscriptRecord =>

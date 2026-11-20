@@ -9,7 +9,7 @@ touches: [plugin/spec/cases/, plugin/test/]
 
 # Golden cases, as YAML, give transcripts with their expected open items, count line and lint findings
 
-- **A case is data.** Each case is a YAML file in `plugin/spec/cases/`, read strictly with the same library and schema rules as the spec ([protocol-spec-data](protocol-spec-data.md)), holding a transcript, as a list of neutral turns ([neutral-turn-stream](neutral-turn-stream.md)), and what the core gives for it:
+- **A case is data.** Each case is a YAML file in `plugin/spec/cases/`, read strictly with the same library and schema rules as the spec ([protocol-spec-data](protocol-spec-data.md)), holding a transcript, as a list of neutral turns ([neutral-turn-stream](../closed/neutral-turn-stream.md)), and what the core gives for it:
   - the open items, by reference;
   - the 📌 count line;
   - the lint findings for each reply, empty for a clean one.

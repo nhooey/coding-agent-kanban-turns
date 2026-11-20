@@ -6,7 +6,7 @@ The `coding-agent-kanban-turns` Claude Code plugin, in TypeScript: a pane that l
 
 - `plugin/`: the plugin, the marketplace's source (`.claude-plugin/marketplace.json`).
   - `hooks/`: the effects: `register.tsx` registers every hook, and `settings.ts` reads the settings files.
-  - `src/`: the pure core, no `claude-code` import and no I/O, so Node type-checks and tests it.
+  - `src/`: the pure core, no `claude-code` import and no I/O, so Node type-checks and tests it. What settles items, the count line and the roll-up read harness-neutral turns (`Turn` in `types/index.d.ts`), which the Claude Code adapter, `src/claude-code-transcript.ts`, builds from the session's JSONL records, reports' names and Decide items included. `src/instructed.ts` is the one other module that reads those records, for whether the agent's instructions reached the conversation.
   - `defaults/config.yaml`: every setting with its default and a comment; a user's own `config.yaml` merges over it.
   - `types/index.d.ts`: the shapes and the `$.state` contract, self-contained as `claude plugin validate` asks.
   - `vendor/`: the runtime libraries the core imports by a relative path, `yaml` and `jsonc-parser`. The engine loads only the plugin's own files, so the flake bundles each into one ES module there (`nix/bundle-vendor.sh`), with its licence beside it. The bundles are committed, for the marketplace install, beside their self-contained types; `nix flake check` holds them to the flake's byte for byte, and `refresh-vendor` lays the flake's after a change to the libraries, the bundling or the flake's inputs (`update-flake`), for a commit.

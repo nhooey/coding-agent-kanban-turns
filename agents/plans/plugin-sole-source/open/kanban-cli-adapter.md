@@ -14,7 +14,7 @@ touches: [plugin/cli/, flake.nix, plugin/package.json]
   - `rollup`: the 📌 roll-up in full;
   - `lint`: a reply's findings, exiting non-zero when there are any;
   - `turn-id`: the current turn's id.
-- **The core reads a neutral turn list** ([neutral-turn-stream](neutral-turn-stream.md)), and the CLI gets one from:
+- **The core reads a neutral turn list** ([neutral-turn-stream](../closed/neutral-turn-stream.md)), and the CLI gets one from:
   - a transcript file by path, through a small transcript adapter per harness, Claude Code's JSONL first, chosen by a flag;
   - stdin, as a JSON list of neutral turns, the fallback for a harness with no adapter here.
 - **Built by Nix.** Flake packages build:

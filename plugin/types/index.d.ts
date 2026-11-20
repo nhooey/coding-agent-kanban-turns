@@ -57,6 +57,50 @@ export type Settlement = Readonly<
 >;
 
 /**
+ * Who wrote a turn's prompt, or a message sent while it ran: the user;
+ * this plugin, sending the user's draft or Reassess for them; another
+ * plugin; a peer, an agent's report or another session's message; or a
+ * task's notification. The user's and this plugin's are the user's own
+ * text, which answers items and runs commands; the others answer nothing.
+ */
+export type Owner =
+  | "user"
+  | "this-plugin"
+  | "other-plugin"
+  | "peer"
+  | "notification";
+
+/**
+ * A turn's prompt, or a message sent while the turn ran: who wrote it, its
+ * text, and, where it reports that some work ended, the names it goes by,
+ * such as the sending session's name, the agent's id or the finished task's
+ * id. A report naming a Waiting item settles it.
+ */
+export type Message = Readonly<{
+  owner: Owner;
+  text: string;
+  /** The names a report goes by; undefined where the text is no report. */
+  reportNames: readonly string[] | undefined;
+}>;
+
+/**
+ * One turn of a session, whatever harness ran it: a harness's adapter
+ * builds these from its own transcript, and the core reads nothing else.
+ */
+export type Turn = Readonly<{
+  /** The turn's id, as an item reference names it. */
+  id: string;
+  /** The prompt that opened the turn, and who wrote it. */
+  prompt: Message;
+  /** The texts of the agent's responses, oldest first, the last its final one. */
+  replies: readonly string[];
+  /** The Decide items the `kanban_options` tool raised, in the order the agent raised them. */
+  decide: readonly DecideItem[];
+  /** The messages sent while the turn ran, the user's and others', in order. */
+  messages: readonly Message[];
+}>;
+
+/**
  * Every Decide item raised in this session, oldest first: the pane lists
  * them all, and a reply draws its own under its text. An item stays once
  * raised; one no longer open is settled, Done in the UI, drawn dimmed, its

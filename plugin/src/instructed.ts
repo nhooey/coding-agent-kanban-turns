@@ -1,6 +1,9 @@
 // Whether the agent's instructions still have to reach this conversation,
 // read from the session's transcript. No `$`, no I/O: register.tsx reads the
-// file and hands its text here.
+// file and hands its text here. Beside the Claude Code adapter,
+// claude-code-transcript.ts, this is the one module that reads Claude
+// Code's records themselves: what settles items reads neutral turns, and
+// this reads the records for a question no turn holds.
 //
 // They reach the agent by one of two routes. This plugin's `prompt.context`
 // hook adds them to the context the engine prepends to the first message,
@@ -16,8 +19,8 @@
 // What came before is gone from the agent's context, the instructions with it.
 
 import { BLOCK, INSTRUCTIONS } from "./instructions.ts";
-import { recordsOf } from "./transcript.ts";
-import type { TranscriptRecord } from "./transcript.ts";
+import { recordsOf } from "./claude-code-transcript.ts";
+import type { TranscriptRecord } from "./claude-code-transcript.ts";
 
 /** What the hook about to add the instructions reads: this conversation's key, and whether they are still owed. */
 export type Instructing = Readonly<{ key: string; isOwed: boolean }>;
