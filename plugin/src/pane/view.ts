@@ -8,13 +8,14 @@
 import type { DecideItem, Raised, Settings, Settlement } from "../../types/index.d.ts";
 import { answersIn, hasReassess } from "../items/answers.ts";
 import { refOf } from "../items/items.ts";
-import { REASSESS, itemLabel } from "../protocol/rules.ts";
+import { DECIDE, DONE, REASSESS, itemLabel } from "../protocol/rules.ts";
 import { problemsOf, stillOpen } from "../items/raised.ts";
+import { capitalized } from "../text/words.ts";
 import { isReassessLine, withoutDraftHeader } from "../transcript/turns.ts";
 
 /** What the pane and /answers say when there are no open items, with why when it's known. */
 export const noItemsText = (problem: string): string =>
-  `No open Decide items${problem ? `: ${problem}` : ""}.`;
+  `No open ${DECIDE.header} items${problem ? `: ${problem}` : ""}.`;
 
 /** /answers's reply: the pane opened over the open items, or why there are none. */
 export const answersText = (raised: Raised): string => {
@@ -22,7 +23,7 @@ export const answersText = (raised: Raised): string => {
 
   return open === 0
     ? noItemsText(problemsOf(raised))
-    : `Decide pane opened: ${open} open Decide items.`;
+    : `${DECIDE.header} pane opened: ${open} open ${DECIDE.header} items.`;
 };
 
 /** /answers-config's reply: each setting in effect, then each file or value not used and why. */
@@ -36,7 +37,7 @@ export const configText = (
 
 /** The `kanban_options` tool's result: how many items it drew buttons for, by reference. */
 export const drewText = (items: readonly DecideItem[]): string =>
-  `Drew buttons for ${items.length} Decide items under the final response and in the Decide pane: ${items
+  `Drew buttons for ${items.length} ${DECIDE.header} items under the final response and in the ${DECIDE.header} pane: ${items
     .map(refOf)
     .join(", ")}.`;
 
@@ -175,18 +176,19 @@ const lettersAndNote = (letters: readonly string[], note: string): string =>
  * `Answered in <turn>: <letters>`, its note after ` · ` or in place of the
  * letters; the answer Submit sent, `Sent: <letters>`, until the turn's end
  * reads it; else `Done: reassessed`, `Done: asked again`, or `Done` where
- * the transcript doesn't say.
+ * the transcript doesn't say. The pane's word for a settled item is the
+ * Done list's name, so it follows the spec's header.
  */
-export const settledText = (settlement: Settlement | undefined): string =>
+export const settledText =(settlement: Settlement | undefined): string =>
   settlement === undefined
-    ? "Done"
+    ? DONE.header
     : settlement.how === "answered"
       ? `Answered in ${settlement.turn}: ${lettersAndNote(settlement.letters, settlement.note)}`
       : settlement.how === "sent"
         ? `Sent: ${lettersAndNote(settlement.letters, settlement.note)}`
         : settlement.how === "reassessed"
-          ? "Done: reassessed"
-          : "Done: asked again";
+          ? `${DONE.header}: ${REASSESS}ed`
+          : `${DONE.header}: asked again`;
 
 /** The letters the answer that made an item Done picked, sent or read; none when something else did. */
 export const sentLetters = (
@@ -247,10 +249,13 @@ export type KeyRow = Readonly<{ key: string; does: string }>;
  * Claude Code moves the focus ring and the keyboard with.
  */
 export const keyRows = (keys: Settings["keys"]): readonly KeyRow[] => [
-  { key: keys.next, does: "↓ Next: the next item, or Done header" },
+  { key: keys.next, does: `↓ Next: the next item, or ${DONE.header} header` },
   { key: keys.previous, does: "↑ Previous: the item before" },
   { key: keys.submit, does: "📤 Submit: send the draft" },
-  { key: keys.reassess, does: "🔄 Reassess: add or take out the reassess line" },
+  {
+    key: keys.reassess,
+    does: `🔄 ${capitalized(REASSESS)}: add or take out the ${REASSESS} line`,
+  },
   { key: keys.help, does: "? Keys: open or close this panel" },
   { key: keys.dismiss, does: "✖ Close: close the pane" },
   { key: "↑ ↓ tab", does: "move between options and fields" },

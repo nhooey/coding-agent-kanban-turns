@@ -2283,6 +2283,30 @@ test("the context tells the agent about the plugin's tool, and keeps the rest", 
   expect(blocks.at(-1)?.text).toContain(`\`${TOOL}\``);
 });
 
+test("the context teaches the whole turn-response format, every list's header and the roll-up's among it", async ($, on) => {
+  engine(on, () => []);
+  on("prompt.context", (_, e) => ({ blocks: e.blocks }));
+  const { blocks } = await $.prompt.context({ blocks: [] });
+  const text = blocks.find((block) => block.name === "kanbanTurns")?.text ?? "";
+
+  [
+    "✅ **Done:**",
+    "🚧 **Pending:**",
+    "📝 **Logged:**",
+    "⏳ **Waiting:**",
+    "❓ **Answers:**",
+    "🔑 **Authorizations:**",
+    "🔍 **Review:**",
+    "👉 **Todo:**",
+    "🧠 **Decide:**",
+    "📌 **Outstanding from previous turns:**",
+    "📌 Outstanding: 🚧 1",
+    "## Progress updates",
+    "A question is never a choice.",
+  ].forEach((phrase) => expect(text).toContain(phrase));
+  expect(text).not.toContain("{{");
+});
+
 const GO = { text: "go", wait: false, origin: { kind: "composer" } } as const;
 
 test(

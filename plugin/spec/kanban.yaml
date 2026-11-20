@@ -80,7 +80,9 @@ lists:
 #     glyph: what each option is drawn with;
 #     letters: the letters the kind takes, each with its own glyph in place
 #       of `glyph`; none for a kind that takes any letter the reference
-#       grammar allows. `Y` and `N` are strings: YAML 1.2 types no letter.
+#       grammar allows. `Y` and `N` are strings: YAML 1.2 types no letter;
+#     taught: whether the agent's instructions teach the kind; one not
+#       taught is still read in the replies that hold it.
 options:
   pro: ➕
   con: ➖
@@ -89,16 +91,21 @@ options:
       picks: one
       glyph: 🔘
       letters: {}
+      taught: true
     checkbox:
       picks: any
       glyph: 🔲
       letters: {}
+      taught: true
+    # A yes-or-no question is taught as a radio item lettered A and B, so
+    # every answer names an option one way; older replies still hold this.
     binary:
       picks: one
       glyph: 👍
       letters:
         Y: 👍
         N: 👎
+      taught: false
 
 # The commands a prompt runs, by its first word, bare or after a skill
 # command.

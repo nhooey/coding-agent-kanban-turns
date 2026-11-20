@@ -1,9 +1,12 @@
 import { describe, test } from "node:test";
 import { expect } from "expect";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 
 import { SPEC } from "../../../src/protocol/spec.ts";
+import { FRAGMENTS } from "../../../src/protocol/fragments.ts";
 import {
+  FRAGMENTS_DIR,
+  FRAGMENTS_MODULE_FILE,
   JSON_FILE,
   MODULE_FILE,
   SCHEMA_FILE,
@@ -21,6 +24,14 @@ const read = (path: string): string =>
 const specText = read(SPEC_FILE);
 const schemaText = read(SCHEMA_FILE);
 
+/** The committed fragments' text, by name, as the build step reads them. */
+const fragments: Readonly<Record<string, string>> = Object.fromEntries(
+  readdirSync(new URL(`../../../${FRAGMENTS_DIR}`, import.meta.url))
+    .filter((file) => file.endsWith(".md"))
+    .toSorted()
+    .map((file) => [file.slice(0, -".md".length), read(`${FRAGMENTS_DIR}/${file}`)]),
+);
+
 /** The spec's text with `from` replaced by `to`, which must be in it. */
 const edited = (from: string, to: string): string => {
   expect(specText).toContain(from);
@@ -30,7 +41,7 @@ const edited = (from: string, to: string): string => {
 
 /** The problems the build step refuses `text` with; none when it compiles. */
 const problemsOf = (text: string): readonly string[] => {
-  const result = compiled(text, schemaText);
+  const result = compiled(text, schemaText, fragments);
 
   return "problems" in result ? result.problems : [];
 };
@@ -193,16 +204,56 @@ describe("specProblems", () => {
 });
 
 describe("the build step", () => {
-  test("compiles the spec to the committed module and JSON copy", () => {
-    const result = compiled(specText, schemaText);
+  test("compiles the spec and the fragments to the committed modules and JSON copy", () => {
+    const result = compiled(specText, schemaText, fragments);
 
     expect(result).toEqual({
-      files: { module: read(MODULE_FILE), json: read(JSON_FILE) },
+      files: {
+        module: read(MODULE_FILE),
+        json: read(JSON_FILE),
+        fragments: read(FRAGMENTS_MODULE_FILE),
+      },
+    });
+  });
+
+  test("writes each fragment into its module by its file's name, without its trailing blank lines", () => {
+    expect(Object.keys(FRAGMENTS)).toEqual(Object.keys(fragments));
+    Object.entries(fragments).forEach(([name, text]) =>
+      expect(FRAGMENTS[name as keyof typeof FRAGMENTS]).toBe(text.trimEnd()),
+    );
+  });
+
+  test("refuses a fragment with a placeholder the spec has no value for", () => {
+    expect(
+      compiled(specText, schemaText, { ...fragments, extra: "a {{header.nothing}}\n" }),
+    ).toEqual({
+      problems: [`${FRAGMENTS_DIR}/extra.md: no value in the spec for {{header.nothing}}`],
+    });
+  });
+
+  test("refuses a fragment whose placeholder a spec change takes the value of", () => {
+    expect(
+      compiled(edited("    glyph: 🧠\n", "    glyph: 🧩\n"), schemaText, {
+        extra: "{{lists.decide.glyph}} {{header.decide}} {{lists.decide.colour}}",
+      }),
+    ).toEqual({
+      problems: [`${FRAGMENTS_DIR}/extra.md: no value in the spec for {{lists.decide.colour}}`],
+    });
+    expect(
+      compiled(edited("  todo:\n", "  chores:\n"), schemaText, { extra: "{{header.todo}}" }),
+    ).toEqual({
+      problems: [`${FRAGMENTS_DIR}/extra.md: no value in the spec for {{header.todo}}`],
+    });
+  });
+
+  test("refuses a fragment named other than an id", () => {
+    expect(compiled(specText, schemaText, { "Extra Rules": "plain" })).toEqual({
+      problems: [`${FRAGMENTS_DIR}/Extra Rules.md: isn't named in lower-case words and dashes`],
     });
   });
 
   test("writes the JSON copy with the spec's values and a header naming its source", () => {
-    const result = compiled(specText, schemaText);
+    const result = compiled(specText, schemaText, fragments);
     const json: unknown = "files" in result ? JSON.parse(result.files.json) : {};
 
     expect(json).toEqual({
@@ -243,28 +294,36 @@ describe("the build step", () => {
   });
 
   test("keeps its own header in the JSON copy, whatever `$comment` the spec holds", () => {
-    const result = compiled(`$comment: mine\n${specText}`, schemaText);
+    const result = compiled(`$comment: mine\n${specText}`, schemaText, fragments);
     const json: unknown = "files" in result ? JSON.parse(result.files.json) : {};
 
     expect(json).toMatchObject({ $comment: expect.stringContaining(SPEC_FILE) });
   });
 
   test("refuses an empty schema, which checks nothing", () => {
-    expect(compiled(specText, "")).toEqual({
+    expect(compiled(specText, "", fragments)).toEqual({
       problems: [`${SCHEMA_FILE}: is empty, so it checks nothing`],
     });
   });
 
   test("reports, rather than throws, a schema too loose to shape the spec", () => {
-    const result = compiled("lists: {}\n", "type: object\n");
+    const result = compiled("lists: {}\n", "type: object\n", fragments);
 
     expect("problems" in result && result.problems).toEqual([
       expect.stringMatching(new RegExp(`^${SCHEMA_FILE}: lets through a spec the build step can't read: `)),
     ]);
   });
 
+  test("reports, rather than throws, a spec the prose can't be filled from", () => {
+    const result = compiled(`plugin: its own\n${specText}`, "type: object\n", fragments);
+
+    expect("problems" in result && result.problems).toEqual([
+      `${FRAGMENTS_DIR}/: can't be filled from ${SPEC_FILE}: more than one value for {{plugin}}`,
+    ]);
+  });
+
   test("refuses a schema it can't read", () => {
-    const result = compiled(specText, "type: [");
+    const result = compiled(specText, "type: [", fragments);
 
     expect("problems" in result && result.problems[0]).toMatch(
       new RegExp(`^${SCHEMA_FILE}: `),

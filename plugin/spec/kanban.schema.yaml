@@ -48,7 +48,7 @@ definitions:
   kind:
     type: object
     additionalProperties: false
-    required: [picks, glyph, letters]
+    required: [picks, glyph, letters, taught]
     properties:
       picks: { enum: [one, any] }
       glyph: { $ref: "#/definitions/glyph" }
@@ -56,6 +56,7 @@ definitions:
         type: object
         propertyNames: { $ref: "#/definitions/letter" }
         additionalProperties: { $ref: "#/definitions/glyph" }
+      taught: { type: boolean }
   command:
     type: object
     additionalProperties: false
