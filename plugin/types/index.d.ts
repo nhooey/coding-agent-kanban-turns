@@ -1,7 +1,7 @@
 // The shapes the plugin works on, and its `$.state` contract. Self-contained,
 // as `claude plugin validate` asks: the core in src/ imports its types from
 // here, and Node's type-check reads the `claude-code` module from the stub
-// in test/claude-code.d.ts.
+// in test/types/claude-code.d.ts.
 
 /**
  * One option of a Decide item: its capital letter and bold name, and, as the
@@ -174,8 +174,6 @@ export type Loaded = Readonly<{
   effective: readonly string[];
   /** What was wrong with a file, each naming the file; empty when nothing was. */
   problems: readonly string[];
-  /** What to change in a file that's read as it is, each naming the file: /answers-config says them, the pane doesn't. */
-  warnings: readonly string[];
 }>;
 
 declare module "claude-code" {

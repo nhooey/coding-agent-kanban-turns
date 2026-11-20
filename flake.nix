@@ -91,12 +91,12 @@
             inherit nodejs;
           };
 
-          # The libraries the plugin runs, yaml alone, each bundled
-          # into one ES module file with its licence beside it, for
+          # The library the plugin runs, the YAML parser, bundled into
+          # one ES module file with its licence beside it, for
           # plugin/vendor/<library>/: the engine loads a hooks module's `claude-code`
           # import and the plugin's own files, as plugin-authoring's
-          # reference says, so each library goes in as a file of the
-          # plugin's. plugin/vendor/ commits them, for the marketplace
+          # reference says, so the library goes in as a file of the
+          # plugin's. plugin/vendor/ commits it, for the marketplace
           # install, the build and the checks alike, and checks.vendor holds
           # the committed files to these. A bundle that names node_modules'
           # store path fails to build: it would keep node_modules in the
@@ -137,7 +137,7 @@
         {
           # The plugin as Claude Code loads it: plugin/ with only what runs,
           # its manifest, hooks, pure core, shipped defaults, the types the
-          # manifest names and vendor/'s bundled parsers and their types. The
+          # manifest names and vendor/'s bundled YAML parser and its types. The
           # tests, the engine-driven tests, the tools and the npm files stay
           # out: every other npm dependency is for development. agent-plugins-nixpkgs installs
           # this through its nix-darwin module, and a `--plugin-dir
@@ -209,7 +209,7 @@
               {
                 category = "build";
                 name = "refresh-vendor";
-                help = "lay the flake's bundled parsers in plugin/vendor/, as the dev shell does on entry, for a commit when nix flake check says they differ";
+                help = "lay the flake's bundled YAML parser in plugin/vendor/, as the dev shell does on entry, for a commit when nix flake check says they differ";
                 command = builtins.readFile ./nix/scripts/vendor/lay.sh;
               }
             ];

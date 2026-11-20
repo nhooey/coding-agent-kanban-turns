@@ -16,7 +16,10 @@ for file in "$bundled"/*/*; do
   fi
 done
 
-for file in "$committed"/*/*.js "$committed"/*/LICENSE; do
+# Each bundle sits in a folder of its own, so any file or folder at the top
+# of plugin/vendor/ that the flake doesn't make is left over, types alone
+# included; inside a bundle's folder, a module or a licence is.
+for file in "$committed"/* "$committed"/.[!.]* "$committed"/*/*.js "$committed"/*/LICENSE; do
   name="${file#"$committed"/}"
   if [ -e "$file" ] && [ ! -e "$bundled/$name" ]; then
     echo "plugin/vendor/$name is no bundle the flake makes; delete it and commit that" >&2

@@ -114,8 +114,8 @@ export const APP = "coding-agent-kanban-turns";
 /** The defaults file, from the plugin's own folder. */
 export const DEFAULTS_FILE = "defaults/config.yaml";
 
-/** The user's file's names, in the order they're looked for: the first there is read. */
-export const USER_FILES = ["config.yaml"] as const;
+/** The user's file's name. */
+export const USER_FILE = "config.yaml";
 
 /** A file's value, or why it can't be read. */
 type Parsed = Readonly<{ value: Json } | { error: string }>;
@@ -305,20 +305,17 @@ export const leaves = (
     : [[path.join("."), value]];
 
 /**
- * Where the user's file may be, in the order it's looked for: under
- * $XDG_CONFIG_HOME when it's set, else ~/.config; nowhere without either.
+ * Where the user's file is: under $XDG_CONFIG_HOME when it's set, else
+ * ~/.config; nowhere without either.
  */
-export const userConfigPaths = (
+export const userConfigPath = (
   env: Readonly<{ xdgConfigHome?: string; home?: string }>,
-): readonly string[] => {
-  const folder = env.xdgConfigHome
-    ? `${env.xdgConfigHome}/${APP}`
+): string | undefined =>
+  env.xdgConfigHome
+    ? `${env.xdgConfigHome}/${APP}/${USER_FILE}`
     : env.home
-      ? `${env.home}/.config/${APP}`
+      ? `${env.home}/.config/${APP}/${USER_FILE}`
       : undefined;
-
-  return folder === undefined ? [] : USER_FILES.map((name) => `${folder}/${name}`);
-};
 
 /** A file the plugin read: where it is, and its text. */
 export type ConfigFile = Readonly<{ path: string; text: string }>;
@@ -327,7 +324,6 @@ export type ConfigFile = Readonly<{ path: string; text: string }>;
  * A file's value checked against the shape, a null section read as an empty
  * one, without the sections the plugin no longer reads, or what's wrong with
  * it: each problem, a section or setting left out among them, names the file.
- * Reading a file gives no warnings of its own.
  */
 const checked = (
   file: ConfigFile,
@@ -335,7 +331,6 @@ const checked = (
 ): Readonly<{
   value: Json | undefined;
   problems: readonly string[];
-  warnings: readonly string[];
 }> => {
   const parsed = parseYaml(file.text);
   const read =
@@ -348,11 +343,10 @@ const checked = (
       : problemsIn(SETTINGS_SHAPE, value ?? null, isSparse);
   const inFile = (lines: readonly string[]) =>
     lines.map((line) => `${file.path}: ${line}`);
-  const warnings: readonly string[] = [];
 
   return problems.length === 0 && value !== undefined
-    ? { value, problems: inFile(leftOut), warnings }
-    : { value: undefined, problems: inFile([...leftOut, ...problems]), warnings };
+    ? { value, problems: inFile(leftOut) }
+    : { value: undefined, problems: inFile([...leftOut, ...problems]) };
 };
 
 const keyOf = ([key]: readonly [string, Json]): string => key;
@@ -434,6 +428,5 @@ export const loaded = (
       ...(layer?.problems ?? []),
       ...inFile(user?.path ?? "", overClashes),
     ],
-    warnings: [...base.warnings, ...(layer?.warnings ?? [])],
   };
 };

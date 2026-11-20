@@ -559,7 +559,7 @@ test("a user's config.yaml is read", async ($, on) => {
   expect(shown).not.toContain("Not used");
 });
 
-test("a user's config.jsonc is not read: the defaults are in effect, with no warning", async ($, on) => {
+test("a user's config.jsonc is not read: the defaults are in effect", async ($, on) => {
   const state = engine(on, () => []);
   state.userFiles = { "config.jsonc": '{"keys": {"dismiss": "z"}}' };
   const shown = await $.command.run({ ...ANSWERS, command: "answers-config" });
@@ -568,7 +568,6 @@ test("a user's config.jsonc is not read: the defaults are in effect, with no war
   expect(lines.find((line) => line.startsWith("keys.dismiss = "))).toMatch(
     /^keys\.dismiss = "q"  # defaults: /,
   );
-  expect(lines.filter((line) => line.startsWith("Warning"))).toEqual([]);
   expect(lines.filter((line) => line.startsWith("Not used"))).toEqual([]);
 
   // /answers's line for no open items, and the pane, name no settings problem.

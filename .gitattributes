@@ -1,4 +1,4 @@
-# The bundled parsers and their licences are committed as the flake builds
+# The bundled YAML parser and its licence are committed as the flake builds
 # them, byte for byte, which `nix flake check` compares: no line-ending
 # conversion, whatever core.autocrlf says. The bundles are generated, so
 # GitHub folds them in a diff and leaves them out of the language stats.
