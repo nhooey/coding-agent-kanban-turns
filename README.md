@@ -18,7 +18,7 @@ Answer `y` to add the marketplace, then choose a scope. From a shell:
 claude plugin install coding-agent-kanban-turns --marketplace nhooey/coding-agent-kanban-turns
 ```
 
-With Nix, the flake's `plugin` package (also `default`) is the plugin's directory as Claude Code loads it, without the tests or the npm files: `nix build github:nhooey/coding-agent-kanban-turns#plugin`. It's built with [agent-plugins-nixpkgs](https://github.com/nhooey/agent-plugins-nixpkgs)' `lib.mkClaudePlugin`, so that repository can pass it through for a nix-darwin configuration to list in `services.agent-plugins.plugins`.
+With Nix, the flake's `plugin` package (also `default`) is the plugin's directory as Claude Code loads it, without the tests or the npm files: `nix build github:nhooey/coding-agent-kanban-turns#plugin`. It's built with [agent-plugins-nixpkgs](https://github.com/nhooey/agent-plugins-nixpkgs)' `flakeModules.claudePlugin`, so that repository can pass it through for a nix-darwin configuration to list in `services.agent-plugins.plugins`.
 
 The plugin reads the open items from the session's transcript itself, with no Python and no file from the kanban skill's repository; see [Where the items come from](#where-the-items-come-from).
 
@@ -63,7 +63,7 @@ The pane, `🧠 Decide`, lists every Decide item raised in the session, oldest f
 
 The pane opens by itself, without taking the keyboard, at the session's start when items are open and at the end of a reply that raised a new one, scrolled to its end. Submitting a prompt leaves it open. A pane a mod opens unasked can wait undrawn on a narrow terminal (below 144 columns, 110 once you've opened it yourself), as Claude Code places it. `/answers`, the count line above the prompt and a question in a reply open it with the keyboard.
 
-Each part has its own colour from the theme, so it reads in light and dark themes alike: the title in the accent colour, code spans in another and the option the draft picks on a highlighted background. The ➕ and ➖ lines are plain text, as in a reply, and part of their option: a click on any of an option's lines picks it, and with the pointer on any of them a bar lights in the column left of the option, its full height, in the `colors.hover` colour. The line right under the pointer still inverts, as every button does. Every item is drawn in full, its note and every ➕ and ➖ line, however many rows that takes.
+Each part has its own colour from the theme, so it reads in light and dark themes alike: the title in the accent colour, code spans in another and the option the draft picks underlined, its glyph turned to ✅. A second click on a chosen option unchooses it, taking its answer out of the draft. The ➕ and ➖ lines are plain text, as in a reply, and part of their option: a click on any of an option's lines picks it, and with the pointer on any of them a bar lights in the column left of the option, its full height, in the `colors.hover` colour. The line right under the pointer still inverts, as every button does. Every item is drawn in full, its note and every ➕ and ➖ line, however many rows that takes.
 
 | Control         | What it does                                                                                                                                                                                        |
 | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -108,10 +108,10 @@ At each refresh the plugin reads the session's whole transcript file and works o
 
 ## Developing
 
-See [`AGENTS.md`](AGENTS.md) for the dev shell's commands and what `nix flake check` runs. To try the plugin from a checkout without installing it:
+See [`AGENTS.md`](AGENTS.md) for the dev shell's commands and what `nix flake check` runs. To try the plugin from a checkout without installing it, build it with the dev shell's `plugin-build` and load the build:
 
 ```bash
-claude --plugin-dir plugin
+claude --plugin-dir result-plugin
 ```
 
 | File                                                               | Holds                                                                                                   |

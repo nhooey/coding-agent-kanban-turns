@@ -5,7 +5,7 @@ import { describe, test } from "node:test";
 import { expect } from "expect";
 
 import { answersIn, answerTo, lettersAfter } from "../src/answers.ts";
-import { glyphOf, refOf } from "../src/items.ts";
+import { glyphOf, markOf, refOf } from "../src/items.ts";
 import type { DecideItem } from "../types/index.d.ts";
 
 const radio: DecideItem = {
@@ -70,6 +70,11 @@ describe("the letters a click leaves", () => {
     expect(lettersAfter(binary, [], "N")).toEqual(["N"]);
   });
 
+  test("a click on the chosen letter of a radio or binary item unchooses it", () => {
+    expect(lettersAfter(radio, ["A"], "A")).toEqual([]);
+    expect(lettersAfter(binary, ["Y"], "Y")).toEqual([]);
+  });
+
   test("a checkbox item toggles the letter and keeps option order", () => {
     expect(lettersAfter(checkbox, ["C"], "A")).toEqual(["A", "C"]);
     expect(lettersAfter(checkbox, ["A", "C"], "A")).toEqual(["C"]);
@@ -88,6 +93,13 @@ describe("the items themselves", () => {
     expect(glyphOf(checkbox, "A")).toBe("🔲");
     expect(glyphOf(binary, "Y")).toBe("👍");
     expect(glyphOf(binary, "N")).toBe("👎");
+  });
+
+  test("a chosen option is marked ✅, the others keep their glyph", () => {
+    expect(markOf(radio, "A", true)).toBe("✅");
+    expect(markOf(checkbox, "A", true)).toBe("✅");
+    expect(markOf(radio, "A", false)).toBe("🔘");
+    expect(markOf(binary, "N", false)).toBe("👎");
   });
 });
 

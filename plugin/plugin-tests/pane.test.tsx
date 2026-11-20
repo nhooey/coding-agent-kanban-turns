@@ -114,7 +114,6 @@ const DEFAULTS = JSON.stringify({
     border: "promptBorder",
     title: "claude",
     code: "permission",
-    chosen: "diffAddedWord",
     hover: "suggestion",
     expand: "claude",
   },
@@ -377,6 +376,16 @@ for (const surface of ["terminal", "desktop"] as const) {
     // Another option replaces the item's reference.
     await ui.press({ key: "9efb08a1.Decide.1.A" });
     expect(state.box).toBe("9efb08a1.Decide.1.A\n9efb08a1.Decide.2.A,C\n");
+
+    // A chosen option is marked ✅ and underlined, never highlighted.
+    const drawn = JSON.stringify(await ui.drawn());
+    expect(drawn).toContain("✅");
+    expect(drawn).toContain('"underline":true');
+    expect(drawn).not.toContain("diffAddedWord");
+
+    // A second click on the chosen option unchooses it.
+    await ui.press({ key: "9efb08a1.Decide.1.A" });
+    expect(state.box).toBe("9efb08a1.Decide.2.A,C\n");
 
     // No click sent anything.
     expect(state.sent).toEqual([]);

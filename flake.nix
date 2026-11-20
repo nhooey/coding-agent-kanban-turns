@@ -10,6 +10,21 @@
       inputs.nixpkgs-lib.follows = "nixpkgs";
     };
     systems.url = "github:nix-systems/default";
+    # flakeModules.claudePlugin, which builds `plugin` and adds the
+    # `plugin-build` command. agent-plugins-nixpkgs takes this repository as
+    # its coding-agent-kanban-turns input, so that input follows this flake
+    # (`""`) rather than locking another copy of it, and the two lock files
+    # don't nest each other at every update.
+    agent-plugins-nixpkgs = {
+      url = "github:nhooey/agent-plugins-nixpkgs";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        flake-parts.follows = "flake-parts";
+        coding-agent-kanban-turns.follows = "";
+        devshell.follows = "agent-skill-flake/devshell";
+        treefmt-nix.follows = "treefmt-nix";
+      };
+    };
     # The dev-shell skills wiring (flakeModules.devshellSkills), which
     # bundles numtide/devshell. The skill sources are not inputs here: they
     # live only in skills-devshell/'s lock, which the dev shell runs on
@@ -22,14 +37,6 @@
       url = "github:numtide/treefmt-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    # Read only for `lib.mkClaudePlugin`, which builds `plugin`. A plain
-    # source, not a flake: agent-plugins-nixpkgs takes this repository as an
-    # input to pass `plugin` through, and a flake input here would make the
-    # two lock files nest each other at every update.
-    agent-plugins-nixpkgs = {
-      url = "github:nhooey/agent-plugins-nixpkgs";
-      flake = false;
-    };
   };
 
   outputs =
@@ -41,6 +48,9 @@
     flake-parts.lib.mkFlake { inherit inputs; } {
       systems = import systems;
       imports = [
+        # Builds plugin/ as packages.plugin, and adds the `plugin-build`
+        # command that links it to result-plugin.
+        inputs.agent-plugins-nixpkgs.flakeModules.claudePlugin
         # Bundles numtide/devshell, the skills startup that installs
         # skills-devshell/'s skills into .agents/skills, and the check, fmt,
         # update-flake, reap-skills and update-skills-devshell commands.
@@ -57,30 +67,8 @@
       };
 
       perSystem =
-        { pkgs, ... }:
+        { config, pkgs, ... }:
         let
-          inherit (pkgs) lib;
-          claudePlugins = import "${inputs.agent-plugins-nixpkgs}/lib" { inherit lib; };
-
-          # The plugin as Claude Code loads it: plugin/ with only what runs,
-          # its manifest, hooks, pure core, shipped defaults and the types the
-          # manifest names. The tests, the engine-driven tests, the tools and
-          # the npm files stay out, since every npm dependency is for
-          # development; agent-plugins-nixpkgs installs this through its
-          # nix-darwin module.
-          plugin = claudePlugins.mkClaudePlugin pkgs {
-            src = lib.fileset.toSource {
-              root = ./plugin;
-              fileset = lib.fileset.unions [
-                ./plugin/.claude-plugin/plugin.json
-                ./plugin/hooks
-                ./plugin/src
-                ./plugin/defaults
-                ./plugin/types
-              ];
-            };
-          };
-
           # The one Node: the plugin's node_modules are built with it, and the
           # dev shell and the checks run it.
           nodejs = pkgs.nodejs_26;
@@ -116,12 +104,28 @@
               '';
         in
         {
-          packages = {
-            inherit plugin;
-            default = plugin;
+          # The plugin as Claude Code loads it: plugin/ with only what runs,
+          # its manifest, hooks, pure core, shipped defaults and the types the
+          # manifest names. The tests, the engine-driven tests, the tools and
+          # the npm files stay out, since every npm dependency is for
+          # development. agent-plugins-nixpkgs installs this through its
+          # nix-darwin module, and a `--plugin-dir result-plugin` session
+          # loads it after `plugin-build`.
+          agent-plugins.claudePlugin = {
+            enable = true;
+            src = ./plugin;
+            include = [
+              ".claude-plugin/plugin.json"
+              "defaults"
+              "hooks"
+              "src"
+              "types"
+            ];
           };
 
-          # Repo-specific packages and commands, merged onto the module's.
+          packages.default = config.packages.plugin;
+
+          # Repo-specific packages and commands, merged onto the modules'.
           devshells.default = {
             packages = [
               nodejs
@@ -166,7 +170,7 @@
           # hooks' type-check and plugin-tests/ need the engine (its API
           # declarations, and claude plugin test), which a build has not.
           checks = {
-            inherit plugin;
+            inherit (config.packages) plugin;
             typecheck = pluginCheck "typecheck" "typecheck";
             tests = pluginCheck "tests" "test";
           };

@@ -4,9 +4,11 @@ plugin/.claude-plugin/types/
 # A directory from npm, or the dev shell's link into the Nix store.
 plugin/node_modules
 
-# Nix: build outputs, and the dev shell's state.
+# Nix: build outputs, and the dev shell's state. `plugin-build` links the
+# plugin a `--plugin-dir result-plugin` session loads to /result-plugin.
 result
 result-*
+/result-plugin
 .direnv/
 
 # Project-scope skill installs from the dev shell's startup hook, symlinks
