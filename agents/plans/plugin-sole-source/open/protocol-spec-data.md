@@ -22,7 +22,7 @@ touches: [plugin/spec/, plugin/src/transcript.ts, plugin/src/outstanding.ts, plu
   - a JSON copy, for readers that aren't TypeScript, such as the derived skill's build ([derived-skill-package](derived-skill-package.md)).
 - **The core imports only the generated module.** Each function in `plugin/src/` that now names a glyph, word or character takes it from that module's value instead, and the plugin and its tests import nothing else of the spec. The core stays pure: no file is read at run time, and no YAML library is loaded at run time for the spec.
 - **Out of date fails.** A flake check runs the build step and fails when the committed TypeScript module or JSON copy differs from what it writes.
-- **Rules from the pane-every-list plan land here.** The settling words and the grouped answer syntax that [kanban-skill-list-answers](../../pane-every-list/open/kanban-skill-list-answers.md) and [answers-grouped-by-turn-and-list](../../pane-every-list/open/answers-grouped-by-turn-and-list.md) add are written into the spec, so those nodes come after this one.
+- **Rules from the pane-every-list plan land here.** [kanban-skill-list-answers](../../pane-every-list/open/kanban-skill-list-answers.md) writes the settling words and the grouped answer syntax into the spec, once the old skill is retired, and [answers-grouped-by-turn-and-list](../../pane-every-list/open/answers-grouped-by-turn-and-list.md) reads them from it, so those nodes come after this one.
 
 Checks:
 
