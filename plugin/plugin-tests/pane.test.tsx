@@ -561,19 +561,26 @@ test("a user's config.yaml is read, and wins over a config.jsonc beside it", asy
   expect(shown).not.toContain("Not used");
 });
 
-test("a user's config.jsonc with no config.yaml is read, with a warning to convert it", async ($, on) => {
-  const state = engine(on, () => ITEMS);
+test("a user's config.jsonc with no config.yaml is read, with a warning to convert it that the pane leaves out", async ($, on) => {
+  const state = engine(on, () => []);
   state.userFiles = { "config.jsonc": '{"keys": {"dismiss": "z"}, // mine\n}' };
-  const shown = JSON.stringify(
-    await $.command.run({ ...ANSWERS, command: "answers-config" }),
-  );
+  const shown = await $.command.run({ ...ANSWERS, command: "answers-config" });
+  const lines = (shown.text ?? "").split("\n");
 
-  expect(shown).toContain(
-    `keys.dismiss = \\"z\\"  # user: ${USER_FOLDER}config.jsonc`,
+  expect(lines).toContain(
+    `keys.dismiss = "z"  # user: ${USER_FOLDER}config.jsonc`,
   );
-  expect(shown).toContain(
-    `${USER_FOLDER}config.jsonc: JSONC is read only while there's no config.yaml beside it; convert this file to config.yaml`,
+  expect(lines).toContain(
+    `Warning: ${USER_FOLDER}config.jsonc: read because there's no config.yaml beside it; convert it to config.yaml`,
   );
+  expect(lines.filter((line) => line.startsWith("Not used"))).toEqual([]);
+
+  // /answers's line for no open items, and the pane, name no settings problem.
+  expect((await $.command.run(ANSWERS)).text).toBe("No open Decide items.");
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  expect(await ui.find({ type: "Text", text: "Nothing open" })).toBeDefined();
+  expect(JSON.stringify(await ui.drawn())).not.toContain("config.jsonc");
+  await ui.unmount();
 });
 
 test("the pane keeps every item raised, newest turn first, a Done one in its turn's collapsed Done section", async ($, on) => {

@@ -15,8 +15,7 @@ export type YamlFits = Fits<
   typeof YamlPackage.parseAllDocuments,
   typeof Yaml.parseAllDocuments
 >;
-export type JsoncParseFits = Fits<typeof JsoncPackage.parse, typeof Jsonc.parse>;
-export type JsoncPrintFits = Fits<
-  typeof JsoncPackage.printParseErrorCode,
-  typeof Jsonc.printParseErrorCode
+export type JsoncStripFits = Fits<
+  typeof JsoncPackage.stripComments,
+  typeof Jsonc.stripComments
 >;

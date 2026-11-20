@@ -24,14 +24,17 @@ export const answersText = (raised: Raised): string => {
     : `Decide pane opened: ${open} open Decide items.`;
 };
 
-/** /answers-config's reply: each setting in effect, then each file or value not used and why. */
+/** /answers-config's reply: each setting in effect, then each file or value not used and why, then what to change in a file that's used. */
 export const configText = (
   effective: readonly string[],
   problems: readonly string[],
+  warnings: readonly string[],
 ): string =>
-  [...effective, ...problems.map((problem) => `Not used: ${problem}`)].join(
-    "\n",
-  );
+  [
+    ...effective,
+    ...problems.map((problem) => `Not used: ${problem}`),
+    ...warnings.map((warning) => `Warning: ${warning}`),
+  ].join("\n");
 
 /** The `kanban_options` tool's result: how many items it drew buttons for, by reference. */
 export const drewText = (items: readonly DecideItem[]): string =>

@@ -4,6 +4,8 @@
 import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
 import { expect } from "expect";
+import { isMap, isScalar, parseDocument } from "yaml";
+import type { YAMLMap } from "yaml";
 
 import {
   DEFAULTS_FILE,
@@ -36,13 +38,22 @@ describe("the shipped defaults file", () => {
   });
 
   test("has a comment over every setting and every section", () => {
-    const lines = defaultsText.split("\n");
-    const uncommented = lines
-      .map((line, n) => ({ line, above: lines[n - 1] ?? "" }))
-      .filter(({ line }) => /^\s*[\w-]+:/.test(line))
-      .filter(({ above }) => !/^\s*#/.test(above))
-      .map(({ line }) => line.trim());
-    expect(uncommented).toEqual([]);
+    // The parser keeps a comment over a key on the key, except over a
+    // section's first key, which it keeps on the section.
+    const uncommented = (map: YAMLMap, path: readonly string[]): readonly string[] =>
+      map.items.flatMap((pair, n) => {
+        const key = isScalar(pair.key) ? String(pair.key.value) : "?";
+        const comment = pair.key && isScalar(pair.key) ? pair.key.commentBefore : undefined;
+        const here = comment || (n === 0 ? map.commentBefore : undefined);
+
+        return [
+          ...(here ? [] : [[...path, key].join(".")]),
+          ...(isMap(pair.value) ? uncommented(pair.value, [...path, key]) : []),
+        ];
+      });
+    const document = parseDocument(defaultsText);
+    expect(isMap(document.contents)).toBe(true);
+    expect(isMap(document.contents) ? uncommented(document.contents, []) : []).toEqual([]);
   });
 
   test("with no user file, is what's in effect", () => {
@@ -100,7 +111,7 @@ describe("the user's file over the defaults", () => {
     expect(got.settings?.colors.hover).toBe("claude");
     expect(got.settings?.colors["title-label"]).toBe("inverseText");
     expect(loaded(defaults, user('{"colors": {"hover": 3}}')).problems).toEqual([
-      "~/.config/x/config.yaml: colors.hover is number, not a string",
+      "~/.config/x/config.yaml: colors.hover is number, not a string; quote it",
     ]);
   });
 
@@ -149,7 +160,7 @@ describe("the user's file over the defaults", () => {
     expect(got.settings?.colors.settled).toBe("permission");
     expect(got.settings?.colors.close).toBe("warning");
     expect(loaded(defaults, user('{"colors": {"settled": true}}')).problems).toEqual([
-      "~/.config/x/config.yaml: colors.settled is boolean, not a string",
+      "~/.config/x/config.yaml: colors.settled is boolean, not a string; quote it",
     ]);
   });
 
@@ -235,7 +246,7 @@ describe("the user's file over the defaults", () => {
     expect(strings.settings?.colors.kanban).toBe("on");
     expect(strings.settings?.marks.sent).toBe("yes");
     expect(loaded(defaults, user("colors:\n  kanban: 1.10\n")).problems).toEqual([
-      "~/.config/x/config.yaml: colors.kanban is number, not a string",
+      "~/.config/x/config.yaml: colors.kanban is number, not a string; quote it",
     ]);
     expect(loaded(defaults, user("notes:\n  rows: on\n")).problems).toEqual([
       "~/.config/x/config.yaml: notes.rows is string, not a number",
@@ -262,20 +273,81 @@ describe("the user's file over the defaults", () => {
     ]);
   });
 
-  test("a config.jsonc, read when there's no config.yaml, is used with a warning to convert it", () => {
-    const got = loaded(defaults, legacy('{"keys": {"dismiss": "x"}, /* mine */ "notes": {"rows": 5,},\n// end\n}'));
+  test("a config.jsonc, read when there's no config.yaml, is used with a warning to convert it, which is no problem", () => {
+    const got = loaded(defaults, legacy('{\n\t"keys": {"dismiss": "x"}, /* mine */ "notes": {"rows": 5,},\n// end\n}'));
     expect(got.settings?.keys.dismiss).toBe("x");
     expect(got.settings?.notes.rows).toBe(5);
     expect(got.effective).toContain('keys.dismiss = "x"  # user: ~/.config/x/config.jsonc');
-    expect(got.problems).toEqual([
-      "~/.config/x/config.jsonc: JSONC is read only while there's no config.yaml beside it; convert this file to config.yaml",
+    expect(got.problems).toEqual([]);
+    expect(got.warnings).toEqual([
+      "~/.config/x/config.jsonc: read because there's no config.yaml beside it; convert it to config.yaml",
     ]);
   });
 
-  test("a config.jsonc that isn't JSONC is named with why, beside the warning", () => {
-    expect(loaded(defaults, legacy('{"keys": {"dismiss" "x"}}')).problems).toEqual([
-      "~/.config/x/config.jsonc: JSONC is read only while there's no config.yaml beside it; convert this file to config.yaml",
-      "~/.config/x/config.jsonc: ColonExpected at offset 20",
+  test("a config.jsonc that can't be read is named with why, and still warned of", () => {
+    const got = loaded(defaults, legacy('{"keys": {"dismiss" "x"}}'));
+    expect(got.settings?.keys.dismiss).toBe("q");
+    expect(got.problems).toHaveLength(1);
+    expect(got.problems[0]).toMatch(/^~\/\.config\/x\/config\.jsonc: /);
+    expect(got.warnings).toHaveLength(1);
+  });
+
+  test("a __proto__ or constructor key, in a config.jsonc or a config.yaml, is no setting", () => {
+    const shape = "is no setting; the keys here are dismiss, next, previous, submit, reassess, help";
+    expect(loaded(defaults, legacy('{"keys": {"__proto__": {"dismiss": "x"}}}')).problems).toEqual([
+      `~/.config/x/config.jsonc: keys.__proto__ ${shape}`,
+    ]);
+    expect(loaded(defaults, user('keys:\n  __proto__:\n    dismiss: x\n')).problems).toEqual([
+      `~/.config/x/config.yaml: keys.__proto__ ${shape}`,
+    ]);
+    expect(loaded(defaults, user("keys:\n  constructor: x\n")).problems).toEqual([
+      `~/.config/x/config.yaml: keys.constructor ${shape}`,
+    ]);
+  });
+
+  test("a section with every key under it commented out is an empty section", () => {
+    const got = loaded(defaults, user("keys:\n  # dismiss: x\nnotes:\n  rows: 5\n"));
+    expect(got.problems).toEqual([]);
+    expect(got.settings?.keys.dismiss).toBe("q");
+    expect(got.settings?.notes.rows).toBe(5);
+  });
+
+  test("a file that holds only an end marker, or a YAML version the parser doesn't know, is refused", () => {
+    expect(loaded(defaults, user("...\n")).problems).toEqual([
+      "~/.config/x/config.yaml: holds no section, only an empty document; leave the file empty instead",
+    ]);
+    expect(loaded(defaults, user("%YAML 9.9\n")).problems).toEqual([
+      "~/.config/x/config.yaml: Unsupported YAML version 9.9",
+    ]);
+    expect(loaded(defaults, user("%YAML 9.9\n---\nkeys: {}\n")).problems).toEqual([
+      "~/.config/x/config.yaml: Unsupported YAML version 9.9 at line 1, column 7",
+    ]);
+  });
+
+  test("a %YAML 1.1 directive still reads under the core schema, so on stays a string", () => {
+    const got = loaded(defaults, user("%YAML 1.1\n---\ncolors:\n  kanban: on\n"));
+    expect(got.problems).toEqual([]);
+    expect(got.settings?.colors.kanban).toBe("on");
+  });
+
+  test("a local tag refuses the file", () => {
+    expect(loaded(defaults, user("colors:\n  kanban: !mine red\n")).problems).toEqual([
+      "~/.config/x/config.yaml: Unresolved tag: !mine at line 2, column 11",
+    ]);
+  });
+
+  test("a << is an ordinary key, so no merge happens and the file is refused", () => {
+    expect(loaded(defaults, user("keys:\n  <<: {dismiss: x}\n")).problems).toEqual([
+      "~/.config/x/config.yaml: keys.<< is no setting; the keys here are dismiss, next, previous, submit, reassess, help",
+    ]);
+  });
+
+  test(".nan and .inf are no number a setting takes", () => {
+    expect(loaded(defaults, user("counts:\n  turns: .inf\n")).problems).toEqual([
+      "~/.config/x/config.yaml: counts.turns is .inf, not a finite number",
+    ]);
+    expect(loaded(defaults, user("notes:\n  rows: .nan\n")).problems).toEqual([
+      "~/.config/x/config.yaml: notes.rows is .nan, not a finite number",
     ]);
   });
 
@@ -301,7 +373,13 @@ describe("the pieces", () => {
     expect(parseJsonc('{"a": "// no", /* x */ "b": [1,],\n// c\n}')).toEqual({
       value: { a: "// no", b: [1] },
     });
-    expect(parseJsonc("")).toEqual({ error: "ValueExpected at offset 0" });
+    expect(parseJsonc("")).toEqual({ value: {} });
+  });
+
+  test("a boolean that isn't one names what it takes", () => {
+    expect(problemsIn("boolean", "no", false, ["pane", "hints"])).toEqual([
+      "pane.hints is string, not true or false",
+    ]);
   });
 
   test("YAML: a document's value, an empty one as an empty section, and JSON as YAML reads it", () => {

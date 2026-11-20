@@ -82,14 +82,20 @@ describe("/answers's reply", () => {
 });
 
 describe("/answers-config's reply", () => {
-  test("lists the settings in effect, then what wasn't used", () => {
-    expect(configText(["keys.dismiss = q", "colors.title = claude"], ["bad.yaml: parse error"])).toBe(
-      "keys.dismiss = q\ncolors.title = claude\nNot used: bad.yaml: parse error",
+  test("lists the settings in effect, then what wasn't used, then the warnings", () => {
+    expect(
+      configText(
+        ["keys.dismiss = q", "colors.title = claude"],
+        ["bad.yaml: parse error"],
+        ["old.jsonc: convert it"],
+      ),
+    ).toBe(
+      "keys.dismiss = q\ncolors.title = claude\nNot used: bad.yaml: parse error\nWarning: old.jsonc: convert it",
     );
   });
 
   test("is empty with nothing to list", () => {
-    expect(configText([], [])).toBe("");
+    expect(configText([], [], [])).toBe("");
   });
 });
 
