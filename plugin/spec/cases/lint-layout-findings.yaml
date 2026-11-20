@@ -1,0 +1,56 @@
+title: >-
+  Replies breaking a layout rule, one rule each: a header's underline, the
+  blank line that ends a list, and where a table goes
+example: false
+turns:
+  - id: e8f9a0b1
+    prompt: What's done?
+    replies:
+      - text: "\
+          ✅ **Done:**  \n\
+          ▔▔▔▔▔▔\n\
+          1. **Tokenizer fix in commit `a1b2c3d`**\n"
+        lint:
+          - { line: 2, rule: underline-width }
+  - id: f9a0b1c2
+    prompt: And what's logged?
+    replies:
+      - text: "\
+          ✅ **Done:**  \n\
+          ▔▔▔▔▔▔▔▔\n\
+          1. **Tokenizer fix in commit `a1b2c3d`**\n\
+          📝 **Logged:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔\n\
+          1. **The flaky watcher test, as entry 1502**\n"
+        lint:
+          - { line: 4, rule: list-not-ended }
+  - id: 0a1b2c3d
+    prompt: Why was the build slow?
+    replies:
+      - text: "\
+          ❓ **Answers:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔▔\n\
+          1. **Why the build took 9 minutes**  \n\
+          \   The cache missed after the lock bump.\n\
+          \n\
+          \   | Step | Minutes |\n\
+          \   | ---- | ------- |\n\
+          \   | Lock | 6       |\n"
+        lint:
+          - { line: 6, rule: table-in-item }
+  - id: 1b2c3d4e
+    prompt: As a table, then.
+    replies:
+      - text: "\
+          The build took 9 minutes:\n\
+          | Step | Minutes |\n\
+          | ---- | ------- |\n\
+          | Lock | 6       |\n\
+          The cache missed after the lock bump.\n"
+        lint:
+          - { line: 2, rule: table-not-parted }
+          - { line: 5, rule: table-not-parted }
+expect:
+  open: []
+  outstanding: []
+  counts: ""

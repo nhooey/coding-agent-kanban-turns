@@ -1,0 +1,106 @@
+title: >-
+  A reply printing all 9 lists, then a full 📌 roll-up restating two of its
+  items: the lists that roll up count once each, in the spec's order, and
+  Done, Logged and Answers count never
+turns:
+  - id: 1c2d3e4f
+    prompt: Where does the release stand?
+    replies:
+      - text: "\
+          The release branch builds; 6 things wait on it.\n\
+          \n\
+          ✅ **Done:**  \n\
+          ▔▔▔▔▔▔▔▔\n\
+          1. **Tokenizer fix in commit `a1b2c3d`**\n\
+          \   ⠀\n\
+          2. **Test suite rerun after the fix**  \n\
+          \   412 passed and 0 failed, in 3 minutes.\n\
+          \   ⠀\n\
+          \n\
+          🚧 **Pending:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔▔\n\
+          1. **Rework the loader**  \n\
+          \   It reads the cache twice.\n\
+          \n\
+          📝 **Logged:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔\n\
+          1. **The flaky watcher test, as entry 1502**\n\
+          \n\
+          ⏳ **Waiting:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔▔\n\
+          1. **The test run (`b8a83gfv0`)**\n\
+          \n\
+          ❓ **Answers:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔▔\n\
+          1. **Why the build took 9 minutes**  \n\
+          \   The cache missed after the lock bump.\n\
+          \n\
+          🔑 **Authorizations:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n\
+          1. **1Password prompt for the merge token**  \n\
+          \   - #12 Fix the loader\n\
+          \   - #13 Bump the lock\n\
+          \   ⠀\n\
+          \n\
+          🔍 **Review:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔\n\
+          1. **#14 The README**\n\
+          \n\
+          👉 **Todo:**  \n\
+          ▔▔▔▔▔▔▔▔\n\
+          1. **Rotate the `deploy-bot` key in the cloud console**  \n\
+          \   It was issued before the leak.\n\
+          \n\
+          🧠 **Decide:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔\n\
+          1. **Ship the release tonight?**  \n\
+          \   👍 Y. **Ship it**: it goes out.\n\
+          \      ➕ Users get it.\n\
+          \      ➖ Risk.\n\
+          \   👎 N. **Hold it**: it waits.\n\
+          \      ➕ Safety.\n\
+          \      ➖ Delay.\n"
+        lint: []
+    decide:
+      - number: 1
+        summary: Ship the release tonight?
+        kind: binary
+        options:
+          - { letter: Y, name: Ship it }
+          - { letter: N, name: Hold it }
+  - id: 2d3e4f50
+    prompt: Look at the pane's notes field meanwhile.
+    replies:
+      - text: "\
+          The notes field grows to 4 rows.\n\
+          \n\
+          📌 **Outstanding from previous turns:**  \n\
+          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\
+          🚧 **Pending:**  \n\
+          - **Rework the loader**, which reads the cache twice. 🔖 1c2d3e4f₋₁\n\
+          \n\
+          ⏳ **Waiting:**  \n\
+          - **The test run (`b8a83gfv0`)** 🔖 1c2d3e4f₋₁\n\
+          \n\
+          🔑 **Authorizations:**  \n\
+          - **1Password prompt for the merge token**, for #12 and #13. 🔖 1c2d3e4f₋₁\n\
+          \n\
+          🔍 **Review:**  \n\
+          - **#14 The README** 🔖 1c2d3e4f₋₁\n\
+          \n\
+          👉 **Todo:**  \n\
+          - **Rotate the `deploy-bot` key in the cloud console** 🔖 1c2d3e4f₋₁\n\
+          \n\
+          🧠 **Decide:**  \n\
+          - **Ship the release tonight?** 🔖 1c2d3e4f₋₁\n"
+        lint: []
+expect:
+  open: [1c2d3e4f.Decide.1]
+  outstanding:
+    - "Pending: Rework the loader"
+    - "Waiting: The test run (`b8a83gfv0`)"
+    - "Authorizations: 1Password prompt for the merge token"
+    - "Review: #14 The README"
+    - "Todo: Rotate the `deploy-bot` key in the cloud console"
+    - "Decide: Ship the release tonight?"
+  counts: "📌 Outstanding: 🚧 1 · ⏳ 1 · 🔑 1 · 🔍 1 · 👉 1 · 🧠 1"
