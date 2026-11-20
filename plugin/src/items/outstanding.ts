@@ -330,9 +330,16 @@ export const withResolvedFrees = (
 
 /** Every item of every turn's replies, oldest first, each freeing the items its `Frees:` line names, as withResolvedFrees resolves them. */
 export const allItems = (turns: readonly Turn[]): readonly ListItem[] =>
+  itemsIn(turns, reassessStarts(turns));
+
+/** allItems, given each turn's latest `reassess` turn, `starts`, as reassessStarts gives them. */
+const itemsIn = (
+  turns: readonly Turn[],
+  starts: readonly number[],
+): readonly ListItem[] =>
   withResolvedFrees(
     turns,
-    reassessStarts(turns),
+    starts,
     turns.flatMap((turn, at) =>
       turn.replies.flatMap((text) =>
         itemsOfText(text).map((item) => ({ ...item, at })),
@@ -465,9 +472,19 @@ export const decideItemsOfText = (
         }));
     });
 
-/** Each subject's latest Decide item a reply's own list printed since the latest `reassess` turn, oldest first. */
-const latestDecideItems = (turns: readonly Turn[]) => {
-  const start = reassessStart(turns);
+/** A Decide item a reply's own list printed: its number and summary, and the id and place of its turn. */
+type PrintedDecide = Readonly<{
+  number: number;
+  summary: string;
+  id: string;
+  at: number;
+}>;
+
+/** Each subject's latest Decide item a reply's own list printed since `start`, the latest `reassess` turn, oldest first. */
+const latestDecideItems = (
+  turns: readonly Turn[],
+  start: number,
+): readonly PrintedDecide[] => {
   const raised = turns.flatMap((turn, at) =>
     at < start
       ? []
@@ -485,15 +502,19 @@ const latestDecideItems = (turns: readonly Turn[]) => {
  * answered, read from every turn since the latest `reassess` turn, so a 📌
  * roll-up that still carries one, in the window or not, settles nothing.
  */
-export const answeredSubjects = (turns: readonly Turn[]): ReadonlySet<string> => {
-  const answers = answered(turns);
+export const answeredSubjects = (turns: readonly Turn[]): ReadonlySet<string> =>
+  decidedOf(answered(turns), latestDecideItems(turns, reassessStart(turns)));
 
-  return new Set(
-    latestDecideItems(turns)
+/** The subject keys of the `latest` Decide items that `answers` answer. */
+const decidedOf = (
+  answers: readonly Answer[],
+  latest: readonly PrintedDecide[],
+): ReadonlySet<string> =>
+  new Set(
+    latest
       .filter((item) => isAnswered(answers, item.id, item.at, item.number))
       .map((item) => subjectKey(item.summary)),
   );
-};
 
 // --- pull requests ----------------------------------------------------------
 
@@ -592,10 +613,11 @@ export const mergedOfResponse = (
 
 /** Where the count line starts reading: the last `window` turns, never before the latest `reassess` turn; every turn since it for a `window` of 0 or less. */
 export const windowStart = (turns: readonly Turn[], window: number): number =>
-  Math.max(
-    window > 0 && window <= turns.length ? turns.length - window : 0,
-    reassessStart(turns),
-  );
+  windowFrom(turns.length, window, reassessStart(turns));
+
+/** windowStart, over `length` turns whose latest `reassess` turn is at `floor`. */
+const windowFrom = (length: number, window: number, floor: number): number =>
+  Math.max(window > 0 && window <= length ? length - window : 0, floor);
 
 /** What matches an item across turns: its list and its summary's subject key. */
 export const keyOf = (item: Readonly<{ list: ListKey; line: string }>): string =>
@@ -610,25 +632,22 @@ export const keyOf = (item: Readonly<{ list: ListKey; line: string }>): string =
 export const rollUp = (
   turns: readonly Turn[],
   window: number,
-): readonly ListItem[] => {
-  const start = windowStart(turns, window);
-  const all = allItems(turns);
-  const floor = reassessStart(turns);
-  const items = all.filter((item) => item.at >= start);
-  const last = new Map(items.map((item, n) => [keyOf(item), n]));
-  const firsts = [...new Set(items.map(keyOf))];
-  const ownFrees = new Map(
-    all
-      .filter((item) => !item.isPinned && item.at >= floor)
-      .map((item) => [keyOf(item), item.frees] as const),
-  );
+): readonly ListItem[] => rollUpIn(factsOf(turns), window);
+
+/** rollUp, over the facts the turns hold. */
+const rollUpIn = (facts: Facts, window: number): readonly ListItem[] => {
+  const start = windowFrom(facts.turns.length, window, facts.start);
+  const items = facts.items.filter((item) => item.at >= start);
+  const keys = items.map(keyOf);
+  const last = new Map(keys.map((key, n) => [key, n]));
+  const firsts = [...new Set(keys)];
 
   return firsts.flatMap((key) => {
     const n = last.get(key);
     const found = n === undefined ? undefined : items[n];
     const item =
       found !== undefined && found.isPinned && found.frees.length === 0
-        ? { ...found, frees: ownFrees.get(key) ?? found.frees }
+        ? { ...found, frees: facts.latestOwn.get(key)?.frees ?? found.frees }
         : found;
 
     return item === undefined ? [] : [item];
@@ -713,26 +732,25 @@ export const settlerOf = (item: Pick<ListItem, "list">): Settler =>
 export const settlingOf = (
   turns: readonly Turn[],
   merged: ReadonlySet<string>,
-): Settling => {
-  const floor = reassessStart(turns);
+): Settling => settlingIn(factsOf(turns), merged);
 
-  return {
-    merged,
-    decided: answeredSubjects(turns),
-    reports: turns.flatMap((turn, n) =>
-      textsOf(turn).flatMap(({ owner, text, reportNames }) =>
-        isOwn(owner) || reportNames === undefined
-          ? []
-          : [{ n, names: reportNames, report: text }],
-      ),
+/** settlingOf, over the facts the turns hold. */
+const settlingIn = (facts: Facts, merged: ReadonlySet<string>): Settling => ({
+  merged,
+  decided: decidedOf(facts.answers, latestDecideItems(facts.turns, facts.start)),
+  reports: reportsOf(facts.turns),
+  lastOwn: new Map([...facts.latestOwn].map(([key, item]) => [key, item.at])),
+});
+
+/** The reports the turns hold: each text of a turn, not the user's own, that goes by names. */
+const reportsOf = (turns: readonly Turn[]): readonly Report[] =>
+  turns.flatMap((turn, n) =>
+    textsOf(turn).flatMap(({ owner, text, reportNames }) =>
+      isOwn(owner) || reportNames === undefined
+        ? []
+        : [{ n, names: reportNames, report: text }],
     ),
-    lastOwn: new Map(
-      allItems(turns)
-        .filter((item) => !item.isPinned && item.at >= floor)
-        .map((item) => [keyOf(item), item.at]),
-    ),
-  };
-};
+  );
 
 /** The pull requests whose merging would settle any of `items`, as each one's settler names them: what to ask GitHub about. */
 export const settlingPullRequests = (items: readonly ListItem[]): readonly string[] =>
@@ -751,8 +769,15 @@ export const unsettled = (
   turns: readonly Turn[],
   items: readonly ListItem[],
   merged: ReadonlySet<string>,
+): readonly ListItem[] => unsettledIn(factsOf(turns), items, merged);
+
+/** unsettled, over the facts the turns hold. */
+const unsettledIn = (
+  facts: Facts,
+  items: readonly ListItem[],
+  merged: ReadonlySet<string>,
 ): readonly ListItem[] => {
-  const settling = settlingOf(turns, merged);
+  const settling = settlingIn(facts, merged);
 
   return items.filter((item) => !settlerOf(item).settles(item, settling));
 };
@@ -783,7 +808,14 @@ export const countLine = (
   turns: readonly Turn[],
   window: number,
   merged: ReadonlySet<string> = new Set(),
-): string => countsOf(unsettled(turns, rollUp(turns, window), merged));
+): string => countLineIn(factsOf(turns), window, merged);
+
+/** countLine, over the facts the turns hold. */
+const countLineIn = (
+  facts: Facts,
+  window: number,
+  merged: ReadonlySet<string>,
+): string => countsOf(unsettledIn(facts, rollUpIn(facts, window), merged));
 
 /** How a Decide item stopped being open: by an answer, a later `reassess` turn, or a later item on its subject; undefined while it's open. */
 const settlementOf = (
@@ -819,12 +851,19 @@ export type DecideState = Readonly<{
  * reassesses applies its own answers first, so an item it answers settles
  * as answered. Each frees what withRepliedFrees gives it.
  */
-export const decideStates = (turns: readonly Turn[]): readonly DecideState[] => {
-  const start = reassessStart(turns);
-  const answers = answered(turns);
+export const decideStates = (turns: readonly Turn[]): readonly DecideState[] =>
+  decideStatesIn(factsOf(turns));
+
+/** decideStates, over the facts the turns hold. */
+const decideStatesIn = ({
+  turns,
+  start,
+  answers,
+  items,
+}: Facts): readonly DecideState[] => {
   const raised = withRepliedFrees(
     turns,
-    allItems(turns),
+    items,
     turns.flatMap((turn, at) => turn.decide.map((item) => ({ item, at }))),
   );
   const last = new Map(
@@ -878,17 +917,54 @@ export type Open = Readonly<{
   counts: string;
 }>;
 
-/** What the turns leave open: the Decide items and the settlements, from one reading of the items' states, and the count line over the last `window` turns given the pull requests that merged. */
+/** What the turns leave open: the Decide items and the settlements, from one reading of the items' states, and the count line over the last `window` turns given the pull requests that merged, all from one gathering of the facts the turns hold. */
 export const openOf = (
   turns: readonly Turn[],
   window: number,
   merged: ReadonlySet<string> = new Set(),
 ): Open => {
-  const states = decideStates(turns);
+  const facts = factsOf(turns);
+  const states = decideStatesIn(facts);
 
   return {
     items: openItemsIn(states),
     settlements: settlementsIn(states),
-    counts: countLine(turns, window, merged),
+    counts: countLineIn(facts, window, merged),
+  };
+};
+
+// --- the facts every reading shares -----------------------------------------
+
+/**
+ * What two or more of the Decide items' states, the roll-up and the
+ * settling read, gathered once: the turns, the place of the latest
+ * `reassess` turn, the user's answers, every item, and each item's latest
+ * printing in its own list since that turn, by the item's key.
+ */
+export type Facts = Readonly<{
+  turns: readonly Turn[];
+  start: number;
+  answers: readonly Answer[];
+  items: readonly ListItem[];
+  latestOwn: ReadonlyMap<string, ListItem>;
+}>;
+
+/** The facts the turns hold, each worked out once. */
+export const factsOf = (turns: readonly Turn[]): Facts => {
+  const starts = reassessStarts(turns);
+  // The latest `reassess` turn at or before the last turn: reassessStart.
+  const start = starts.at(-1) ?? 0;
+  const items = itemsIn(turns, starts);
+
+  return {
+    turns,
+    start,
+    answers: answered(turns),
+    items,
+    latestOwn: new Map(
+      items
+        .filter((item) => !item.isPinned && item.at >= start)
+        .map((item) => [keyOf(item), item] as const),
+    ),
   };
 };
