@@ -145,6 +145,10 @@ export const SPEC = {
       "from"
     ]
   },
+  "frees": {
+    "label": "Frees",
+    "separator": ","
+  },
   "roll-up": {
     "glyph": "📌",
     "header": "Outstanding from previous turns",

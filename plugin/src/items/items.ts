@@ -2,6 +2,7 @@
 // glyph an option is drawn with, and the items read out of whatever input a
 // `kanban_options` call handed over.
 
+import { uniqueRefs } from "./frees.ts";
 import { DECIDE, DEFAULT_KIND } from "../protocol/rules.ts";
 import { SPEC } from "../protocol/spec.ts";
 import { isObject } from "../json/fields.ts";
@@ -66,11 +67,16 @@ const kindOf = (kind: unknown): DecideKind =>
     ? (kind as DecideKind)
     : DEFAULT_KIND;
 
-const withRef = (item: DecideItem): DecideItem => ({
+/** What an item frees, where the call gave it as an array: its strings that are references, each once; none otherwise. */
+const freesField = (frees: unknown): Pick<DecideItem, "frees"> =>
+  Array.isArray(frees) ? { frees: uniqueRefs(frees) } : {};
+
+const withRef = ({ frees, ...item }: DecideItem): DecideItem => ({
   ...item,
   list: DECIDE.header,
   kind: kindOf(item.kind),
   ref: refOf(item),
+  ...freesField(frees),
 });
 
 const itemsField = (value: unknown): unknown =>

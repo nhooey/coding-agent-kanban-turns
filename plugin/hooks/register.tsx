@@ -46,6 +46,7 @@ import {
   withInstructions,
 } from "../src/protocol/instructions.ts";
 import { CHOSEN_MARK, itemsOf, optionMark, refOf } from "../src/items/items.ts";
+import { freesLineOf } from "../src/items/frees.ts";
 import { INDENT, codeSpans } from "../src/pane/layout.ts";
 import { cellWidth } from "../src/text/cells.ts";
 import { DECIDE, DONE, REASSESS } from "../src/protocol/rules.ts";
@@ -1520,9 +1521,10 @@ const itemBoxes = (
 };
 
 /**
- * One Decide item as the skill writes it: the title, the note, and each
- * option a plain button reading `glyph letter. name: consequence`, its ➕ and
- * ➖ lines indented under it, always in full.
+ * One Decide item as the skill writes it: the title, the note, each option
+ * a plain button reading `glyph letter. name: consequence`, its ➕ and ➖
+ * lines indented under it, always in full, and the `Frees:` line naming
+ * what it frees, where it frees anything.
  */
 const itemView = (
   elements: Elements,
@@ -1736,6 +1738,7 @@ const itemView = (
           </Box>
         );
       })}
+      {lines("", freesLineOf(item.frees ?? []), undefined, "frees")}
       {view.notes === "none" ? null : view.notes === "button" ? (
         <Box key={`${view.keyOf("add-note")}-box`} marginLeft={INDENT}>
           <Button

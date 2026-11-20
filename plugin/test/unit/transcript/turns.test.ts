@@ -11,8 +11,10 @@ import {
   commandOf,
   isOwn,
   isReassessLine,
+  isReassessTurn,
   isTopicRule,
   reassessStart,
+  reassessStarts,
   sectionsOf,
   textOfChunks,
   wholeEnd,
@@ -228,6 +230,27 @@ describe("commandOf", () => {
     expect(commandOf(sent("coding-agent-kanban-turn-responses", "pending"))).toBe("open");
     expect(commandOf(sent("coding-agent-kanban-turn-responses", "re"))).toBeUndefined();
     expect(commandOf(sent("other-skill", "reassess"))).toBeUndefined();
+  });
+});
+
+describe("reassessStarts", () => {
+  test("gives each turn the latest reassess turn at or before it, else the first", () => {
+    expect(reassessStarts(prompted("go", "recheck", "more", "regen", "open"))).toEqual([0, 1, 1, 3, 3]);
+    expect(reassessStarts(prompted("go", "open"))).toEqual([0, 0]);
+    expect(reassessStarts([])).toEqual([]);
+  });
+
+  test("ends on what reassessStart gives for all the turns", () => {
+    const turns = prompted("go", "recheck", "more");
+    expect(reassessStarts(turns).at(-1)).toBe(reassessStart(turns));
+  });
+});
+
+describe("isReassessTurn", () => {
+  test("is a turn whose prompt, the user's own, runs reassess", () => {
+    expect(isReassessTurn(turnOf("00000001", "recheck"))).toBe(true);
+    expect(isReassessTurn(turnOf("00000001", "recheck", { owner: "peer" }))).toBe(false);
+    expect(isReassessTurn(turnOf("00000001", "open"))).toBe(false);
   });
 });
 

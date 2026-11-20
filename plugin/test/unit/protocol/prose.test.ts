@@ -6,6 +6,7 @@ import {
   OWN_PLACEHOLDERS,
   assembled,
   codepoint,
+  exampleFrees,
   filled,
   fragmentProblems,
   headerWidth,
@@ -277,6 +278,19 @@ describe("valuesOf", () => {
   });
 });
 
+describe("exampleFrees", () => {
+  test("names a Decide item and a Review item of the example turn, by the spec's label and separator", () => {
+    expect(exampleFrees(SPEC)).toBe("Frees: 0f311c94.Decide.2, 0f311c94.Review.1");
+    expect(values["example.frees"]).toBe(exampleFrees(SPEC));
+  });
+
+  test("follows the spec's lists and its line's label and separator", () => {
+    expect(exampleFrees({ ...renamed, frees: { label: "Unblocks", separator: ";" } })).toBe(
+      "Unblocks: 0f311c94.Choose.2; 0f311c94.Review.1",
+    );
+  });
+});
+
 describe("filled", () => {
   test("puts each placeholder's value in its place", () => {
     expect(filled("{{header.decide}} and {{tool}}", values)).toBe("🧠 **Decide:** and the_tool");
@@ -292,6 +306,16 @@ describe("the fragments' examples", () => {
     expect(decideItemsOfText(textBlock(filled(FRAGMENTS["decide-items"], values)))).toEqual([
       { number: 1, summary: "Backlog cleanups to start, of 260 entries in the backlog" },
       { number: 2, summary: "Ship the 2.4 release tonight?" },
+    ]);
+  });
+
+  test("read back as the item and the items it frees they draw, by the plugin's own reader", () => {
+    expect(itemsOfText(textBlock(filled(FRAGMENTS["frees"], values)))).toEqual([
+      expect.objectContaining({
+        list: "todo",
+        number: 1,
+        frees: ["0f311c94.Decide.2", "0f311c94.Review.1"],
+      }),
     ]);
   });
 

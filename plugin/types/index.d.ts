@@ -35,6 +35,8 @@ export type DecideItem = Readonly<{
   /** The lines under the summary, before the options. */
   note?: readonly string[];
   options: readonly DecideOption[];
+  /** The items it frees, by reference, `0f311c94.Todo.1`: those its `Frees:` line names. */
+  frees?: readonly string[];
 }>;
 
 /**

@@ -72,6 +72,19 @@ definitions:
         type: array
         items: { $ref: "#/definitions/option" }
         minItems: 1
+      # The references the item's `Frees:` line names, as the call gives
+      # them.
+      frees:
+        type: array
+        items: { type: string, minLength: 1 }
+  # What items free, by each item's reference.
+  frees:
+    type: object
+    additionalProperties:
+      type: array
+      items: { type: string, minLength: 1 }
+      minItems: 1
+    default: {}
   # One finding the reply lint gives, by the reply's line, counted from 1,
   # and the rule it breaks; the comments name the letter the kanban skill's
   # `lint_reply.py` gives each.
@@ -193,3 +206,13 @@ properties:
         items: { type: string, minLength: 1 }
       # The 📌 count line; empty when nothing is outstanding.
       counts: { type: string }
+      # What each numbered item of a reply's own list frees, by the item's
+      # reference: the items its `Frees:` line names that the spec's
+      # `frees` rule lets it name, each by its turn's whole id, in the
+      # line's order. An item that frees none is left out; none when absent.
+      frees: { $ref: "#/definitions/frees" }
+      # What each Decide item a `kanban_options` call raised frees, by its
+      # reference: its reply's `Frees:` line, as `frees` gives it, where
+      # that names an item, else the call's `frees`. An item that frees none
+      # is left out; none when absent.
+      decide-frees: { $ref: "#/definitions/frees" }

@@ -22,6 +22,7 @@
 
 import { answersOfLine } from "./answer-lines.ts";
 import type { LineAnswer } from "./answer-lines.ts";
+import { freesOfLine, isFreesLine, refText, resolvedRefs } from "./frees.ts";
 import { refOf } from "./items.ts";
 import { branchSpans, reportNamesItem } from "../transcript/reports.ts";
 import { isObject, parsedJson } from "../json/fields.ts";
@@ -32,10 +33,12 @@ import {
   isOwn,
   isTopicRule,
   reassessStart,
+  reassessStarts,
   sectionsOf,
   withoutDraftHeader,
 } from "../transcript/turns.ts";
 import {
+  DECIDE,
   LETTER,
   SUBSCRIPT_CHAR,
   TURN_ID,
@@ -84,8 +87,11 @@ const BOLD = /\*\*(.+?)\*\*/;
 /**
  * One item of a list that rolls up into 📌: its list, the turn whose reply
  * printed it (its place among the turns), its number in a numbered list,
- * whether it sat in a 📌 roll-up, and its line, the line beneath joined to a
- * summary alone on its own, with any 🔖 tag cut off.
+ * whether it sat in a 📌 roll-up, its line, the line beneath joined to a
+ * summary alone on its own, with any 🔖 tag cut off, and the items it frees,
+ * by reference: those its last line, a `Frees:` line, names. Read from one
+ * reply's text, they are the references as written; read from the turns,
+ * each names an item of its turn or an earlier one, by the turn's whole id.
  */
 export type ListItem = Readonly<{
   list: ListKey;
@@ -93,6 +99,7 @@ export type ListItem = Readonly<{
   number: number | undefined;
   isPinned: boolean;
   line: string;
+  frees: readonly string[];
 }>;
 
 /** The item's summary: its bold text without a trailing colon, else its line. */
@@ -140,37 +147,89 @@ const awaitsBody = (text: string): boolean => {
   return bold !== null && text.slice(bold[0].length).trim() === "";
 };
 
+/** An item as the scan found it: its last line under its own, where it has one, and none once that line ended it. */
 type Found = Readonly<{
   list: ListKey;
   number: number | undefined;
   isPinned: boolean;
   line: string;
+  last: string | undefined;
 }>;
 
+/**
+ * Where the scan is: the list it's in, whether in a 📌 roll-up, the items
+ * found, whether the last item's summary awaits its body on the line
+ * beneath, whether the last item goes on, until a blank line, a separator,
+ * a header or a topic header's rule ends it, and the fence of a code block
+ * open in it, empty where none is.
+ */
 type Scan = Readonly<{
   list: ListKey | undefined;
   isPinned: boolean;
   found: readonly Found[];
   isAwaiting: boolean;
+  isInItem: boolean;
+  fence: string;
 }>;
+
+/** What opens or closes a Markdown code block: three backticks or tildes. */
+const FENCES: readonly string[] = ["```", "~~~"];
+
+/** The fence a line, its indent aside, opens or closes a code block with; empty where it's no fence. */
+const fenceOf = (body: string): string =>
+  FENCES.find((fence) => body.startsWith(fence)) ?? "";
+
+/**
+ * The scan once `body`, a line under the last item `last`, is read: the
+ * item's last line while the item goes on; where the summary awaits it, the
+ * item's body, joined to its line, unless it's the `Frees:` line, which is
+ * no body; and the code block it opens or closes.
+ */
+const underItem = (state: Scan, last: Found, body: string): Scan => ({
+  ...state,
+  found: [
+    ...state.found.slice(0, -1),
+    {
+      ...last,
+      line:
+        state.isAwaiting && !isFreesLine(body)
+          ? `${last.line} ${body}`
+          : last.line,
+      last: state.isInItem ? body : last.last,
+    },
+  ],
+  isAwaiting: false,
+  fence: !state.isInItem
+    ? ""
+    : state.fence === ""
+      ? fenceOf(body)
+      : fenceOf(body) === state.fence
+        ? ""
+        : state.fence,
+});
 
 const scan = (state: Scan, line: string): Scan => {
   const header = HEADER.exec(line)?.[1];
   const item = ITEM.exec(line);
   const body = line.trim();
   const last = state.found.at(-1);
+  const ended = { isAwaiting: false, isInItem: false, fence: "" };
 
-  return header !== undefined
-    ? { ...state, list: keyOfName(header), isAwaiting: false }
+  // A code block open in an item holds every line until its fence closes
+  // it, a blank line among them, so none ends the item.
+  return state.fence !== "" && last !== undefined
+    ? underItem(state, last, body)
+    : header !== undefined
+    ? { ...state, ...ended, list: keyOfName(header) }
     : PIN.test(line)
-      ? { ...state, list: undefined, isPinned: true, isAwaiting: false }
+      ? { ...state, ...ended, list: undefined, isPinned: true }
       : // A topic header's rule ends the list above it, and a blank line ends
         // any list, so neither the topic header nor prose after a list is read
         // as an item's body.
         isTopicRule(line)
-        ? { ...state, list: undefined, isAwaiting: false }
+        ? { ...state, ...ended, list: undefined }
         : body === ""
-          ? { ...state, isAwaiting: false }
+          ? { ...state, ...ended }
           : state.list !== undefined && item !== null
             ? {
                 ...state,
@@ -181,25 +240,22 @@ const scan = (state: Scan, line: string): Scan => {
                     number: item[1] === undefined ? undefined : Number(item[1]),
                     isPinned: state.isPinned,
                     line: (item[2] ?? "").trim(),
+                    last: undefined,
                   },
                 ],
                 isAwaiting: awaitsBody((item[2] ?? "").trim()),
+                isInItem: true,
               }
-            : // The summary's own line holds no sentence, so the line beneath
-              // it is the item's body.
-              state.isAwaiting && last !== undefined && body !== SEPARATOR
-              ? {
-                  ...state,
-                  found: [
-                    ...state.found.slice(0, -1),
-                    { ...last, line: `${last.line} ${body}` },
-                  ],
-                  isAwaiting: false,
-                }
-              : state;
+            : body === SEPARATOR
+              ? { ...state, isInItem: false }
+              : // A line under the item: its last line so far, and its body
+                // where the summary's own line holds no sentence.
+                last !== undefined && (state.isAwaiting || state.isInItem)
+                ? underItem(state, last, body)
+                : state;
 };
 
-/** The items of one reply text's lists that roll up, and of its 📌 roll-up, in order. */
+/** The items of one reply text's lists that roll up, and of its 📌 roll-up, in order, each freeing the references its last line names as written. */
 export const itemsOfText = (text: string): readonly Omit<ListItem, "at">[] =>
   text
     .split("\n")
@@ -208,16 +264,116 @@ export const itemsOfText = (text: string): readonly Omit<ListItem, "at">[] =>
       isPinned: false,
       found: [],
       isAwaiting: false,
+      isInItem: false,
+      fence: "",
     } as Scan)
-    .found.map((found) => ({ ...found, line: found.line.replace(SUFFIX, "") }));
+    .found.map(({ last, ...found }) => ({
+      ...found,
+      line: found.line.replace(SUFFIX, ""),
+      frees: freesOfLine(last ?? "") ?? [],
+    }));
 
-/** Every item of every turn's replies, oldest first. */
+/** The reference an item of a reply's own list goes by, `9efb08a1.Todo.2`, by its turn's id; none for a 📌 roll-up's bullet or an item with no number. */
+export const listItemRef = (
+  turns: readonly Pick<Turn, "id">[],
+  item: ListItem,
+): string | undefined =>
+  item.isPinned || item.number === undefined
+    ? undefined
+    : refText({
+        turn: turns[item.at]?.id ?? "",
+        list: SPEC.lists[item.list].header,
+        number: item.number,
+      });
+
+/**
+ * The items with what each frees resolved against the items the turns
+ * hold, each numbered item of a reply's own list and each Decide item a
+ * `kanban_options` call raised, by its turn's whole id: only those of its
+ * own turn and the turns before it back to `starts[at]`, the latest
+ * `reassess` turn at or before its own, whose lists replaced every earlier
+ * item; and never the item itself.
+ */
+export const withResolvedFrees = (
+  turns: readonly Pick<Turn, "id" | "decide">[],
+  starts: readonly number[],
+  items: readonly ListItem[],
+): readonly ListItem[] => {
+  const ids = turns.map((turn) => turn.id);
+  const known = new Set([
+    ...items.flatMap((item) => listItemRef(turns, item) ?? []),
+    ...turns.flatMap((turn) =>
+      turn.decide.map((raised) =>
+        refText({ turn: turn.id, list: DECIDE.header, number: raised.number }),
+      ),
+    ),
+  ]);
+
+  return items.map((item) => {
+    const own = listItemRef(turns, item);
+    const span = { from: starts[item.at] ?? 0, at: item.at };
+
+    return {
+      ...item,
+      frees: resolvedRefs(item.frees, ids, span, known).filter(
+        (ref) => ref !== own,
+      ),
+    };
+  });
+};
+
+/** Every item of every turn's replies, oldest first, each freeing the items its `Frees:` line names, as withResolvedFrees resolves them. */
 export const allItems = (turns: readonly Turn[]): readonly ListItem[] =>
-  turns.flatMap((turn, at) =>
-    turn.replies.flatMap((text) =>
-      itemsOfText(text).map((item) => ({ ...item, at })),
+  withResolvedFrees(
+    turns,
+    reassessStarts(turns),
+    turns.flatMap((turn, at) =>
+      turn.replies.flatMap((text) =>
+        itemsOfText(text).map((item) => ({ ...item, at })),
+      ),
     ),
   );
+
+/** A Decide item a `kanban_options` call raised, and the place of the turn it raised it in. */
+export type Raising = Readonly<{ item: DecideItem; at: number }>;
+
+/**
+ * The Decide items `kanban_options` calls raised, each at its turn's place
+ * `at`, with what it frees as the reply's own Decide list writes it: where
+ * that turn's reply prints the item, by its number, with a `Frees:` line
+ * naming an item `items` resolves, the reply's line wins over the call's
+ * `frees`, since the reply is what the user reads and the call came before
+ * it; else the call's stands.
+ */
+export const withRepliedFrees = (
+  turns: readonly Pick<Turn, "id">[],
+  items: readonly ListItem[],
+  raised: readonly Raising[],
+): readonly Raising[] => {
+  const replied = new Map(
+    items
+      .filter((item) => item.list === "decide" && item.frees.length > 0)
+      .flatMap((item) => {
+        const ref = listItemRef(turns, item);
+
+        return ref === undefined ? [] : [[ref, item.frees] as const];
+      }),
+  );
+
+  return raised.map((entry) => {
+    const frees = replied.get(
+      refText({
+        turn: turns[entry.at]?.id ?? "",
+        list: DECIDE.header,
+        number: entry.item.number,
+      }),
+    );
+
+    return frees === undefined
+      ? entry
+      : { ...entry, item: { ...entry.item, frees } };
+  });
+};
 
 // --- answers --------------------------------------------------------------
 
@@ -417,19 +573,35 @@ export const windowStart = (turns: readonly Turn[], window: number): number =>
 const keyOf = (item: Readonly<{ list: ListKey; line: string }>): string =>
   `${item.list}\t${subjectKey(summaryOf(item.line))}`;
 
-/** One item per list and subject printed in the window, at its latest occurrence, in order of first appearance. */
+/**
+ * One item per list and subject printed in the window, at its latest
+ * occurrence, in order of first appearance. A 📌 bullet that names nothing
+ * it frees keeps what its own list's latest printing since the latest
+ * `reassess` turn freed, so a roll-up's restatement doesn't drop it.
+ */
 export const rollUp = (
   turns: readonly Turn[],
   window: number,
 ): readonly ListItem[] => {
   const start = windowStart(turns, window);
-  const items = allItems(turns).filter((item) => item.at >= start);
+  const all = allItems(turns);
+  const floor = reassessStart(turns);
+  const items = all.filter((item) => item.at >= start);
   const last = new Map(items.map((item, n) => [keyOf(item), n]));
   const firsts = [...new Set(items.map(keyOf))];
+  const ownFrees = new Map(
+    all
+      .filter((item) => !item.isPinned && item.at >= floor)
+      .map((item) => [keyOf(item), item.frees] as const),
+  );
 
   return firsts.flatMap((key) => {
     const n = last.get(key);
-    const item = n === undefined ? undefined : items[n];
+    const found = n === undefined ? undefined : items[n];
+    const item =
+      found !== undefined && found.isPinned && found.frees.length === 0
+        ? { ...found, frees: ownFrees.get(key) ?? found.frees }
+        : found;
 
     return item === undefined ? [] : [item];
   });
@@ -553,13 +725,15 @@ export type DecideState = Readonly<{
  * it settled, if it did: by the latest of the user's answers to it, else by
  * a later `reassess` turn, else by a later item on its subject. A turn that
  * reassesses applies its own answers first, so an item it answers settles
- * as answered.
+ * as answered. Each frees what withRepliedFrees gives it.
  */
 export const decideStates = (turns: readonly Turn[]): readonly DecideState[] => {
   const start = reassessStart(turns);
   const answers = answered(turns);
-  const raised = turns.flatMap((turn, at) =>
-    turn.decide.map((item) => ({ item, at })),
+  const raised = withRepliedFrees(
+    turns,
+    allItems(turns),
+    turns.flatMap((turn, at) => turn.decide.map((item) => ({ item, at }))),
   );
   const last = new Map(
     raised
