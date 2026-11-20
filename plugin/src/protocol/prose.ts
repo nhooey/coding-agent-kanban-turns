@@ -65,6 +65,7 @@ export type ProseSpec = Readonly<{
     "turn-id": Readonly<{ length: number }>;
     letters: Readonly<{ first: string }>;
   }>;
+  frees: Readonly<{ label: string; separator: string }>;
   "roll-up": Readonly<{
     glyph: string;
     header: string;
@@ -224,6 +225,22 @@ const rollUpValues = (spec: ProseSpec): Entries => {
   ];
 };
 
+/** An example of the line an item ends on, naming the items it frees: `Frees: 0f311c94.Decide.2, 0f311c94.Review.1`. */
+export const exampleFrees = (spec: ProseSpec): string => {
+  const turn = exampleTurn(spec);
+  const refs = [
+    `${turn}.${spec.lists["decide"]?.header ?? ""}.2`,
+    `${turn}.${spec.lists["review"]?.header ?? ""}.1`,
+  ];
+
+  return `${spec.frees.label}: ${refs.join(`${spec.frees.separator} `)}`;
+};
+
+/** The example of the line naming what an item frees. */
+const freesValues = (spec: ProseSpec): Entries => [
+  ["example.frees", exampleFrees(spec)],
+];
+
 /** Every prefix of `word`, shortest first. */
 const prefixes = (word: string): readonly string[] =>
   [...word].map((_, n) => [...word].slice(0, n + 1).join(""));
@@ -358,6 +375,7 @@ export const placeholderEntries = (spec: ProseSpec, own: OwnValues): Entries => 
   ...listValues(spec),
   ...listsValues(spec),
   ...rollUpValues(spec),
+  ...freesValues(spec),
   ...commandValues(spec),
   ...optionValues(spec),
   ...characterValues(spec),

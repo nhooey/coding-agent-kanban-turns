@@ -147,6 +147,24 @@ reference:
     last: Z
   turn-after: [of, from]
 
+# The line an item that blocks other work ends on, naming the items it
+# frees: `Frees: 0f311c94.Decide.2, 0f311c94.Review.1`. Each is an item's
+# reference without letters or a note, `<turn>.<List>.<n>`, its turn always
+# named, by an id or a prefix of one `reference.turn-id.shortest`
+# characters long or more, the list being the header of a list that rolls
+# up into 📌. It names an item of the turn whose reply printed the line, or
+# of an earlier turn back to the latest `reassess` turn at or before it:
+# a `reassess` turn's lists replace every earlier item, so a reference to
+# an item one replaced frees nothing, and the line names the item that took
+# it in instead. A prefix names the latest of those turns whose id opens on
+# it and that holds the item. A reference to the item itself, or to no
+# item of those turns, frees nothing.
+#   label: the word the line opens with, before its colon;
+#   separator: what parts its references, a space after it.
+frees:
+  label: Frees
+  separator: ","
+
 # What earlier turns left open, which a final response closes on.
 #   glyph: what the roll-up's header and its count line open with;
 #   header: the full roll-up's header, `📌 **Outstanding from previous

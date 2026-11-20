@@ -11,6 +11,8 @@ import {
   caseFailures,
   caseOf,
   caseProblems,
+  decideFreesOfTurns,
+  freesOfTurns,
   outcomeOf,
   turnsOfCase,
 } from "../../../tools/spec/cases.ts";
@@ -347,8 +349,36 @@ describe("outcomeOf", () => {
       open: [],
       outstanding: ["Pending: Rework the loader"],
       counts: "📌 Outstanding: 🚧 1",
+      frees: {},
+      "decide-frees": {},
       runs: [undefined, undefined],
     });
+  });
+
+  test("what each numbered item frees, by its reference, an item that frees none left out", () => {
+    const freeing = caseOfText(
+      edited(
+        "It reads the cache twice.\\n\\",
+        "It reads the cache twice.\\n\\\n          \\   Frees: 9efb08a1.Decide.1, 9efb08a1.Todo.1\\n\\",
+      ),
+    );
+
+    expect(outcomeOf(freeing).frees).toEqual({
+      "9efb08a1.Pending.1": ["9efb08a1.Decide.1"],
+    });
+    expect(freesOfTurns(turnsOfCase(freeing))).toEqual(outcomeOf(freeing).frees);
+  });
+
+  test("what each Decide item a call raised frees, by its reference, as the call gives it where the reply writes no line", () => {
+    const freeing = caseOfText(
+      edited("        kind: radio\n", "        kind: radio\n        frees: [9efb08a1.Pending.1]\n"),
+    );
+
+    expect(outcomeOf(freeing)["decide-frees"]).toEqual({
+      "9efb08a1.Decide.1": ["9efb08a1.Pending.1"],
+    });
+    expect(decideFreesOfTurns(turnsOfCase(freeing))).toEqual(outcomeOf(freeing)["decide-frees"]);
+    expect(decideFreesOfTurns(turnsOfCase(caseOfText()))).toEqual({});
   });
 
   test("an item nobody answered stays open", () => {
@@ -361,6 +391,8 @@ describe("outcomeOf", () => {
         "Decide: Which cache to keep for the loader",
       ],
       counts: "📌 Outstanding: 🚧 1 · 🧠 1",
+      frees: {},
+      "decide-frees": {},
       runs: [undefined, undefined],
     });
   });
@@ -411,5 +443,15 @@ describe("caseFailures", () => {
       'expect.counts: expected "", got "📌 Outstanding: 🚧 1"',
       'turns[1].runs: expected "open", got none',
     ]);
+  });
+
+  test("what the items free, whatever order the case writes them in", () => {
+    const golden = caseOfText();
+    const frees = { "9efb08a1.Pending.1": ["9efb08a1.Decide.1"] };
+
+    expect(caseFailures({ ...golden, expect: { ...golden.expect, frees } })).toEqual([
+      'expect.frees: expected {"9efb08a1.Pending.1":["9efb08a1.Decide.1"]}, got {}',
+    ]);
+    expect(caseFailures({ ...golden, expect: { ...golden.expect, frees: {} } })).toEqual([]);
   });
 });

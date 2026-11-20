@@ -20,6 +20,8 @@ import {
   settlementsIn,
   subjectKey,
   summaryOf,
+  withRepliedFrees,
+  withResolvedFrees,
 } from "../../src/items/outstanding.ts";
 import type {
   Answer,
@@ -69,9 +71,13 @@ const reportNames = (prompt: string): readonly string[] | undefined => {
 };
 
 export const allItems = (turns: readonly Turn[]): readonly ListItem[] =>
-  turns.flatMap((turn, at) =>
-    turn.replies.flatMap((text) =>
-      itemsOfText(text).map((item) => ({ ...item, at })),
+  withResolvedFrees(
+    turns.map((turn) => ({ id: turn.id, decide: turn.calls.flatMap(itemsOf) })),
+    turns.map((_, at) => reassessStart(turns.slice(0, at + 1))),
+    turns.flatMap((turn, at) =>
+      turn.replies.flatMap((text) =>
+        itemsOfText(text).map((item) => ({ ...item, at })),
+      ),
     ),
   );
 
@@ -212,8 +218,12 @@ const settlementOf = (
 export const decideStates = (turns: readonly Turn[]): readonly DecideState[] => {
   const start = reassessStart(turns);
   const answers = answered(turns);
-  const raised = turns.flatMap((turn, at) =>
-    turn.calls.flatMap((input) => itemsOf(input).map((item) => ({ item, at }))),
+  const raised = withRepliedFrees(
+    turns,
+    allItems(turns),
+    turns.flatMap((turn, at) =>
+      turn.calls.flatMap((input) => itemsOf(input).map((item) => ({ item, at }))),
+    ),
   );
   const last = new Map(
     raised

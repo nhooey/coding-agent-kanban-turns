@@ -1,0 +1,70 @@
+title: >-
+  `Frees:` lines that free nothing, or less than they name: references to a
+  later turn's item, a number its list doesn't print, a list that doesn't
+  roll up, a list the reply doesn't print, no turn, an unknown turn, a
+  prefix shorter than the spec's shortest, the item itself, and one item
+  twice; a line that isn't its item's last, one after a separator and one
+  after a blank line. A Review item's line under its summary alone is no
+  part of its text, so the pull request it names, though merged, settles
+  nothing
+example: false
+merged: [o/docs#5]
+turns:
+  - id: c3d4e5f6
+    prompt: What's left before the release?
+    replies:
+      - text: "\
+          Six things are left, all yours.\n\
+          \n\
+          ✅ **Done:**  \n\
+          ▔▔▔▔▔▔▔▔\n\
+          1. **Lock bump in commit `d1e2f3a`**\n\
+          \n\
+          🔍 **Review:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔\n\
+          1. **The docs rewrite**  \n\
+          \   Frees: o/docs#5\n\
+          \n\
+          👉 **Todo:**  \n\
+          ▔▔▔▔▔▔▔▔\n\
+          1. **Rotate the `ci-bot` key in the cloud console**  \n\
+          \   It was issued before the leak.\n\
+          \   Frees: d4e5f6a7.Todo.1, c3d4e5f6.Todo.9, c3d4e5f6.Done.1, c3d4e5f6.Decide.1, Todo.2, c3d4e.Todo.2, c3d4e5f6.Todo.1, c3d4e5f6.Todo.2, c3d4e5f6.Todo.2\n\
+          \   ⠀\n\
+          2. **Merge the lock bump**  \n\
+          \   Frees: ffffff.Todo.1\n\
+          \   ⠀\n\
+          3. **Tag the release**  \n\
+          \   Frees: c3d4e5f6.Todo.1\n\
+          \   It waits for the lock bump.\n\
+          \   ⠀\n\
+          4. **Publish the notes**  \n\
+          \   ⠀\n\
+          \   Frees: c3d4e5f6.Todo.1\n\
+          5. **Announce the release**\n\
+          \n\
+          \   Frees: c3d4e5f6.Todo.1\n"
+        lint: []
+  - id: d4e5f6a7
+    prompt: Then?
+    replies:
+      - text: "\
+          The release check comes after.\n\
+          \n\
+          👉 **Todo:**  \n\
+          ▔▔▔▔▔▔▔▔\n\
+          1. **Re-run the release check**\n"
+        lint: []
+expect:
+  open: []
+  outstanding:
+    - "Review: The docs rewrite"
+    - "Todo: Rotate the `ci-bot` key in the cloud console"
+    - "Todo: Merge the lock bump"
+    - "Todo: Tag the release"
+    - "Todo: Publish the notes"
+    - "Todo: Announce the release"
+    - "Todo: Re-run the release check"
+  counts: "📌 Outstanding: 🔍 1 · 👉 6"
+  frees:
+    c3d4e5f6.Todo.1: [c3d4e5f6.Todo.2]

@@ -65,6 +65,11 @@ export const ITEM_SCHEMA = {
       type: "string",
       description: `\`<turn>.${DECIDE.header}.<number>\`; filled in when left out.`,
     },
+    frees: {
+      type: "array",
+      items: { type: "string" },
+      description: `The references the item's \`${SPEC.frees.label}:\` line names, each \`<turn>.<List>.<n>\`.`,
+    },
     options: {
       type: "array",
       items: {
@@ -106,7 +111,7 @@ export const INPUT_SCHEMA = {
 /** What the tool does, as the engine lists it to the agent. */
 export const TOOL_DESCRIPTION = [
   `Draws clickable buttons for this turn's ${DECIDE.header} items in the transcript, just under the final response, and lists them in the plugin's ${DECIDE.header} pane.`,
-  `Call it once, right before writing the final response, with every ${DECIDE.header} item that response will hold, in its order: each item's turn id, number, summary and kind, and each option's letter, name, consequence, pros and cons.`,
+  `Call it once, right before writing the final response, with every ${DECIDE.header} item that response will hold, in its order: each item's turn id, number, summary, kind and frees, and each option's letter, name, consequence, pros and cons.`,
   "A click writes the item's reference into the user's prompt draft; nothing is sent.",
 ].join(" ");
 
@@ -117,6 +122,7 @@ export const INSTRUCTION_FRAGMENTS: readonly FragmentName[] = [
   "lists",
   "shape",
   "decide-items",
+  "frees",
   "answers",
   "roll-up",
   "commands",
