@@ -5,6 +5,7 @@ import { describe, test } from "node:test";
 import { expect } from "expect";
 
 import {
+  answeredCount,
   emptyRaised,
   firstUnanswered,
   forSession,
@@ -12,11 +13,13 @@ import {
   problemsOf,
   refreshed,
   seen,
+  sentOf,
   settlementOf,
   stillOpen,
   unread,
   unseen,
   withItems,
+  withSent,
 } from "../src/raised.ts";
 import type { DecideItem, Raised } from "../types/index.d.ts";
 
@@ -133,6 +136,11 @@ describe("a refresh", () => {
     expect(settlementOf(after, checkbox)).toBeUndefined();
   });
 
+  test("keeps the ids of the turns it read, in order, for the pane's turn headers", () => {
+    expect(refreshed(raised, [], [], [], ["9efb08a1", "b2c3d4e5"]).turns).toEqual(["9efb08a1", "b2c3d4e5"]);
+    expect(unread(refreshed(raised, [], [], [], ["9efb08a1"]), "gone", []).turns).toEqual(["9efb08a1"]);
+  });
+
   test("that couldn't read the transcript settles nothing and reopens nothing", () => {
     const before = refreshed(raised, [checkbox], [], []);
     const after = unread(before, "Error: no file", ["bad key"]);
@@ -170,6 +178,15 @@ describe("announcing new items", () => {
   });
 });
 
+describe("how many open items the draft answers", () => {
+  test("counts the open ones it answers, by letters or in words, and no Done one", () => {
+    const after = refreshed(raised, [checkbox], [], []);
+    expect(answeredCount(raised, "9efb08a1.Decide.1.A\n9efb08a1.Decide.2: later\n")).toBe(2);
+    expect(answeredCount(after, "9efb08a1.Decide.1.A\n")).toBe(0);
+    expect(answeredCount(raised, "")).toBe(0);
+  });
+});
+
 describe("where /answers scrolls", () => {
   test("to the first open item the draft doesn't answer", () => {
     expect(firstUnanswered(raised, "9efb08a1.Decide.1.A")).toBe(checkbox);
@@ -178,5 +195,44 @@ describe("where /answers scrolls", () => {
   test("to none when the draft answers every open item", () => {
     const after = refreshed(raised, [checkbox], [], []);
     expect(firstUnanswered(after, "9efb08a1.Decide.2.A")).toBeUndefined();
+  });
+});
+
+describe("the answers Submit sent, Done before the turn's end reads them", () => {
+  const draft = "coding-agent-kanban-turns:\n9efb08a1.Decide.1.B: only the loader\n9efb08a1.Decide.2.A\nreassess\n";
+
+  test("are the open items the draft answers, with its letters and note", () => {
+    expect(sentOf(draft, raised)).toEqual([
+      { ref: "9efb08a1.Decide.1", how: "sent", letters: ["B"], note: "only the loader" },
+      { ref: "9efb08a1.Decide.2", how: "sent", letters: ["A"], note: "" },
+    ]);
+  });
+
+  test("leave out an item already Done, and send nothing for a draft that answers nothing", () => {
+    const after = refreshed(raised, [checkbox], [], []);
+    expect(sentOf(draft, after).map((sent) => sent.ref)).toEqual(["9efb08a1.Decide.2"]);
+    expect(sentOf("reassess\n", raised)).toEqual([]);
+  });
+
+  test("make their items Done, saying what was sent, until a refresh says otherwise", () => {
+    const sent = sentOf(draft, raised);
+    const shown = withSent(raised, sent);
+    expect(isSettled(shown, radio)).toBe(true);
+    expect(settlementOf(shown, checkbox)).toEqual(sent[1]);
+    expect(stillOpen(shown)).toEqual([]);
+    expect(withSent(raised, [])).toBe(raised);
+  });
+
+  test("give way to what the transcript says of an item it already made Done", () => {
+    const answered = { ref: "9efb08a1.Decide.1", how: "answered", turn: "b2c3d4e5", letters: ["A"], note: "" } as const;
+    const after = refreshed(raised, [checkbox], [answered], []);
+    const shown = withSent(after, sentOf(draft, raised));
+    expect(settlementOf(shown, radio)).toEqual(answered);
+    expect(shown.settledRefs).toEqual(["9efb08a1.Decide.1", "9efb08a1.Decide.2"]);
+  });
+
+  test("make nothing Done for an item not raised", () => {
+    const stray = { ref: "cafecafe.Decide.9", how: "sent", letters: ["A"], note: "" } as const;
+    expect(withSent(raised, [stray]).settledRefs).toEqual([]);
   });
 });

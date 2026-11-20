@@ -38,9 +38,11 @@ export type DecideItem = Readonly<{
 }>;
 
 /**
- * How a Decide item stopped being open: the user's answer to it, the letters
- * and note it gave and the id of the turn it was sent in; a later
- * `reassess` turn; or a later item on its subject, the item asked again.
+ * How a Decide item stopped being open, which the UI calls Done: the user's
+ * answer to it, the letters and note it gave and the id of the turn it was
+ * sent in; a later `reassess` turn; a later item on its subject, the item
+ * asked again; or, until the turn's end reads the transcript, the answer the
+ * pane's Submit sent.
  */
 export type Settlement = Readonly<
   | {
@@ -51,16 +53,20 @@ export type Settlement = Readonly<
       note: string;
     }
   | { ref: string; how: "reassessed" | "restated" }
+  | { ref: string; how: "sent"; letters: readonly string[]; note: string }
 >;
 
 /**
  * Every Decide item raised in this session, oldest first: the pane lists
  * them all, and a reply draws its own under its text. An item stays once
- * raised; one no longer open is settled, drawn dimmed, its buttons dead.
+ * raised; one no longer open is settled, Done in the UI, drawn dimmed, its
+ * buttons dead.
  */
 export type Raised = Readonly<{
   /** The session the items were raised in: another session starts empty. */
   session: string;
+  /** The ids of the turns the last refresh read, oldest first: what a turn's index in the pane counts back from. */
+  turns: readonly string[];
   /** Each item a `kanban_options` call drew or a refresh found open, by ref once, oldest first. */
   items: readonly DecideItem[];
   /** Raised refs the last refresh didn't find open. */
@@ -91,7 +97,14 @@ export type Json =
  */
 export type Settings = Readonly<{
   counts: Readonly<{ turns: number; "gh-timeout-ms": number }>;
-  keys: Readonly<{ dismiss: string }>;
+  keys: Readonly<{
+    dismiss: string;
+    next: string;
+    previous: string;
+    submit: string;
+    reassess: string;
+  }>;
+  pane: Readonly<{ hints: boolean }>;
   notes: Readonly<{ rows: number }>;
   marks: Readonly<{ sent: string }>;
   colors: Readonly<{
@@ -102,7 +115,6 @@ export type Settings = Readonly<{
     hover: string;
     settled: string;
     close: string;
-    "close-x": string;
     kanban: string;
   }>;
 }>;
@@ -121,6 +133,9 @@ declare module "claude-code" {
   interface PluginState {
     "coding-agent-kanban-turns": {
       raised: Shaped<Raised>;
+      sent: Shaped<readonly Settlement[]>;
+      expanded: readonly string[];
+      focused: string;
       draft: string;
       noting: string;
       submits: number;

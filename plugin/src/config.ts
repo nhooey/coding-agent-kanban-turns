@@ -12,12 +12,23 @@
 import type { Json, Loaded, Settings } from "../types/index.d.ts";
 
 /** The type each setting must have: a section is a map of its keys. */
-type Shape = "string" | "number" | { readonly [key: string]: Shape };
+type Shape =
+  | "string"
+  | "number"
+  | "boolean"
+  | { readonly [key: string]: Shape };
 
 /** Every setting the plugin reads, by the type its value must have. */
 export const SETTINGS_SHAPE: Shape = {
   counts: { turns: "number", "gh-timeout-ms": "number" },
-  keys: { dismiss: "string" },
+  keys: {
+    dismiss: "string",
+    next: "string",
+    previous: "string",
+    submit: "string",
+    reassess: "string",
+  },
+  pane: { hints: "boolean" },
   notes: { rows: "number" },
   marks: { sent: "string" },
   colors: {
@@ -28,7 +39,6 @@ export const SETTINGS_SHAPE: Shape = {
     hover: "string",
     settled: "string",
     close: "string",
-    "close-x": "string",
     kanban: "string",
   },
 };
@@ -41,6 +51,8 @@ export const RETIRED: Readonly<Record<string, string>> = {
     "an item's title is now a label on a background, then the summary in plain text; colors.title-label and colors.title-background colour the label",
   "colors.expand":
     "the ↗ beside the count line is gone; colors.kanban colours the 🖥️ Kanban button that opens the pane",
+  "colors.close-x":
+    "the ✖ is drawn in colors.close, on no background, as every button is",
 };
 
 /** The value at a dotted key's path, or undefined where there is none. */

@@ -65,8 +65,8 @@ export const SEPARATOR = "⠀";
 const keyOfName = (name: string): ListKey | undefined =>
   LIST_KEYS.find((key) => LISTS[key].names.includes(name));
 
-// The 📌 roll-up's header, under which the lists' headers repeat.
-const PIN =
+/** The 📌 roll-up's header, under which the lists' headers repeat. */
+export const PIN =
   /^\s*📌\s+\*\*(Still open from earlier|Outstanding from previous turns):\*\*/;
 // A top-level bullet or numbered line, the number kept.
 const ITEM = /^ {0,2}(?:[-*]|(\d+)[.)])\s+(.*)$/;

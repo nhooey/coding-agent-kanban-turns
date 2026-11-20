@@ -5,7 +5,7 @@ import { describe, test } from "node:test";
 import { expect } from "expect";
 
 import { answersIn, answerTo, lettersAfter } from "../src/answers.ts";
-import { glyphOf, markOf, refOf } from "../src/items.ts";
+import { glyphOf, markOf, optionMark, refOf } from "../src/items.ts";
 import type { DecideItem } from "../types/index.d.ts";
 
 const radio: DecideItem = {
@@ -100,6 +100,12 @@ describe("the items themselves", () => {
     expect(markOf(checkbox, "A", true)).toBe("✅");
     expect(markOf(radio, "A", false)).toBe("🔘");
     expect(markOf(binary, "N", false)).toBe("👎");
+  });
+
+  test("an option is ✅ while chosen, else the sent mark where a Done item's answer picked it, else its glyph", () => {
+    expect(optionMark(radio, "A", { chosen: true, sent: true }, "☑️")).toBe("✅");
+    expect(optionMark(radio, "A", { chosen: false, sent: true }, "☑️")).toBe("☑️");
+    expect(optionMark(radio, "A", { chosen: false, sent: false }, "☑️")).toBe("🔘");
   });
 });
 

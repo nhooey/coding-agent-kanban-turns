@@ -12,6 +12,9 @@ import {
   configText,
   drewText,
   gutterStyle,
+  answeredText,
+  draftSummary,
+  hintText,
   isPlainToolRow,
   itemTitle,
   noItemsText,
@@ -22,6 +25,7 @@ import {
   notesKey,
   putBackText,
   notesMode,
+  pickedText,
   sentLetters,
   settledText,
   submitStep,
@@ -98,19 +102,19 @@ describe("the tool's result", () => {
 });
 
 describe("an item's title", () => {
-  test("is a label of its list and number, padded for its background, then its summary, marked when settled", () => {
+  test("is a label of its list and number, padded for its background, then its summary, marked when Done", () => {
     expect(itemTitle(radio, false)).toEqual({
       label: " 🧠 Decide.1 ",
       summary: "Which cache to keep",
     });
     expect(itemTitle(radio, true)).toEqual({
       label: " 🧠 Decide.1 ",
-      summary: "Which cache to keep (settled)",
+      summary: "Which cache to keep (done)",
     });
   });
 });
 
-describe("what settled an item", () => {
+describe("what made an item Done", () => {
   test("is the answer: the turn it was sent in, its letters, then its note", () => {
     const answered = { ref: "9efb08a1.Decide.1", how: "answered", turn: "4a2206b0", note: "" } as const;
     expect(settledText({ ...answered, letters: ["Y"] })).toBe("Answered in 4a2206b0: Y");
@@ -121,12 +125,19 @@ describe("what settled an item", () => {
     expect(sentLetters({ ...answered, letters: ["A", "C"] })).toEqual(["A", "C"]);
   });
 
-  test("says so when a reassess, an item asked again, or nothing the transcript says settled it", () => {
-    expect(settledText({ ref: "r", how: "reassessed" })).toBe("Settled: reassessed");
-    expect(settledText({ ref: "r", how: "restated" })).toBe("Settled: asked again");
-    expect(settledText(undefined)).toBe("Settled");
+  test("says so when a reassess, an item asked again, or nothing the transcript says made it Done", () => {
+    expect(settledText({ ref: "r", how: "reassessed" })).toBe("Done: reassessed");
+    expect(settledText({ ref: "r", how: "restated" })).toBe("Done: asked again");
+    expect(settledText(undefined)).toBe("Done");
     expect(sentLetters({ ref: "r", how: "reassessed" })).toEqual([]);
     expect(sentLetters(undefined)).toEqual([]);
+  });
+
+  test("is the answer Submit sent, until the turn's end reads it", () => {
+    const sent = { ref: "r", how: "sent", letters: ["B"], note: "" } as const;
+    expect(settledText(sent)).toBe("Sent: B");
+    expect(settledText({ ...sent, note: "only the loader" })).toBe("Sent: B · only the loader");
+    expect(sentLetters(sent)).toEqual(["B"]);
   });
 });
 
@@ -287,5 +298,45 @@ describe("the column left of an option", () => {
     expect(gutterStyle(true, "9efb08a1.Decide.1.A", colors)).toEqual({
       backgroundColor: "ide",
     });
+  });
+});
+
+describe("what the footer says Submit will send", () => {
+  const HEADER = "coding-agent-kanban-turns:\n";
+
+  test("counts the answers and the notes, and names a reassess", () => {
+    expect(draftSummary(`${HEADER}9efb08a1.Decide.1.A\n9efb08a1.Decide.2: only the loader\nreassess\n`)).toBe(
+      "Draft: 2 answers · 1 note · reassess",
+    );
+    expect(draftSummary(`${HEADER}9efb08a1.Decide.1.B: and soon\n`)).toBe("Draft: 1 answer · 1 note");
+  });
+
+  test("names words of the person's own beside the answers", () => {
+    expect(draftSummary("9efb08a1.Decide.1.A\nand rebase first\n")).toBe("Draft: 1 answer · your words");
+    expect(draftSummary("just words")).toBe("Draft: your words");
+  });
+
+  test("says empty for a box of blanks", () => {
+    expect(draftSummary("")).toBe("Draft: empty");
+    expect(draftSummary(" \n")).toBe("Draft: empty");
+  });
+});
+
+describe("how much of what's open the draft answers", () => {
+  test("in the pane's header: the open items it answers out of all of them", () => {
+    expect(answeredText(1, 3)).toBe("1 of 3 answered");
+  });
+
+  test("above the prompt: how many it picks, none while it picks nothing", () => {
+    expect(pickedText(2)).toBe("✏️ 2 picked");
+    expect(pickedText(0)).toBe("");
+  });
+});
+
+describe("the hint row", () => {
+  test("names each key the pane takes, by the settings", () => {
+    expect(
+      hintText({ dismiss: "q", next: "j", previous: "k", submit: "s", reassess: "r" }),
+    ).toBe("j/k item · ↑/↓ option · enter pick · s submit · r reassess · q close · esc back to the prompt");
   });
 });

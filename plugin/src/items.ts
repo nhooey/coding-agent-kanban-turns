@@ -29,6 +29,19 @@ export const markOf = (
   isChosen: boolean,
 ): string => (isChosen ? CHOSEN_MARK : glyphOf(item, letter));
 
+/**
+ * What an option is drawn with in its item, open or Done: ✅ while the draft
+ * chooses it, else `sentMark` where the answer that made the item Done
+ * picked it, else its glyph.
+ */
+export const optionMark = (
+  item: DecideItem,
+  letter: string,
+  is: Readonly<{ chosen: boolean; sent: boolean }>,
+  sentMark: string,
+): string =>
+  is.sent && !is.chosen ? sentMark : markOf(item, letter, is.chosen);
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 

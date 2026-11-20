@@ -62,7 +62,7 @@ describe("the user's file over the defaults", () => {
   test("changes only the keys it names, and says where each came from", () => {
     const got = loaded(defaults, user('{"keys": {"dismiss": "x"}, "colors": {"kanban": "red"}, // mine\n}'));
     expect(got.problems).toEqual([]);
-    expect(got.settings?.keys).toEqual({ dismiss: "x" });
+    expect(got.settings?.keys).toMatchObject({ dismiss: "x", next: "j" });
     expect(got.settings?.colors.kanban).toBe("red");
     expect(got.settings?.colors["title-label"]).toBe("inverseText");
     expect(got.effective).toContain('keys.dismiss = "x"  # user: ~/.config/x/config.jsonc');
@@ -73,7 +73,7 @@ describe("the user's file over the defaults", () => {
     const got = loaded(defaults, user('{"keys": {"prev": "h"}}'));
     expect(got.settings?.keys.dismiss).toBe("q");
     expect(got.problems).toEqual([
-      "~/.config/x/config.jsonc: keys.prev is no setting; the keys here are dismiss",
+      "~/.config/x/config.jsonc: keys.prev is no setting; the keys here are dismiss, next, previous, submit, reassess",
     ]);
   });
 
@@ -133,7 +133,6 @@ describe("the user's file over the defaults", () => {
       "title-background": "claude",
       settled: "ide",
       close: "error",
-      "close-x": "inverseText",
       kanban: "claude",
     });
     const got = loaded(defaults, user('{"colors": {"settled": "permission", "close": "warning"}}'));
@@ -142,6 +141,34 @@ describe("the user's file over the defaults", () => {
     expect(got.settings?.colors.close).toBe("warning");
     expect(loaded(defaults, user('{"colors": {"settled": true}}')).problems).toEqual([
       "~/.config/x/config.jsonc: colors.settled is boolean, not a string",
+    ]);
+  });
+
+  test("the pane's keys are settings, one each", () => {
+    expect(loaded(defaults, undefined).settings?.keys).toEqual({
+      dismiss: "q",
+      next: "j",
+      previous: "k",
+      submit: "s",
+      reassess: "r",
+    });
+    expect(loaded(defaults, user('{"keys": {"submit": "x"}}')).settings?.keys.submit).toBe("x");
+  });
+
+  test("whether the pane draws its hint row is a setting, a boolean", () => {
+    expect(loaded(defaults, undefined).settings?.pane).toEqual({ hints: true });
+    expect(loaded(defaults, user('{"pane": {"hints": false}}')).settings?.pane.hints).toBe(false);
+    expect(loaded(defaults, user('{"pane": {"hints": "no"}}')).problems).toEqual([
+      "~/.config/x/config.jsonc: pane.hints is string, not a boolean",
+    ]);
+  });
+
+  test("colors.close-x, which no ✖ background is drawn for, is left out with a warning", () => {
+    const got = loaded(defaults, user('{"colors": {"close-x": "inverseText", "close": "warning"}}'));
+    expect(got.settings?.colors.close).toBe("warning");
+    expect(got.settings?.colors).not.toHaveProperty("close-x");
+    expect(got.problems).toEqual([
+      "~/.config/x/config.jsonc: colors.close-x is no longer read and is left out: the ✖ is drawn in colors.close, on no background, as every button is",
     ]);
   });
 
