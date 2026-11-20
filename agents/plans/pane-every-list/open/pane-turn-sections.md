@@ -3,7 +3,7 @@ title: Each turn's section in the pane holds every list's items, grouped by list
 state: approved
 kind: implementation
 part-of: pane-every-list
-needs: [items-of-every-list, pane-list-filters, pane-ui-harmonize]
+needs: [items-of-every-list, pane-list-filters, pane-ui-harmonize, pane-state-reducer]
 touches: [plugin/hooks/register.tsx, plugin/src/view.ts, plugin/src/sections.ts, plugin/types/index.d.ts, plugin/plugin-tests/]
 ---
 

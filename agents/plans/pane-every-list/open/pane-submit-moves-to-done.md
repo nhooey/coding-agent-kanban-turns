@@ -3,7 +3,7 @@ title: Submit moves every list's items it settles to their Done sections at once
 state: approved
 kind: implementation
 part-of: pane-every-list
-needs: [pane-turn-sections, list-actions, answers-grouped-by-turn-and-list, pane-submit-review-fixes]
+needs: [pane-turn-sections, list-actions, answers-grouped-by-turn-and-list, pane-submit-review-fixes, pane-state-reducer]
 touches: [plugin/hooks/register.tsx, plugin/src/raised.ts, plugin/src/sections.ts, plugin/plugin-tests/]
 ---
 

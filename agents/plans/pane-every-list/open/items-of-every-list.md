@@ -3,7 +3,7 @@ title: The plugin's core reads every list's items per turn, each with whether it
 state: approved
 kind: implementation
 part-of: pane-every-list
-needs: [kanban-skill-list-answers, pane-submit-review-fixes, protocol-spec-data]
+needs: [kanban-skill-list-answers, pane-submit-review-fixes, protocol-spec-data, pane-state-reducer]
 touches: [plugin/src/transcript.ts, plugin/src/outstanding.ts, plugin/src/raised.ts, plugin/src/items.ts, plugin/types/index.d.ts, plugin/test/]
 ---
 
