@@ -14,10 +14,20 @@ const KIND_GLYPH: Readonly<Record<DecideKind, (letter: string) => string>> = {
   radio: () => "🔘",
 };
 
+/** The mark a chosen option is drawn with, in place of its glyph. */
+export const CHOSEN_MARK = "✅";
+
 /** The glyph an option is drawn with: its own, else its item kind's. */
 export const glyphOf = (item: DecideItem, letter: string): string =>
   item.options.find((o) => o.letter === letter)?.glyph ||
   KIND_GLYPH[item.kind](letter);
+
+/** What an option is drawn with: ✅ while the draft chooses it, else its glyph. */
+export const markOf = (
+  item: DecideItem,
+  letter: string,
+  isChosen: boolean,
+): string => (isChosen ? CHOSEN_MARK : glyphOf(item, letter));
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
