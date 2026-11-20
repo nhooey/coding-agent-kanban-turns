@@ -1,6 +1,6 @@
 ---
 title: The line above the prompt is the skill's count line and a window button that opens the pane
-state: proposed
+state: implemented
 kind: implementation
 part-of: kanban-pane
 needs: [pane-lists-raised-items]

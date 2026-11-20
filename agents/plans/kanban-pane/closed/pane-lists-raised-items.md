@@ -1,6 +1,6 @@
 ---
 title: The pane lists every Decide item raised in the session and opens by itself when a turn raises one
-state: proposed
+state: implemented
 kind: implementation
 part-of: kanban-pane
 touches: [mod/hooks/register.tsx, mod/src/raised.ts, mod/types/index.d.ts, mod/mod-tests/]
