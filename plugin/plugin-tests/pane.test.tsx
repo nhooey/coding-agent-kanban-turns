@@ -240,6 +240,8 @@ const engine = (
   const state = {
     box: "",
     sent: [] as string[],
+    // Each sent prompt's context, as it reached the engine.
+    contexts: [] as (readonly string[])[],
     asUser: [] as boolean[],
     isPaneOpen: false,
     opens: [] as boolean[],
@@ -376,6 +378,7 @@ const engine = (
       return answer;
     }
     state.sent.push(e.text);
+    state.contexts.push(e.context ?? []);
     state.asUser.push(e.origin.kind === "plugin" && e.origin.asUser === true);
 
     return { text: e.text };
@@ -2045,4 +2048,47 @@ test("the context tells the agent about the plugin's tool, and keeps the rest", 
   expect(blocks.slice(0, -1)).toEqual(engineBlocks);
   expect(blocks.at(-1)?.name).toBe("kanbanTurns");
   expect(blocks.at(-1)?.text).toContain(`\`${TOOL}\``);
+});
+
+const GO = { text: "go", wait: false, origin: { kind: "composer" } } as const;
+
+test(
+  "a prepend hook that sends prompt.context past the plugin still leaves the instructions in the first prompt's context, once",
+  {
+    plugins: [
+      {
+        // cc-plugin-sec-default's own hook, seated outermost under managed settings.
+        name: "sec-default-stand-in",
+        tier: "prepend",
+        register(on) {
+          on("prompt.context", (_, e, next) => next.to(e, "append"));
+        },
+      },
+    ],
+  },
+  async ($, on) => {
+    const state = engine(on, () => []);
+    on("prompt.context", (_, e) => ({ blocks: e.blocks }));
+
+    const { blocks } = await $.prompt.context({ blocks: [] });
+    expect(blocks.map((block) => block.name)).not.toContain("kanbanTurns");
+
+    await $.prompt.submit(GO);
+    await $.prompt.submit(GO);
+    expect(state.contexts).toHaveLength(2);
+    expect(state.contexts[0]).toHaveLength(1);
+    expect(state.contexts[0]?.[0]).toContain(`\`${TOOL}\``);
+    expect(state.contexts[1]).toEqual([]);
+  },
+);
+
+test("where prompt.context reaches the plugin, the prompts' context gets no second copy", async ($, on) => {
+  const state = engine(on, () => []);
+  on("prompt.context", (_, e) => ({ blocks: e.blocks }));
+
+  const { blocks } = await $.prompt.context({ blocks: [] });
+  expect(blocks.map((block) => block.name)).toEqual(["kanbanTurns"]);
+
+  await $.prompt.submit(GO);
+  expect(state.contexts).toEqual([[]]);
 });

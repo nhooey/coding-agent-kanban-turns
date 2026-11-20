@@ -35,8 +35,10 @@ import {
   toggledReassess,
   withNote,
 } from "../src/answers.ts";
+import { instructing } from "../src/instructed.ts";
 import {
   INPUT_SCHEMA,
+  INSTRUCTIONS,
   TOOL,
   TOOL_CALLED,
   TOOL_DESCRIPTION,
@@ -277,12 +279,18 @@ const transcriptPath = async ($: EngineInterface): Promise<string> => {
       );
 };
 
+/** This session's turns, read from its whole transcript file. */
+const turnsNow = async ($: EngineInterface): Promise<readonly Turn[]> =>
+  turnsOfText(await transcriptText($, await transcriptPath($)));
+
 /**
- * This session's turns, read from its whole transcript file in ranges the
+ * The text of the transcript file at `path`, read whole in ranges the
  * engine's reads allow, one after another, each decoded as it comes.
  */
-const turnsNow = async ($: EngineInterface): Promise<readonly Turn[]> => {
-  const path = await transcriptPath($);
+const transcriptText = async (
+  $: EngineInterface,
+  path: string,
+): Promise<string> => {
   const { size } = await $.fs.stat(path);
   const decoded = await chunkOffsets(size, READ_BYTES).reduce(
     async (before, offset) => {
@@ -298,7 +306,32 @@ const turnsNow = async ($: EngineInterface): Promise<readonly Turn[]> => {
     Promise.resolve(NOT_DECODED),
   );
 
-  return turnsOfText(decodedText(decoded));
+  return decodedText(decoded);
+};
+
+// The conversation a hook last added the agent's instructions to, by
+// `conversationKey`: the other route, raised before the transcript shows
+// them, then adds none.
+const instructed = atom(
+  { plugin: "coding-agent-kanban-turns", key: "instructed" } as const,
+  "",
+);
+
+/**
+ * Whether the hook about to add the agent's instructions should: they are
+ * owed to this conversation, which is then marked as having them. A
+ * transcript not there yet, as at a new session's first prompt, holds none.
+ */
+const instructNow = async ($: EngineInterface): Promise<boolean> => {
+  const path = await transcriptPath($);
+  const text = await transcriptText($, path).catch(() => "");
+  const { key, isOwed } = instructing(path, text, await read($, instructed));
+
+  if (isOwed) {
+    await update($, instructed, () => key);
+  }
+
+  return isOwed;
 };
 
 /**
@@ -700,9 +733,37 @@ export const register: Register = (on) => {
     return started;
   });
 
-  // The plugin tells the agent about its tool itself: the instructions go in the
-  // conversation's context, after whatever the engine and other hooks put there.
-  on("prompt.context", async ($, e, next) => withInstructions(await next(e)));
+  // The plugin tells the agent about its tool itself, once per conversation,
+  // by whichever route runs first. This hook puts the instructions in the
+  // conversation's context, after whatever the engine and other hooks put
+  // there. A plugin above can send the event on past it, as
+  // cc-plugin-sec-default does under managed settings; then the prompt.submit
+  // hook below puts them in the prompt's context. Where the transcript can't
+  // be read, the context still takes them.
+  on("prompt.context", async ($, e, next) => {
+    const built = await next(e);
+
+    return (await instructNow($)) ? withInstructions(built) : built;
+  }).catch(async ($, e, next) => withInstructions(await next(e)));
+
+  // A slash command's prompt may never reach the agent, so the instructions
+  // wait for one that does; a prompt that doesn't enter leaves them owed. A
+  // failure here never holds up the prompt.
+  on("prompt.submit", async ($, e, next) => {
+    if (e.command !== undefined || !(await instructNow($))) {
+      return next(e);
+    }
+    const entered = await next({
+      ...e,
+      context: [...(e.context ?? []), INSTRUCTIONS],
+    });
+
+    if (entered.drop !== undefined) {
+      await update($, instructed, () => "");
+    }
+
+    return entered;
+  }).catch(($, e, next) => next(e));
 
   on("command.run", { command: "answers-config" }, async ($) => {
     const { effective, problems } = await reloadSettings($);
