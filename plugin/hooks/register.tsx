@@ -143,7 +143,7 @@ const GUTTER = 1;
 // this long.
 const READ_BYTES = 4 * 1024 * 1024;
 // Nothing read yet: no settings until session.start reads the files.
-const UNREAD: Loaded = { settings: null, effective: [], problems: [] };
+const UNREAD: Loaded = { settings: null, effective: [], problems: [], warnings: [] };
 // The keys of the buttons that move the focus ring between items: a ring
 // a hotkey leaves on one of them is no item's, so j and k don't count from it.
 const STEPS = { next: "next", previous: "previous" } as const;
@@ -238,7 +238,7 @@ const counts = atom(
 const settings = atom(
   { plugin: "coding-agent-kanban-turns", key: "settings" } as const,
   UNREAD,
-  { shape: "settings-5" },
+  { shape: "settings-6" },
 );
 
 /** The settings in effect, or none while the defaults file can't be used. */
@@ -779,9 +779,9 @@ export const register: Register = (on) => {
   }).catch(($, e, next) => next(e));
 
   on("command.run", { command: "answers-config" }, async ($) => {
-    const { effective, problems } = await reloadSettings($);
+    const { effective, problems, warnings } = await reloadSettings($);
 
-    return { text: configText(effective, problems) };
+    return { text: configText(effective, problems, warnings) };
   });
 
   on("command.run", { command: "answers" }, async ($) => ({

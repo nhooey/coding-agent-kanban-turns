@@ -30,8 +30,18 @@ export interface Options {
   readonly logLevel?: "silent" | "error" | "warn" | "debug";
 }
 
+/**
+ * Every document of a stream. A stream with none still carries what its
+ * directives and markers got wrong, such as an unknown `%YAML` version.
+ */
+export type ParsedStream = readonly ParsedDocument[] &
+  Readonly<{
+    errors?: readonly YAMLError[];
+    warnings?: readonly YAMLError[];
+  }>;
+
 /** Every document in `source`, each with its errors and warnings. */
 export declare function parseAllDocuments(
   source: string,
   options?: Options,
-): readonly ParsedDocument[];
+): ParsedStream;

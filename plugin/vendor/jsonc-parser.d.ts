@@ -4,26 +4,5 @@
 // the built plugin carries no node_modules to resolve the package's own types
 // from; test/vendor-types.ts holds these to the package's own.
 
-/** What the parser couldn't read, by its code, and where. */
-export interface ParseError {
-  error: number;
-  offset: number;
-  length: number;
-}
-
-/** What the parser lets through. */
-export interface ParseOptions {
-  disallowComments?: boolean;
-  allowTrailingComma?: boolean;
-  allowEmptyContent?: boolean;
-}
-
-/** The value of JSON with comments, each error put into `errors`. */
-export declare function parse(
-  text: string,
-  errors?: ParseError[],
-  options?: ParseOptions,
-): unknown;
-
-/** An error code's name, such as `CommaExpected`. */
-export declare function printParseErrorCode(code: number): string;
+/** The text with each comment replaced by `replaceCh`, or taken out without one. */
+export declare function stripComments(text: string, replaceCh?: string): string;

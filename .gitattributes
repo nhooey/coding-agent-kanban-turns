@@ -1,0 +1,5 @@
+# The bundled parsers and their licences are committed as the flake builds
+# them, byte for byte, which `nix flake check` compares: no line-ending
+# conversion, whatever core.autocrlf says.
+/plugin/vendor/*.js -text
+/plugin/vendor/*.LICENSE -text

@@ -9,17 +9,14 @@
 // A section the plugin no longer reads is the exception: it is left out with a
 // warning, and the rest of the file is used.
 //
-// The files are YAML, read by the `yaml` package; a user's config.jsonc,
-// read only while there's no config.yaml beside it, by `jsonc-parser`. The
-// engine loads only the plugin's own files, so the flake bundles each
-// library into vendor/ as one ES module, which the dev shell lays there too.
+// The files are YAML, read by the `yaml` package. A user's config.jsonc, read
+// while there's no config.yaml beside it, is YAML too once `jsonc-parser`
+// takes its comments out, as YAML reads JSON. The engine loads only the
+// plugin's own files, so the flake bundles each library into vendor/ as one
+// ES module, committed there.
 
 import { parseAllDocuments } from "../vendor/yaml.js";
-import {
-  parse as parseJsoncText,
-  printParseErrorCode,
-} from "../vendor/jsonc-parser.js";
-import type { ParseError } from "../vendor/jsonc-parser.js";
+import { stripComments } from "../vendor/jsonc-parser.js";
 import type { Json, Loaded, Settings } from "../types/index.d.ts";
 
 /**
@@ -85,7 +82,7 @@ const at = (value: Json | undefined, path: readonly string[]): Json | undefined 
 const without = (value: Json, path: readonly string[]): Json => {
   const [key = "", ...rest] = path;
 
-  return !isMap(value) || !(key in value)
+  return !isMap(value) || !Object.hasOwn(value, key)
     ? value
     : Object.fromEntries(
         Object.entries(value).flatMap(([name, inner]): [string, Json][] =>
@@ -125,8 +122,10 @@ type Parsed = Readonly<{ value: Json } | { error: string }>;
 
 /**
  * How a YAML file is read: one document, under YAML 1.2's core schema alone,
- * so `on` and `yes` are strings; a key written twice, a tag the schema
- * doesn't hold, or a `<<` merge refuses it. No warning goes to a console.
+ * whatever its `%YAML` directive says, so `on` and `yes` are strings; a key
+ * written twice or a tag the schema doesn't hold refuses it, and `<<` is an
+ * ordinary key, which no setting is. A `__proto__` key is an ordinary key
+ * too. No warning goes to a console.
  */
 const YAML_OPTIONS = {
   version: "1.2",
@@ -147,51 +146,53 @@ const headline = (message: string): string => {
   return first.endsWith(":") ? first.slice(0, -1) : first;
 };
 
-/** A YAML file's value, an empty file's an empty section, or why it can't be read. */
+/**
+ * A YAML file's value, a file with no document's (empty, or comments alone)
+ * an empty section, or why it can't be read: what the stream and its
+ * document got wrong, more than one document, or one that holds nothing.
+ */
 export const parseYaml = (yaml: string): Parsed => {
   const documents = parseAllDocuments(yaml, YAML_OPTIONS);
   const [document] = documents;
-  const errors = documents
-    .flatMap((parsed) => [...parsed.errors, ...parsed.warnings])
-    .map((error) => headline(error.message));
+  const errors = [
+    ...(documents.errors ?? []),
+    ...(documents.warnings ?? []),
+    ...documents.flatMap((parsed) => [...parsed.errors, ...parsed.warnings]),
+  ].map((error) => headline(error.message));
 
   try {
-    return documents.length > 1
-      ? { error: `holds ${documents.length} YAML documents, not one` }
-      : errors.length > 0
-        ? { error: errors.join("; ") }
-        : { value: (document?.toJS() as Json | undefined) ?? {} };
+    const value =
+      document === undefined ? {} : (document.toJS() as Json | undefined);
+
+    return errors.length > 0
+      ? { error: errors.join("; ") }
+      : documents.length > 1
+        ? { error: `holds ${documents.length} YAML documents, not one` }
+        : value === null || value === undefined
+          ? {
+              error:
+                "holds no section, only an empty document; leave the file empty instead",
+            }
+          : { value };
   } catch (error) {
     return { error: error instanceof Error ? error.message : String(error) };
   }
 };
 
-/** A JSONC file's value, comments and trailing commas allowed, or why it can't be read. */
-export const parseJsonc = (jsonc: string): Parsed => {
-  // jsonc-parser reports what it couldn't read into the list it's handed.
-  const errors: ParseError[] = [];
-  const value = parseJsoncText(jsonc, errors, {
-    allowTrailingComma: true,
-  }) as Json | undefined;
-
-  return errors.length === 0 && value !== undefined
-    ? { value }
-    : {
-        error: errors
-          .map(
-            (error) =>
-              `${printParseErrorCode(error.error)} at offset ${error.offset}`,
-          )
-          .join("; "),
-      };
-};
+/**
+ * A JSONC file's value, comments and trailing commas allowed, or why it can't
+ * be read: its comments taken out, it is YAML, which reads JSON and a
+ * trailing comma, so it is read as strictly as a config.yaml.
+ */
+export const parseJsonc = (jsonc: string): Parsed =>
+  parseYaml(stripComments(jsonc));
 
 /** Whether the file is the user's old config.jsonc. */
 const isJsonc = (file: ConfigFile): boolean => file.path.endsWith(".jsonc");
 
 /** The warning a user's config.jsonc is read with. */
 const JSONC_WARNING =
-  "JSONC is read only while there's no config.yaml beside it; convert this file to config.yaml";
+  "read because there's no config.yaml beside it; convert it to config.yaml";
 
 const isMap = (value: Json | undefined): value is { readonly [key: string]: Json } =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -200,6 +201,48 @@ const named = (path: readonly string[]): string => path.join(".") || "the file";
 
 const typeName = (value: Json): string =>
   value === null ? "null" : Array.isArray(value) ? "a list" : typeof value;
+
+/** What a scalar setting of `shape` must be, as its problem says it. */
+const WANTED: Readonly<Record<"string" | "number" | "boolean", string>> = {
+  string: "a string; quote it",
+  number: "a number",
+  boolean: "true or false",
+};
+
+/** A number YAML reads but no setting takes, as YAML writes it: `.inf`, `-.inf` or `.nan`. */
+const unfinite = (value: number): string =>
+  Number.isNaN(value) ? ".nan" : value > 0 ? ".inf" : "-.inf";
+
+/** What's wrong with a scalar setting's value. */
+const scalarProblems = (
+  shape: "string" | "number" | "boolean",
+  value: Json,
+  path: readonly string[],
+): readonly string[] =>
+  typeof value !== shape || Array.isArray(value)
+    ? [`${named(path)} is ${typeName(value)}, not ${WANTED[shape]}`]
+    : typeof value === "number" && !Number.isFinite(value)
+      ? [`${named(path)} is ${unfinite(value)}, not a finite number`]
+      : [];
+
+/** The value with each section the shape names that's null, as a section with every key commented out reads, empty. */
+const nullSectionsEmptied = (shape: Shape, value: Json): Json =>
+  typeof shape === "string" || !isMap(value)
+    ? value
+    : Object.fromEntries(
+        Object.entries(value).map(([key, inner]): [string, Json] => {
+          const section = Object.hasOwn(shape, key) ? shape[key] : undefined;
+
+          return [
+            key,
+            section !== undefined && typeof section !== "string" && inner === null
+              ? {}
+              : section === undefined
+                ? inner
+                : nullSectionsEmptied(section, inner),
+          ];
+        }),
+      );
 
 /**
  * What's wrong with `value` against `shape`: a key the shape doesn't name, a
@@ -218,14 +261,13 @@ export const problemsIn = (
           `${named(path)} is ${typeof value === "string" ? JSON.stringify(value) : typeName(value)}, not one lowercase letter or digit, as the pane's keys must be`,
         ]
     : typeof shape === "string"
-    ? typeof value === shape && !Array.isArray(value)
-      ? []
-      : [`${named(path)} is ${typeName(value)}, not a ${shape}`]
+    ? scalarProblems(shape, value, path)
     : !isMap(value)
       ? [`${named(path)} is ${typeName(value)}, not a section`]
       : [
           ...Object.keys(value)
-            .filter((key) => !(key in shape))
+            // Its own keys alone: `__proto__` or `constructor` is no setting.
+            .filter((key) => !Object.hasOwn(shape, key))
             .map(
               (key) =>
                 `${named([...path, key])} is no setting; the keys here are ${Object.keys(shape).join(", ")}`,
@@ -249,7 +291,7 @@ export const mergedOver = (base: Json, layer: Json): Json =>
             layer[key] === undefined ? value : mergedOver(value, layer[key]),
           ],
         ),
-        ...Object.entries(layer).filter(([key]) => !(key in base)),
+        ...Object.entries(layer).filter(([key]) => !Object.hasOwn(base, key)),
       ])
     : layer;
 
@@ -284,30 +326,35 @@ export const userConfigPaths = (
 export type ConfigFile = Readonly<{ path: string; text: string }>;
 
 /**
- * A file's value checked against the shape, without the sections the plugin no
- * longer reads, or what's wrong with it; each problem or warning names the
- * file. A config.jsonc is read with a warning to convert it.
+ * A file's value checked against the shape, a null section read as an empty
+ * one, without the sections the plugin no longer reads, or what's wrong with
+ * it: each problem, a section or setting left out among them, names the file.
+ * A config.jsonc is read with a warning to convert it, which is no problem.
  */
 const checked = (
   file: ConfigFile,
   isSparse: boolean,
-): Readonly<{ value: Json | undefined; problems: readonly string[] }> => {
+): Readonly<{
+  value: Json | undefined;
+  problems: readonly string[];
+  warnings: readonly string[];
+}> => {
   const parsed = isJsonc(file) ? parseJsonc(file.text) : parseYaml(file.text);
-  const value = "value" in parsed ? withoutRetired(parsed.value) : undefined;
-  const warnings = [
-    ...(isJsonc(file) ? [JSONC_WARNING] : []),
-    ...("value" in parsed ? retiredIn(parsed.value) : []),
-  ];
+  const read =
+    "value" in parsed ? nullSectionsEmptied(SETTINGS_SHAPE, parsed.value) : undefined;
+  const value = read === undefined ? undefined : withoutRetired(read);
+  const leftOut = read === undefined ? [] : retiredIn(read);
   const problems =
     "error" in parsed
       ? [parsed.error]
       : problemsIn(SETTINGS_SHAPE, value ?? null, isSparse);
   const inFile = (lines: readonly string[]) =>
     lines.map((line) => `${file.path}: ${line}`);
+  const warnings = inFile(isJsonc(file) ? [JSONC_WARNING] : []);
 
   return problems.length === 0 && value !== undefined
-    ? { value, problems: inFile(warnings) }
-    : { value: undefined, problems: inFile([...warnings, ...problems]) };
+    ? { value, problems: inFile(leftOut), warnings }
+    : { value: undefined, problems: inFile([...leftOut, ...problems]), warnings };
 };
 
 const keyOf = ([key]: readonly [string, Json]): string => key;
@@ -389,5 +436,6 @@ export const loaded = (
       ...(layer?.problems ?? []),
       ...inFile(user?.path ?? "", overClashes),
     ],
+    warnings: [...base.warnings, ...(layer?.warnings ?? [])],
   };
 };

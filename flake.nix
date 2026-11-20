@@ -69,7 +69,6 @@
       perSystem =
         {
           config,
-          lib,
           pkgs,
           ...
         }:
@@ -96,11 +95,19 @@
           # import and the plugin's own files, as plugin-authoring's
           # reference says, so each library goes in as a file of the
           # plugin's. The build, the checks and the dev shell all lay these
-          # same files.
+          # same files, and plugin/vendor/ commits them for the marketplace
+          # install, which checks.vendor holds to these.
           pluginVendor = pkgs.runCommand "coding-agent-kanban-turns-vendor" {
             nativeBuildInputs = [ pkgs.esbuild ];
             nodeModules = "${pluginNodeModules}/node_modules";
           } (builtins.readFile ./nix/bundle-vendor.sh);
+
+          # Fails where plugin/vendor/'s committed bundles aren't
+          # pluginVendor's, naming the command that refreshes them.
+          vendorCheck = pkgs.runCommand "coding-agent-kanban-turns-vendor-check" {
+            committed = ./plugin/vendor;
+            bundled = pluginVendor;
+          } (builtins.readFile ./nix/check-vendor.sh);
 
           # Runs one of plugin/package.json's scripts in a writable copy of
           # plugin/, with the flake's node_modules linked in and the bundled
@@ -126,10 +133,9 @@
         {
           # The plugin as Claude Code loads it: plugin/ with only what runs,
           # its manifest, hooks, pure core, shipped defaults, the types the
-          # manifest names and vendor/'s parsers' types. The tests, the
-          # engine-driven tests, the tools and the npm files stay out: the
-          # parsers it runs are bundled into vendor/ below, and every other
-          # npm dependency is for development. agent-plugins-nixpkgs installs
+          # manifest names and vendor/'s bundled parsers and their types. The
+          # tests, the engine-driven tests, the tools and the npm files stay
+          # out: every other npm dependency is for development. agent-plugins-nixpkgs installs
           # this through its nix-darwin module, and a `--plugin-dir
           # result-plugin` session loads it after `plugin-build`.
           agent-plugins.claudePlugin = {
@@ -145,16 +151,6 @@
             ];
           };
 
-          # The module's build, with the bundled parsers laid in vendor/.
-          # The module has no option for a step after the copy, so this is
-          # its own builder, mkClaudePlugin, called with the module's
-          # settings and that step as `postPatch`.
-          packages.plugin = lib.mkForce (
-            inputs.agent-plugins-nixpkgs.lib.mkClaudePlugin pkgs {
-              inherit (config.agent-plugins.claudePlugin) src include;
-              postPatch = "cp ${pluginVendor}/* vendor/";
-            }
-          );
           packages.default = config.packages.plugin;
 
           # Repo-specific packages and commands, merged onto the modules'.
@@ -200,14 +196,22 @@
                 help = "claude plugin validate, then the engine-driven tests in plugin/plugin-tests/ (needs the claude CLI)";
                 command = ''bash "$PRJ_ROOT/plugin/tools/plugin-test.sh"'';
               }
+              {
+                category = "build";
+                name = "refresh-vendor";
+                help = "lay the flake's bundled parsers in plugin/vendor/, as the dev shell does on entry, for a commit when nix flake check says they differ";
+                command = builtins.readFile ./nix/lay-vendor.sh;
+              }
             ];
           };
 
-          # What a build can run: the core's type-check and its tests. The
-          # hooks' type-check and plugin-tests/ need the engine (its API
-          # declarations, and claude plugin test), which a build has not.
+          # What a build can run: the core's type-check and its tests, and
+          # the committed bundles against the flake's. The hooks' type-check
+          # and plugin-tests/ need the engine (its API declarations, and
+          # claude plugin test), which a build has not.
           checks = {
             inherit (config.packages) plugin;
+            vendor = vendorCheck;
             typecheck = pluginCheck "typecheck" "typecheck";
             tests = pluginCheck "tests" "test";
           };

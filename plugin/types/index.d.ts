@@ -127,6 +127,8 @@ export type Loaded = Readonly<{
   effective: readonly string[];
   /** What was wrong with a file, each naming the file; empty when nothing was. */
   problems: readonly string[];
+  /** What to change in a file that's read as it is, each naming the file: /answers-config says them, the pane doesn't. */
+  warnings: readonly string[];
 }>;
 
 declare module "claude-code" {

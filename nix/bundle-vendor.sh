@@ -4,14 +4,26 @@
 # The engine loads only the plugin's own files, so each library goes in as
 # a file of the plugin's, which src/config.ts imports by a relative path.
 # Each file's licence goes beside it.
+#
+# esbuild names each source file in a comment, by its path from the
+# working folder: run from inside node_modules, those paths start at the
+# package's name, so no store path is written into a bundle, where it would
+# tie the bundle to this build and keep node_modules in the plugin's
+# closure.
 mkdir -p "$out"
+cd "$nodeModules"
 
-esbuild "$nodeModules/yaml/browser/index.js" \
+esbuild yaml/browser/index.js \
   --bundle --format=esm --platform=neutral --log-level=warning \
   --outfile="$out/yaml.js"
-cp "$nodeModules/yaml/LICENSE" "$out/yaml.LICENSE"
+cp yaml/LICENSE "$out/yaml.LICENSE"
 
-esbuild "$nodeModules/jsonc-parser/lib/esm/main.js" \
+esbuild jsonc-parser/lib/esm/main.js \
   --bundle --format=esm --platform=neutral --log-level=warning \
   --outfile="$out/jsonc-parser.js"
-cp "$nodeModules/jsonc-parser/LICENSE.md" "$out/jsonc-parser.LICENSE"
+cp jsonc-parser/LICENSE.md "$out/jsonc-parser.LICENSE"
+
+if grep --recursive --files-with-matches "$NIX_STORE" "$out"; then
+  echo "bundle-vendor.sh: a store path is left in the files above" >&2
+  exit 1
+fi

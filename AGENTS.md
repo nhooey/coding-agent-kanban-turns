@@ -9,7 +9,7 @@ The `coding-agent-kanban-turns` Claude Code plugin, in TypeScript: a pane that l
   - `src/`: the pure core, no `claude-code` import and no I/O, so Node type-checks and tests it.
   - `defaults/config.yaml`: every setting with its default and a comment; a user's own `config.yaml` merges over it.
   - `types/index.d.ts`: the shapes and the `$.state` contract, self-contained as `claude plugin validate` asks.
-  - `vendor/`: the runtime libraries the core imports by a relative path, `yaml` and `jsonc-parser`. The engine loads only the plugin's own files, so the flake bundles each into one ES module there (`nix/bundle-vendor.sh`), in the build and in the dev shell alike; only their self-contained types are tracked.
+  - `vendor/`: the runtime libraries the core imports by a relative path, `yaml` and `jsonc-parser`. The engine loads only the plugin's own files, so the flake bundles each into one ES module there (`nix/bundle-vendor.sh`), with its licence beside it. The bundles are committed, for the marketplace install, beside their self-contained types; `nix flake check` holds them to the flake's byte for byte, and `refresh-vendor` lays the flake's after a change to the libraries or the bundling, for a commit.
   - `test/`: the core's tests, `node --test` with Jest's standalone `expect`.
   - `plugin-tests/`: the pane, the count line above the prompt, a reply's buttons and the tool row driven through the engine, `claude plugin test`.
 - `skills-devshell/`: the sub-flake that installs this repository's skills into `.agents/skills/`: skillspkgs' `claude-code-tools` combination, plus `coding-agent-kanban-turn-responses`, whose rules the plugin shares, and `design-hygiene-find-implicit-models`.
@@ -23,7 +23,8 @@ Enter the dev shell with `nix develop` (or direnv); it links `plugin/node_module
 - `typecheck-plugin`: type-check the hooks against the engine's API, which Claude Code lays in `plugin/.claude-plugin/types/` when it loads the plugin.
 - `plugin-test`: `claude plugin validate` and the engine-driven tests; needs the `claude` CLI.
 - `plugin-build`: build the plugin as Claude Code loads it (`packages.plugin`: the manifest, `defaults/`, `hooks/`, `src/`, `types/` and `vendor/` with its bundled libraries) and link it to `result-plugin`.
-- `check`: `nix flake check`: formatting (treefmt), `typecheck`, `tests` and the plugin's build. A build has no engine, so `typecheck-plugin` and `plugin-test` run only in the dev shell; run them before a pull request that touches `plugin/hooks/` or `plugin/plugin-tests/`.
+- `refresh-vendor`: lay the flake's bundled libraries in `plugin/vendor/` (`nix/lay-vendor.sh`), as the dev shell does on entry, removing a bundle the flake no longer makes; commit what it changes.
+- `check`: `nix flake check`: formatting (treefmt), `typecheck`, `tests`, the committed bundles against the flake's, and the plugin's build. A build has no engine, so `typecheck-plugin` and `plugin-test` run only in the dev shell; run them before a pull request that touches `plugin/hooks/` or `plugin/plugin-tests/`.
 
 `menu` lists the dev shell's other commands.
 
