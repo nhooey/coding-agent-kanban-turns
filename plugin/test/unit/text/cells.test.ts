@@ -1,10 +1,10 @@
-// The cells a line's lead takes, for the lines it wraps to to start under
-// its text.
+// The cells text takes in a terminal: a line's lead, for the lines it
+// wraps to to start under its text, and a header, for its underline.
 
 import { describe, test } from "node:test";
 import { expect } from "expect";
 
-import { cellWidth } from "../../../src/pane/layout.ts";
+import { cellWidth } from "../../../src/text/cells.ts";
 
 describe("the cells text takes", () => {
   test("a letter, a digit or a space is 1", () => {

@@ -2,7 +2,7 @@
 // glyph an option is drawn with, and the items read out of whatever input a
 // `kanban_options` call handed over.
 
-import { DECIDE } from "../protocol/rules.ts";
+import { DECIDE, DEFAULT_KIND } from "../protocol/rules.ts";
 import { SPEC } from "../protocol/spec.ts";
 import type { DecideItem, DecideKind } from "../../types/index.d.ts";
 
@@ -62,11 +62,11 @@ const isItem = (value: unknown): value is DecideItem =>
   Array.isArray(value.options) &&
   value.options.every(isOption);
 
-/** An item's kind: the one it names, where the spec has it, else radio. */
+/** An item's kind: the one it names, where the spec has it, else the default, radio. */
 const kindOf = (kind: unknown): DecideKind =>
   typeof kind === "string" && Object.hasOwn(SPEC.options.kinds, kind)
     ? (kind as DecideKind)
-    : "radio";
+    : DEFAULT_KIND;
 
 const withRef = (item: DecideItem): DecideItem => ({
   ...item,

@@ -85,12 +85,14 @@ export const SPEC = {
       "radio": {
         "picks": "one",
         "glyph": "🔘",
-        "letters": {}
+        "letters": {},
+        "taught": true
       },
       "checkbox": {
         "picks": "any",
         "glyph": "🔲",
-        "letters": {}
+        "letters": {},
+        "taught": true
       },
       "binary": {
         "picks": "one",
@@ -98,7 +100,8 @@ export const SPEC = {
         "letters": {
           "Y": "👍",
           "N": "👎"
-        }
+        },
+        "taught": false
       }
     }
   },
