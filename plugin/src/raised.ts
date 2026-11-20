@@ -105,10 +105,11 @@ export const seen = (raised: Raised): Raised => ({
 
 /**
  * What the pane's Submit sends for the items: one `sent` settlement for
- * each open item the draft answers, with its letters and note.
+ * each raised item the draft answers, open or answered again once Done,
+ * with its letters and note.
  */
 export const sentOf = (draft: string, raised: Raised): readonly Settlement[] =>
-  stillOpen(raised).flatMap((item) => {
+  raised.items.flatMap((item) => {
     const answer = answerTo(draft, item);
 
     return answer === undefined
@@ -125,36 +126,45 @@ export const sentOf = (draft: string, raised: Raised): readonly Settlement[] =>
 
 /**
  * The items as the pane and a reply draw them while answers Submit sent
- * wait for the turn's end: each raised item a `sent` settlement names, and
- * the transcript leaves open, Done with it; what the transcript says of an
- * item stays first.
+ * wait for the turn's end: each raised item a `sent` settlement names Done
+ * with it, in place of what an earlier answer said of a Done one, since
+ * the sent answer is the later.
  */
 export const withSent = (
   raised: Raised,
   sent: readonly Settlement[],
 ): Raised => {
-  const added = sent.filter(
-    (settled) =>
-      !raised.settledRefs.includes(settled.ref) &&
-      raised.items.some((item) => refOf(item) === settled.ref),
+  const added = sent.filter((settled) =>
+    raised.items.some((item) => refOf(item) === settled.ref),
   );
+  const refs = added.map((settled) => settled.ref);
 
   return added.length === 0
     ? raised
     : {
         ...raised,
-        settledRefs: [...raised.settledRefs, ...added.map((s) => s.ref)],
-        settlements: [...raised.settlements, ...added],
+        settledRefs: [
+          ...raised.settledRefs.filter((ref) => !refs.includes(ref)),
+          ...refs,
+        ],
+        settlements: [
+          ...raised.settlements.filter((settled) => !refs.includes(settled.ref)),
+          ...added,
+        ],
       };
 };
+
+/**
+ * The answers Submit sent once a refresh has read the transcript they went
+ * into: the ones `read`, as they stood when it began, taken out by ref, and
+ * any a later Submit sent meanwhile kept.
+ */
+export const withoutRead = (
+  sent: readonly Settlement[],
+  read: readonly Settlement[],
+): readonly Settlement[] =>
+  sent.filter((settled) => !read.some((done) => done.ref === settled.ref));
 
 /** How many open items the draft answers. */
 export const answeredCount = (raised: Raised, draft: string): number =>
   stillOpen(raised).filter((item) => isAnswered(draft, item)).length;
-
-/** The first open item the draft doesn't answer, if there is one. */
-export const firstUnanswered = (
-  raised: Raised,
-  draft: string,
-): DecideItem | undefined =>
-  stillOpen(raised).find((item) => !isAnswered(draft, item));

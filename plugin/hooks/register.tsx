@@ -6,14 +6,15 @@
 // count line above the prompt, and /answers, open it with the keyboard. A
 // click writes the item's reference, on a line of its own, into the prompt
 // draft and never sends it; only the pane's Submit sends a prompt. An item
-// no longer open is Done: it stays, dimmed, its buttons dead, in its turn's
-// Done section, collapsed until a click opens it.
+// no longer open is Done: it stays, dimmed, in its turn's Done section,
+// collapsed until a click opens it, and its options still answer it again.
 //
 // The pane, top to bottom: a header row, `🖥️ Kanban · 📌 <count line>`, how
-// many open items the draft answers, and ↑ Previous, ↓ Next and ✖ Close;
-// then each turn under a faint header, its open items drawn in full, then
-// its Done section; then a footer saying what Submit will send, beside
-// 🔄 Reassess and 📤 Submit; then a dim row naming the keys.
+// many open items the draft answers, and ↑ Previous, ↓ Next, ? Keys and
+// ✖ Close; under it, once ? Keys opens it, a panel listing every key; then
+// each turn under a faint header, its open items drawn in full, then its
+// Done section; then a footer saying what Submit will send, beside
+// 🔄 Reassess and 📤 Submit.
 //
 // An item is drawn as the skill writes it: its summary, its note, then each
 // option as `glyph letter. name: consequence` with its ➕ and ➖ lines indented
@@ -62,7 +63,6 @@ import {
 import {
   answeredCount,
   emptyRaised,
-  firstUnanswered,
   forSession,
   isSettled,
   problemsOf,
@@ -75,6 +75,7 @@ import {
   unseen,
   withItems,
   withSent,
+  withoutRead,
 } from "../src/raised.ts";
 import {
   doneHeader,
@@ -84,6 +85,7 @@ import {
   paneStops,
   steppedStop,
   toggledKey,
+  firstUnansweredIn,
   turnSections,
   withKeys,
 } from "../src/sections.ts";
@@ -104,7 +106,7 @@ import {
   draftSummary,
   drewText,
   gutterStyle,
-  hintText,
+  keyRows,
   isPlainToolRow,
   itemTitle,
   noItemsText,
@@ -173,6 +175,12 @@ const focused = atom(
   { plugin: "coding-agent-kanban-turns", key: "focused" } as const,
   "",
 );
+// Whether the pane's keys panel, which `? Keys` toggles, is open; closed,
+// it draws nothing. Closing the pane closes it.
+const isKeysOpen = atom(
+  { plugin: "coding-agent-kanban-turns", key: "isKeysOpen" } as const,
+  false,
+);
 // How many refreshes have started: a `gh` answer redraws the count line only
 // while the refresh that asked is the latest.
 const refreshes = atom(
@@ -230,7 +238,7 @@ const counts = atom(
 const settings = atom(
   { plugin: "coding-agent-kanban-turns", key: "settings" } as const,
   UNREAD,
-  { shape: "settings-4" },
+  { shape: "settings-5" },
 );
 
 /** The settings in effect, or none while the defaults file can't be used. */
@@ -645,12 +653,17 @@ const step = async ($: EngineInterface, by: 1 | -1): Promise<void> => {
 const toggleExpanded = ($: EngineInterface, key: string) =>
   update($, expanded, (open) => toggledKey(open, key));
 
-/** Closes the pane; its notes field no longer waits for the focus, and its ring is on nothing. */
+/** Closes the pane; its notes field no longer waits for the focus, its ring is on nothing, and its keys panel is closed. */
 const closePane = async ($: EngineInterface): Promise<void> => {
   await update($, noting, () => "");
   await update($, focused, () => "");
+  await update($, isKeysOpen, () => false);
   await $.ui.close({ id: PANE.id });
 };
+
+/** `? Keys`: the keys panel opened, or closed again. */
+const toggleKeys = ($: EngineInterface) =>
+  update($, isKeysOpen, (isOpen) => !isOpen);
 
 /** The end of a main-loop turn, or the session's start: opens the pane at its top, the newest turn, when an item is open that the pane hasn't been opened over. */
 const announce = async ($: EngineInterface): Promise<void> => {
@@ -668,14 +681,14 @@ const reopen = async ($: EngineInterface): Promise<Raised> => {
   await refresh($);
   await update($, raised, seen);
   await openPane($, true);
-  const r = await shownNow($);
-  const item = firstUnanswered(r, await read($, draft));
+  const { shown, sections } = await paneNow($);
+  const item = firstUnansweredIn(sections, await read($, draft));
 
   if (item !== undefined) {
     await reveal($, { key: refOf(item) });
   }
 
-  return r;
+  return shown;
 };
 
 /** A question's link pressed: the pane, with the keyboard, scrolled to its item, its Done section and box opened when it's Done. */
@@ -800,15 +813,17 @@ export const register: Register = (on) => {
   // A main-loop turn ending: it clears the running turn only where that is
   // this turn, so an earlier turn's late end leaves a later one running; and
   // the transcript read again confirms the answers Submit sent or puts their
-  // items back among the open ones.
+  // items back among the open ones. Only the answers sent before the read
+  // began are taken out: a Submit pressed while it reads keeps its own.
   on("turn.complete", async ($, e, next) => {
     const done = await next(e);
 
     if (e.agentId === undefined) {
       await update($, runningTurn, (held) => (held === e.turnId ? "" : held));
+      const before = await read($, sent);
 
       if (await refresh($)) {
-        await update($, sent, () => []);
+        await update($, sent, (held) => withoutRead(held, before));
       }
       await announce($);
     }
@@ -817,14 +832,15 @@ export const register: Register = (on) => {
   });
 
   // The person closing the pane: its notes field no longer waits for the
-  // focus, and its ring is on nothing. The plugin's own close, ✖, clears
-  // them itself.
+  // focus, its ring is on nothing, and its keys panel is closed. The
+  // plugin's own close, ✖, clears them itself.
   on("ui.close", async ($, e, next) => {
     const closed = await next(e);
 
     if (e.id === PANE.id) {
       await update($, noting, () => "");
       await update($, focused, () => "");
+      await update($, isKeysOpen, () => false);
     }
 
     return closed;
@@ -929,8 +945,8 @@ export const register: Register = (on) => {
     );
   });
 
-  // The pane: the header row, then each turn, newest first, then the footer
-  // and the hint row.
+  // The pane: the header row, the keys panel when it's open, then each
+  // turn, newest first, then the footer.
   on("ui.render", { component: "Pane", requestId: PANE.id }, async ($, e) => {
     const elements = $.ui.resolve(e);
     const { Box, Text } = elements;
@@ -985,6 +1001,13 @@ export const register: Register = (on) => {
               onPress: () => step($, 1),
             })}
             {control(elements, {
+              key: "keys",
+              glyph: "?",
+              label: "Keys",
+              hotkey: s.keys.help,
+              onPress: () => toggleKeys($),
+            })}
+            {control(elements, {
               key: "dismiss",
               glyph: "✖",
               glyphColor: s.colors.close,
@@ -995,6 +1018,7 @@ export const register: Register = (on) => {
             })}
           </Box>
         </Box>
+        {(await read($, isKeysOpen)) ? keysPanel(elements, s) : null}
         {/* The filters will go here, a row under the header. */}
         {problem ? (
           <Text key="submit-problem" wrap="wrap">
@@ -1060,11 +1084,6 @@ export const register: Register = (on) => {
             })}
           </Box>
         </Box>
-        {s.pane.hints ? (
-          <Text key="hints" dimColor wrap="wrap">
-            {hintText(s.keys)}
-          </Text>
-        ) : null}
       </Box>
     );
   });
@@ -1233,9 +1252,37 @@ const hanging = (
 };
 
 /**
+ * The keys panel `? Keys` opens under the pane's header: a row per key,
+ * the key bold in a column as wide as the widest, then what it does, which
+ * wraps under its own start. The keys are the settings', so a rebound key
+ * shows as rebound.
+ */
+const keysPanel = (elements: Pick<Elements, "Box" | "Text">, s: Settings) => {
+  const { Box, Text } = elements;
+  const rows = keyRows(s.keys);
+  const width =
+    Math.max(...rows.map((row) => cellWidth(row.key))) + LABEL_GAP;
+
+  return (
+    <Box key="keys-panel" flexDirection="column" marginBottom={1}>
+      {rows.map((row, n) =>
+        hanging(
+          elements,
+          `keys-${n}`,
+          { width, node: <Text weight="bold">{row.key}</Text> },
+          <Text dimColor wrap="wrap">
+            {row.does}
+          </Text>,
+        ),
+      )}
+    </Box>
+  );
+};
+
+/**
  * A Done item's one dim line in its open section, `▌🧠 Decide.1  <summary> ·
  * <what made it Done>`, the summary wrapping under its own start; a click on
- * either part opens the item's full box.
+ * it, the summary's button, opens the item's full box.
  */
 const doneRow = (
   $: EngineInterface,
@@ -1246,11 +1293,6 @@ const doneRow = (
 ) => {
   const { Box, Button, Text } = elements;
   const key = lineKey(item);
-  const press = {
-    plain: true,
-    dimColor: true,
-    onPress: () => toggleExpanded($, refOf(item)),
-  } as const;
 
   return (
     <Box key={`${refOf(item)}.row`}>
@@ -1262,13 +1304,15 @@ const doneRow = (
         key,
         {
           width: cellWidth(line.label) + LABEL_GAP,
-          node: (
-            <Button key={`${key}-label`} label={item.summary} {...press}>
-              {line.label}
-            </Button>
-          ),
+          node: <Text dimColor>{line.label}</Text>,
         },
-        <Button key={key} label={item.summary} {...press}>
+        <Button
+          key={key}
+          label={item.summary}
+          plain
+          dimColor
+          onPress={() => toggleExpanded($, refOf(item))}
+        >
           {line.text}
         </Button>,
       )}
@@ -1291,7 +1335,7 @@ const doneSection = (
   open: readonly string[],
   text: string,
 ) => {
-  const { Box, Button, Text } = elements;
+  const { Box, Button } = elements;
   const key = doneKey(section.turn);
   const isOpen = open.includes(key);
 
@@ -1318,7 +1362,13 @@ const doneSection = (
                 })}
               </Box>
             ) : (
-              doneRow($, elements, s, item, doneLine(item, settledText(settlementOf(r, item))))
+              doneRow(
+                $,
+                elements,
+                s,
+                item,
+                doneLine(item, settledText(settlementOf(r, item))),
+              )
             ),
           )
         : null}
@@ -1330,10 +1380,11 @@ const doneSection = (
  * Each item in its own rounded box, keyed by its ref, a Done one dimmed but
  * for its options, which pick as an open item's do, its sent options marked
  * beside what the draft chooses afresh: the pane's drawing and a reply's
- * alike, but for the notes, which a Done item has none of. In the pane an open item has its notes field, `noting`'s
- * taking the focus; under a reply, which can't take the keyboard, a ✏️ Add
- * a note button opens the pane at that field. With `onTitle`, a Done item's
- * title is a button that runs it.
+ * alike, but for the notes, which a Done item has none of. In the pane an
+ * open item has its notes field, `noting`'s taking the focus; under a
+ * reply, which can't take the keyboard, a ✏️ Add a note button opens the
+ * pane at that field. With `onTitle`, a Done item's summary is a button
+ * that runs it.
  */
 const itemBoxes = (
   $: EngineInterface,
@@ -1480,31 +1531,26 @@ const itemView = (
     </Text>
   );
   const onTitle = view.onTitle;
-  const titleButton = (key: string, node: RenderNode) =>
-    onTitle === undefined ? (
-      node
-    ) : (
-      <Button
-        key={key}
-        label={item.summary}
-        plain
-        dimColor={dim}
-        onPress={() => onTitle()}
-      >
-        {node}
-      </Button>
-    );
 
   return (
     <Box flexDirection="column">
       {hanging(
         elements,
         `${ref}.title`,
-        {
-          width: cellWidth(view.title.label) + 1,
-          node: titleButton(`${lineKey(item)}-label`, label),
-        },
-        titleButton(lineKey(item), summary),
+        { width: cellWidth(view.title.label) + 1, node: label },
+        onTitle === undefined ? (
+          summary
+        ) : (
+          <Button
+            key={lineKey(item)}
+            label={item.summary}
+            plain
+            dimColor={dim}
+            onPress={() => onTitle()}
+          >
+            {summary}
+          </Button>
+        ),
       )}
       {view.settled ? (
         <Box key="done-by" marginLeft={INDENT}>
@@ -1535,27 +1581,18 @@ const itemView = (
           hover: { scope: key },
           onPress: () => view.onPick(option.letter),
         } as const;
-        // A line's lead, a glyph and a letter or a ➕ or ➖, is a button of
-        // its own, as wide as its cells; the line's text wraps beside it,
-        // so its rows start under the text, not under the lead.
-        const led = (
-          at: string,
-          lead: string,
-          body: RenderNode,
-        ) =>
+        // A line's lead, a glyph and a letter or a ➕ or ➖, is plain text in
+        // a Box as wide as its cells; the line's text, the one button that
+        // picks, wraps beside it, so its rows start under the text. A
+        // Button holds only text, so one button can't hold both: the lead
+        // takes no press of its own, and a line is one focus stop.
+        const led = (at: string, lead: string, body: RenderNode) =>
           lead === ""
             ? body
             : hanging(
                 elements,
                 at,
-                {
-                  width: cellWidth(lead),
-                  node: (
-                    <Button key={`${at}-mark`} label={option.name} {...press}>
-                      {lead}
-                    </Button>
-                  ),
-                },
+                { width: cellWidth(lead), node: <Text>{lead}</Text> },
                 body,
               );
         // One line of the option: the gutter cell, then the line, which wraps

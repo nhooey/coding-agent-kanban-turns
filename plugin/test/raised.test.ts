@@ -7,7 +7,6 @@ import { expect } from "expect";
 import {
   answeredCount,
   emptyRaised,
-  firstUnanswered,
   forSession,
   isSettled,
   problemsOf,
@@ -20,6 +19,7 @@ import {
   unseen,
   withItems,
   withSent,
+  withoutRead,
 } from "../src/raised.ts";
 import type { DecideItem, Raised } from "../types/index.d.ts";
 
@@ -187,17 +187,6 @@ describe("how many open items the draft answers", () => {
   });
 });
 
-describe("where /answers scrolls", () => {
-  test("to the first open item the draft doesn't answer", () => {
-    expect(firstUnanswered(raised, "9efb08a1.Decide.1.A")).toBe(checkbox);
-  });
-
-  test("to none when the draft answers every open item", () => {
-    const after = refreshed(raised, [checkbox], [], []);
-    expect(firstUnanswered(after, "9efb08a1.Decide.2.A")).toBeUndefined();
-  });
-});
-
 describe("the answers Submit sent, Done before the turn's end reads them", () => {
   const draft = "coding-agent-kanban-turns:\n9efb08a1.Decide.1.B: only the loader\n9efb08a1.Decide.2.A\nreassess\n";
 
@@ -208,9 +197,9 @@ describe("the answers Submit sent, Done before the turn's end reads them", () =>
     ]);
   });
 
-  test("leave out an item already Done, and send nothing for a draft that answers nothing", () => {
+  test("take in an item already Done that the draft answers again, and nothing for a draft that answers nothing", () => {
     const after = refreshed(raised, [checkbox], [], []);
-    expect(sentOf(draft, after).map((sent) => sent.ref)).toEqual(["9efb08a1.Decide.2"]);
+    expect(sentOf(draft, after).map((sent) => sent.ref)).toEqual(["9efb08a1.Decide.1", "9efb08a1.Decide.2"]);
     expect(sentOf("reassess\n", raised)).toEqual([]);
   });
 
@@ -223,12 +212,21 @@ describe("the answers Submit sent, Done before the turn's end reads them", () =>
     expect(withSent(raised, [])).toBe(raised);
   });
 
-  test("give way to what the transcript says of an item it already made Done", () => {
+  test("stand in place of an earlier answer to an item already Done, the sent one being the later", () => {
     const answered = { ref: "9efb08a1.Decide.1", how: "answered", turn: "b2c3d4e5", letters: ["A"], note: "" } as const;
     const after = refreshed(raised, [checkbox], [answered], []);
-    const shown = withSent(after, sentOf(draft, raised));
-    expect(settlementOf(shown, radio)).toEqual(answered);
+    const sent = sentOf(draft, after);
+    const shown = withSent(after, sent);
+    expect(settlementOf(shown, radio)).toEqual(sent[0]);
+    expect(shown.settlements).toEqual(sent);
     expect(shown.settledRefs).toEqual(["9efb08a1.Decide.1", "9efb08a1.Decide.2"]);
+  });
+
+  test("once a refresh read the transcript, lose the ones sent before it began, by ref, and keep a later Submit's", () => {
+    const [first, second] = sentOf(draft, raised);
+    const later = { ref: "9efb08a1.Decide.3", how: "sent", letters: ["Y"], note: "" } as const;
+    expect(withoutRead([first!, second!, later], [first!, second!])).toEqual([later]);
+    expect(withoutRead([first!], [])).toEqual([first]);
   });
 
   test("make nothing Done for an item not raised", () => {

@@ -11,24 +11,31 @@
 
 import type { Json, Loaded, Settings } from "../types/index.d.ts";
 
-/** The type each setting must have: a section is a map of its keys. */
+/**
+ * The type each setting must have: a section is a map of its keys, and a
+ * `key` is a string the engine takes as a Button's hotkey.
+ */
 type Shape =
   | "string"
   | "number"
   | "boolean"
+  | "key"
   | { readonly [key: string]: Shape };
+
+/** What the engine takes as a Button's hotkey: one lowercase letter or one digit; it refuses the whole drawing over anything else. */
+const HOTKEY = /^[a-z0-9]$/;
 
 /** Every setting the plugin reads, by the type its value must have. */
 export const SETTINGS_SHAPE: Shape = {
   counts: { turns: "number", "gh-timeout-ms": "number" },
   keys: {
-    dismiss: "string",
-    next: "string",
-    previous: "string",
-    submit: "string",
-    reassess: "string",
+    dismiss: "key",
+    next: "key",
+    previous: "key",
+    submit: "key",
+    reassess: "key",
+    help: "key",
   },
-  pane: { hints: "boolean" },
   notes: { rows: "number" },
   marks: { sent: "string" },
   colors: {
@@ -53,6 +60,7 @@ export const RETIRED: Readonly<Record<string, string>> = {
     "the ↗ beside the count line is gone; colors.kanban colours the 🖥️ Kanban button that opens the pane",
   "colors.close-x":
     "the ✖ is drawn in colors.close, on no background, as every button is",
+  pane: "the pane draws no hint row; its ? Keys button, or keys.help, opens a panel listing every key",
 };
 
 /** The value at a dotted key's path, or undefined where there is none. */
@@ -139,7 +147,13 @@ export const problemsIn = (
   isSparse: boolean,
   path: readonly string[] = [],
 ): readonly string[] =>
-  typeof shape === "string"
+  shape === "key"
+    ? typeof value === "string" && HOTKEY.test(value)
+      ? []
+      : [
+          `${named(path)} is ${typeof value === "string" ? JSON.stringify(value) : typeName(value)}, not one lowercase letter or digit, as the pane's keys must be`,
+        ]
+    : typeof shape === "string"
     ? typeof value === shape && !Array.isArray(value)
       ? []
       : [`${named(path)} is ${typeName(value)}, not a ${shape}`]
@@ -242,9 +256,30 @@ const effectiveLines = (
 };
 
 /**
+ * The pane's keys bound to more than one of its buttons in `value`, one
+ * line each, naming the settings: a hotkey two buttons share presses
+ * neither, so it's refused as a wrong type is.
+ */
+export const clashesIn = (value: Json): readonly string[] => {
+  const keys = isMap(value) && isMap(value["keys"]) ? Object.entries(value["keys"]) : [];
+
+  return [...new Set(keys.map(([, key]) => key))]
+    .map((key) => ({
+      key,
+      names: keys.filter(([, bound]) => bound === key).map(([name]) => `keys.${name}`),
+    }))
+    .filter(({ names }) => names.length > 1)
+    .map(
+      ({ key, names }) =>
+        `${names.join(" and ")} are ${names.length === 2 ? "both" : "all"} ${JSON.stringify(key)}; each key presses one button`,
+    );
+};
+
+/**
  * The settings in effect: the user's file merged over the defaults file
- * when both are sound, the defaults alone when the user's isn't, and none
- * when the defaults file isn't; each problem names its file.
+ * when both are sound and bind no key twice, the defaults alone when the
+ * user's isn't, and none when the defaults file isn't; each problem names
+ * its file.
  */
 export const loaded = (
   defaults: ConfigFile,
@@ -252,12 +287,16 @@ export const loaded = (
 ): Loaded => {
   const base = checked(defaults, false);
   const layer = user === undefined ? undefined : checked(user, true);
-  const merged =
-    base.value === undefined
+  const baseClashes = base.value === undefined ? [] : clashesIn(base.value);
+  const sound = baseClashes.length === 0 ? base.value : undefined;
+  const over =
+    sound === undefined || layer?.value === undefined
       ? undefined
-      : layer?.value === undefined
-        ? base.value
-        : mergedOver(base.value, layer.value);
+      : mergedOver(sound, layer.value);
+  const overClashes = over === undefined ? [] : clashesIn(over);
+  const merged = over !== undefined && overClashes.length === 0 ? over : sound;
+  const inFile = (path: string, lines: readonly string[]) =>
+    lines.map((line) => `${path}: ${line}`);
 
   return {
     settings: merged === undefined ? null : (merged as Settings),
@@ -267,8 +306,15 @@ export const loaded = (
         : effectiveLines(
             merged,
             defaults,
-            user && layer ? { value: layer.value, path: user.path } : undefined,
+            user && layer && merged === over
+              ? { value: layer.value, path: user.path }
+              : undefined,
           ),
-    problems: [...base.problems, ...(layer?.problems ?? [])],
+    problems: [
+      ...base.problems,
+      ...inFile(defaults.path, baseClashes),
+      ...(layer?.problems ?? []),
+      ...inFile(user?.path ?? "", overClashes),
+    ],
   };
 };

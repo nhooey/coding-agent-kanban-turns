@@ -73,7 +73,7 @@ describe("the user's file over the defaults", () => {
     const got = loaded(defaults, user('{"keys": {"prev": "h"}}'));
     expect(got.settings?.keys.dismiss).toBe("q");
     expect(got.problems).toEqual([
-      "~/.config/x/config.jsonc: keys.prev is no setting; the keys here are dismiss, next, previous, submit, reassess",
+      "~/.config/x/config.jsonc: keys.prev is no setting; the keys here are dismiss, next, previous, submit, reassess, help",
     ]);
   });
 
@@ -151,15 +151,40 @@ describe("the user's file over the defaults", () => {
       previous: "k",
       submit: "s",
       reassess: "r",
+      help: "h",
     });
     expect(loaded(defaults, user('{"keys": {"submit": "x"}}')).settings?.keys.submit).toBe("x");
   });
 
-  test("whether the pane draws its hint row is a setting, a boolean", () => {
-    expect(loaded(defaults, undefined).settings?.pane).toEqual({ hints: true });
-    expect(loaded(defaults, user('{"pane": {"hints": false}}')).settings?.pane.hints).toBe(false);
-    expect(loaded(defaults, user('{"pane": {"hints": "no"}}')).problems).toEqual([
-      "~/.config/x/config.jsonc: pane.hints is string, not a boolean",
+  test("a key the engine wouldn't take as a hotkey refuses the file, since it would blank the pane", () => {
+    expect(loaded(defaults, user('{"keys": {"help": "?"}}')).problems).toEqual([
+      '~/.config/x/config.jsonc: keys.help is "?", not one lowercase letter or digit, as the pane\'s keys must be',
+    ]);
+    expect(loaded(defaults, user('{"keys": {"submit": "S"}}')).settings?.keys.submit).toBe("s");
+    expect(loaded(defaults, user('{"keys": {"submit": 3}}')).problems).toEqual([
+      "~/.config/x/config.jsonc: keys.submit is number, not one lowercase letter or digit, as the pane's keys must be",
+    ]);
+  });
+
+  test("two buttons on one key refuse the file, which binds it to a default's key or its own", () => {
+    const clash = loaded(defaults, user('{"keys": {"submit": "j"}}'));
+    expect(clash.settings?.keys.submit).toBe("s");
+    expect(clash.problems).toEqual([
+      '~/.config/x/config.jsonc: keys.next and keys.submit are both "j"; each key presses one button',
+    ]);
+    expect(clash.effective).toContain('keys.submit = "s"  # defaults: defaults/config.jsonc');
+    // Swapping two keys clashes with neither.
+    const swapped = loaded(defaults, user('{"keys": {"next": "k", "previous": "j"}}'));
+    expect(swapped.problems).toEqual([]);
+    expect(swapped.settings?.keys.next).toBe("k");
+  });
+
+  test("a pane section, whose hint row is gone, is left out with a warning", () => {
+    const got = loaded(defaults, user('{"pane": {"hints": false}, "keys": {"help": "o"}}'));
+    expect(got.settings).not.toHaveProperty("pane");
+    expect(got.settings?.keys.help).toBe("o");
+    expect(got.problems).toEqual([
+      "~/.config/x/config.jsonc: pane is no longer read and is left out: the pane draws no hint row; its ? Keys button, or keys.help, opens a panel listing every key",
     ]);
   });
 

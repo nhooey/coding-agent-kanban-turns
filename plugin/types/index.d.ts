@@ -60,7 +60,7 @@ export type Settlement = Readonly<
  * Every Decide item raised in this session, oldest first: the pane lists
  * them all, and a reply draws its own under its text. An item stays once
  * raised; one no longer open is settled, Done in the UI, drawn dimmed, its
- * buttons dead.
+ * options still live, so a click answers it again.
  */
 export type Raised = Readonly<{
   /** The session the items were raised in: another session starts empty. */
@@ -103,8 +103,8 @@ export type Settings = Readonly<{
     previous: string;
     submit: string;
     reassess: string;
+    help: string;
   }>;
-  pane: Readonly<{ hints: boolean }>;
   notes: Readonly<{ rows: number }>;
   marks: Readonly<{ sent: string }>;
   colors: Readonly<{
@@ -136,6 +136,7 @@ declare module "claude-code" {
       sent: Shaped<readonly Settlement[]>;
       expanded: readonly string[];
       focused: string;
+      isKeysOpen: boolean;
       draft: string;
       noting: string;
       submits: number;

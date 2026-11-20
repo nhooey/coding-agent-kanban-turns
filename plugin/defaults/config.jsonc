@@ -13,8 +13,8 @@
 // and follows this file as it changes. A key that's no setting here, or a
 // value of the wrong type, refuses your whole file: the plugin uses these
 // defaults and says why in the pane and in /answers-config, which lists
-// every setting in effect and the file it came from. An `outstanding`
-// section, or a `colors.title`, `colors.expand` or `colors.close-x`
+// every setting in effect and the file it came from. An `outstanding` or
+// `pane` section, or a `colors.title`, `colors.expand` or `colors.close-x`
 // setting, which the plugin no longer reads, is left out with a warning
 // instead, and the rest of your file is used.
 {
@@ -35,8 +35,9 @@
 
   // The pane's keys, pressed while the pane holds the keyboard (as it
   // opens from /answers or the line above the prompt, or after a click).
-  // Each is one lowercase letter or one digit, drawn before its button,
-  // such as `s: 📤 Submit`. Options take no key of their own.
+  // Each is one lowercase letter or one digit, the only keys the engine
+  // takes, drawn before its button, such as `s: 📤 Submit`, and listed in
+  // the panel `? Keys` opens. Options take no key of their own.
   "keys": {
     // ✖ Close: close the pane.
     "dismiss": "q",
@@ -47,13 +48,11 @@
     // 📤 Submit: send the draft.
     "submit": "s",
     // 🔄 Reassess: add the `reassess` line to the draft, or take it out.
-    "reassess": "r"
-  },
-
-  // The pane's own rows.
-  "pane": {
-    // Whether the pane ends on a dim row naming its keys.
-    "hints": true
+    "reassess": "r",
+    // ? Keys: open the panel under the pane's header that lists every
+    // key and what it does, or close it. `?` itself can't be one: the
+    // engine takes only a lowercase letter or a digit.
+    "help": "h"
   },
 
   // The ✏️ notes field under each open item in the pane.
