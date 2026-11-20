@@ -94,12 +94,15 @@
           # plugin/vendor/: the engine loads a hooks module's `claude-code`
           # import and the plugin's own files, as plugin-authoring's
           # reference says, so each library goes in as a file of the
-          # plugin's. The build, the checks and the dev shell all lay these
-          # same files, and plugin/vendor/ commits them for the marketplace
-          # install, which checks.vendor holds to these.
+          # plugin's. plugin/vendor/ commits them, for the marketplace
+          # install, the build and the checks alike, and checks.vendor holds
+          # the committed files to these. A bundle that names node_modules'
+          # store path fails to build: it would keep node_modules in the
+          # plugin's closure.
           pluginVendor = pkgs.runCommand "coding-agent-kanban-turns-vendor" {
             nativeBuildInputs = [ pkgs.esbuild ];
             nodeModules = "${pluginNodeModules}/node_modules";
+            disallowedReferences = [ pluginNodeModules ];
           } (builtins.readFile ./nix/bundle-vendor.sh);
 
           # Fails where plugin/vendor/'s committed bundles aren't
@@ -110,8 +113,8 @@
           } (builtins.readFile ./nix/check-vendor.sh);
 
           # Runs one of plugin/package.json's scripts in a writable copy of
-          # plugin/, with the flake's node_modules linked in and the bundled
-          # parsers laid in vendor/.
+          # plugin/, with the flake's node_modules linked in, against the
+          # committed bundles in vendor/ that the plugin ships.
           pluginCheck =
             name: script:
             pkgs.runCommand "coding-agent-kanban-turns-${name}"
@@ -124,7 +127,6 @@
                 chmod -R u+w plugin
                 cd plugin
                 ln -s ${pluginNodeModules}/node_modules node_modules
-                cp ${pluginVendor}/* vendor/
                 export HOME="$TMPDIR/home"
                 npm run --silent ${script}
                 touch $out
