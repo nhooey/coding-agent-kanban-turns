@@ -1,6 +1,6 @@
 ---
 title: Each item that blocks other work names the items it frees, by reference
-state: proposed
+state: approved
 kind: implementation
 part-of: kanban-next-chunk
 ---

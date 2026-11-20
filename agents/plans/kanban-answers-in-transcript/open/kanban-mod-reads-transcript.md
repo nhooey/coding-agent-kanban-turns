@@ -1,6 +1,6 @@
 ---
 title: The mod reads the turns, the items and the answers from the transcript in TypeScript
-state: approved
+state: in-progress
 kind: implementation
 part-of: kanban-mod-own-repository
 needs: [kanban-mod-split]

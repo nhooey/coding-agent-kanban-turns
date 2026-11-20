@@ -1,6 +1,6 @@
 ---
 title: Move the mod to its own repository with its history, and take it out of coding-agent-skills
-state: in-progress
+state: implemented
 kind: implementation
 part-of: kanban-mod-own-repository
 touches:

@@ -1,6 +1,6 @@
 ---
 title: A reply's Decide items are drawn with their buttons directly under the reply, and the tool row above it draws nothing
-state: proposed
+state: implemented
 kind: implementation
 part-of: kanban-pane
 needs: [pane-lists-raised-items]

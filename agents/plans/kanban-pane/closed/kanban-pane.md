@@ -1,6 +1,6 @@
 ---
 title: The pane holds every Decide item raised, the transcript draws a turn's items after its reply, and the prompt keeps only the count line
-state: proposed
+state: implemented
 kind: end-state
 ---
 
