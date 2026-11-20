@@ -199,12 +199,29 @@ describe("the user's file over the defaults", () => {
     expect(swapped.settings?.keys.next).toBe("k");
   });
 
-  test("a pane section, whose hint row is gone, is left out with a warning", () => {
-    const got = loaded(defaults, user('{"pane": {"hints": false}, "keys": {"help": "o"}}'));
-    expect(got.settings).not.toHaveProperty("pane");
+  test("pane.hints, whose hint row is gone, is left out with a warning, the pane's other settings used", () => {
+    const got = loaded(
+      defaults,
+      user('{"pane": {"hints": false, "close-when-all-submitted": false}, "keys": {"help": "o"}}'),
+    );
+    expect(got.settings?.pane).toEqual({ "close-when-all-submitted": false });
     expect(got.settings?.keys.help).toBe("o");
     expect(got.problems).toEqual([
-      "~/.config/x/config.yaml: pane is no longer read and is left out: the pane draws no hint row; its ? Keys button, or keys.help, opens a panel listing every key",
+      "~/.config/x/config.yaml: pane.hints is no longer read and is left out: the pane draws no hint row; its ? Keys button, or keys.help, opens a panel listing every key",
+    ]);
+  });
+
+  test("whether Submit closes the pane once nothing is left open is a boolean setting, on by default", () => {
+    const got = loaded(defaults, undefined);
+    expect(got.settings?.pane["close-when-all-submitted"]).toBe(true);
+    expect(got.effective).toContain(
+      "pane.close-when-all-submitted = true  # defaults: defaults/config.yaml",
+    );
+    const off = loaded(defaults, user("pane:\n  close-when-all-submitted: false\n"));
+    expect(off.problems).toEqual([]);
+    expect(off.settings?.pane["close-when-all-submitted"]).toBe(false);
+    expect(loaded(defaults, user("pane:\n  close-when-all-submitted: no\n")).problems).toEqual([
+      "~/.config/x/config.yaml: pane.close-when-all-submitted is string, not true or false",
     ]);
   });
 

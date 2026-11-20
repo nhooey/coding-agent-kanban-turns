@@ -6,6 +6,7 @@ import { expect } from "expect";
 
 import {
   answeredCount,
+  closesOnSubmit,
   emptyRaised,
   forSession,
   isSettled,
@@ -232,5 +233,27 @@ describe("the answers Submit sent, Done before the turn's end reads them", () =>
   test("make nothing Done for an item not raised", () => {
     const stray = { ref: "cafecafe.Decide.9", how: "sent", letters: ["A"], note: "" } as const;
     expect(withSent(raised, [stray]).settledRefs).toEqual([]);
+  });
+});
+
+describe("whether a Submit that went through closes the pane", () => {
+  const both = sentOf("9efb08a1.Decide.1.A\n9efb08a1.Decide.2.B\n", raised);
+  const one = sentOf("9efb08a1.Decide.1.A\n", raised);
+
+  test("closes it once the answers sent leave no item open, while the setting is on", () => {
+    expect(closesOnSubmit(raised, both, true)).toBe(true);
+    expect(closesOnSubmit(raised, both, false)).toBe(false);
+  });
+
+  test("keeps it open while an item is still open", () => {
+    expect(closesOnSubmit(raised, one, true)).toBe(false);
+    expect(closesOnSubmit(raised, [], true)).toBe(false);
+  });
+
+  test("counts an item already Done, and the answers an earlier Submit sent, as not open", () => {
+    const after = refreshed(raised, [checkbox], [], []);
+    const earlier = sentOf("9efb08a1.Decide.2.B\n", raised);
+    expect(closesOnSubmit(after, sentOf("9efb08a1.Decide.2.B\n", after), true)).toBe(true);
+    expect(closesOnSubmit(raised, [...earlier, ...one], true)).toBe(true);
   });
 });

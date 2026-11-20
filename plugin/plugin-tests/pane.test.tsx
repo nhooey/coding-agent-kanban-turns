@@ -114,6 +114,7 @@ const LATER = {
 const DEFAULTS = JSON.stringify({
   counts: { turns: 20, "gh-timeout-ms": 20000 },
   keys: { dismiss: "q", next: "j", previous: "k", submit: "s", reassess: "r", help: "h" },
+  pane: { "close-when-all-submitted": true },
   notes: { rows: 3 },
   marks: { sent: "☑️" },
   colors: {
@@ -1972,6 +1973,72 @@ test("an answer Submit sent that the turn's end doesn't find goes back among the
     "🧠 Decide.2 · Cleanups to start",
     "🧠 Decide.3 · Ship tonight?",
   ]);
+  await ui.unmount();
+});
+
+/** Picks an answer to each of ITEMS in the pane: every open item answered. */
+const answerAll = async (ui: Pressable) => {
+  await ui.press({ key: "9efb08a1.Decide.1.A" });
+  await ui.press({ key: "9efb08a1.Decide.2.B" });
+  await ui.press({ key: "9efb08a1.Decide.3.Y" });
+};
+
+test("a Submit that answers every open item closes the pane", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  await answerAll(ui);
+  await ui.press({ key: "submit" });
+
+  expect(state.sent).toHaveLength(1);
+  expect(state.isPaneOpen).toBe(false);
+  await ui.unmount();
+});
+
+test("a Submit that leaves an item open keeps the pane open, and a later one answering it closes it", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  await ui.press({ key: "9efb08a1.Decide.1.A" });
+  await ui.press({ key: "9efb08a1.Decide.3.Y" });
+  await ui.press({ key: "submit" });
+  expect(state.sent).toHaveLength(1);
+  expect(state.isPaneOpen).toBe(true);
+
+  // The answers the first Submit sent still count, until the turn's end.
+  await ui.press({ key: "9efb08a1.Decide.2.B" });
+  await ui.press({ key: "submit" });
+  expect(state.sent).toHaveLength(2);
+  expect(state.isPaneOpen).toBe(false);
+  await ui.unmount();
+});
+
+test("with pane.close-when-all-submitted off, a Submit answering every open item keeps the pane open", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  state.userFiles = { "config.yaml": "pane:\n  close-when-all-submitted: false\n" };
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  await answerAll(ui);
+  await ui.press({ key: "submit" });
+
+  expect(state.sent).toHaveLength(1);
+  expect(state.isPaneOpen).toBe(true);
+  await ui.unmount();
+});
+
+test("a Submit the engine refuses, or that throws, keeps the pane open though it answers every item", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+
+  for (const answer of [{ drop: "a hook refused it" }, new Error("the engine fell over")]) {
+    state.submitAnswer = answer;
+    state.box = "";
+    await answerAll(ui);
+    await ui.press({ key: "submit" });
+    expect(state.sent).toEqual([]);
+    expect(state.isPaneOpen).toBe(true);
+  }
   await ui.unmount();
 });
 

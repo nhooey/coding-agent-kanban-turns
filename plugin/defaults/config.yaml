@@ -17,12 +17,12 @@
 # here, or a value of the wrong type, refuses your whole file: the plugin
 # uses these defaults and says why in the pane and in /answers-config,
 # which lists every setting in effect and the file it came from. An
-# `outstanding` or `pane` section, or a `colors.title`, `colors.expand` or
-# `colors.close-x` setting, which the plugin no longer reads, is left out
-# with a warning instead, and the rest of your file is used. A config.jsonc
-# of yours is still read while there's no config.yaml beside it, as
-# strictly, a key written twice refusing it too; /answers-config, and
-# nothing else, warns to convert it.
+# `outstanding` section, or a `pane.hints`, `colors.title`,
+# `colors.expand` or `colors.close-x` setting, which the plugin no longer
+# reads, is left out with a warning instead, and the rest of your file is
+# used. A config.jsonc of yours is still read while there's no config.yaml
+# beside it, as strictly, a key written twice refusing it too;
+# /answers-config, and nothing else, warns to convert it.
 
 # The count line above the prompt, such as `📌 Outstanding: 🚧 2 · 🧠 3`,
 # which the plugin works out from this session's transcript.
@@ -58,6 +58,13 @@ keys:
   # key and what it does, or close it. `?` itself can't be one: the
   # engine takes only a lowercase letter or a digit.
   help: h
+
+# The pane itself.
+pane:
+  # Whether 📤 Submit closes the pane once, counting the answers it
+  # sends, no item is left open. A Submit the engine refuses, or that
+  # sends nothing, leaves it open; so does false.
+  close-when-all-submitted: true
 
 # The ✏️ notes field under each open item in the pane.
 notes:

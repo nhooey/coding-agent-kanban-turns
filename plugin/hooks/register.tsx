@@ -62,6 +62,7 @@ import {
 } from "../src/outstanding.ts";
 import {
   answeredCount,
+  closesOnSubmit,
   emptyRaised,
   forSession,
   isSettled,
@@ -238,7 +239,7 @@ const counts = atom(
 const settings = atom(
   { plugin: "coding-agent-kanban-turns", key: "settings" } as const,
   UNREAD,
-  { shape: "settings-6" },
+  { shape: "settings-7" },
 );
 
 /** The settings in effect, or none while the defaults file can't be used. */
@@ -529,6 +530,8 @@ const putBack = async (
  * the engine refuses goes back in the box. Either way the pane says why.
  * The items the draft answers are Done from the moment it's sent, until the
  * turn's end reads the transcript; a refused prompt puts them back at once.
+ * A prompt that went through closes the pane when it leaves no item open,
+ * as `pane.close-when-all-submitted` says.
  */
 const sendDraft = async ($: EngineInterface, text: string): Promise<void> => {
   const emptied = await $.prompt.fill({ text: "", mode: "replace" });
@@ -552,6 +555,17 @@ const sendDraft = async ($: EngineInterface, text: string): Promise<void> => {
     return;
   }
   await update($, submitProblem, () => "");
+  const s = await settingsNow($);
+
+  if (
+    closesOnSubmit(
+      await read($, raised),
+      await read($, sent),
+      s?.pane["close-when-all-submitted"] === true,
+    )
+  ) {
+    await closePane($);
+  }
 };
 
 /**
