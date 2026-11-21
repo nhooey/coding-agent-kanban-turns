@@ -29,7 +29,7 @@ kind: end-state
   - its scripts are the CLI, `kanban.js` under Node or a standalone binary, so the fallback runs the same core functions as the hooks;
   - the same skill folder is `packages.skill-standalone`, for a harness that loads skills but not plugins;
   - the same commit always builds the same plugin, skill included, and a flake check builds it, so a plugin change that breaks the skill fails `nix flake check`.
-- **Instructions arrive once.** With the hooks and the skill both loaded, the agent gets the protocol's instructions once ([instructions-once-with-skill](instructions-once-with-skill.md)).
+- **Instructions arrive once.** With the hooks and the skill both loaded, the agent gets the protocol's instructions once ([instructions-once-with-skill](../closed/instructions-once-with-skill.md)).
 - **The old skill is retired** ([kanban-skill-retired](kanban-skill-retired.md)): `coding-agent-kanban-turn-responses` in `coding-agent-skills` is marked retired, no skills-devshell, user-level install or session installs it, and `AGENTS.md` names no rules kept in step with another repository.
 
 Checks:
