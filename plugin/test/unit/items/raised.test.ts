@@ -9,9 +9,11 @@ import {
   closesOnSubmit,
   emptyRaised,
   forSession,
+  heldNow,
   isSettled,
   problemsOf,
   refreshed,
+  released,
   seen,
   sentOf,
   settlementOf,
@@ -224,18 +226,51 @@ describe("the answers Submit sent, Done before the turn's end reads them", () =>
     expect(shown.settledRefs).toEqual(["9efb08a1.Decide.1", "9efb08a1.Decide.2"]);
   });
 
-  test("once a refresh read the transcript, lose the ones sent before it began, by ref, and keep a later Submit's", () => {
+  const again = { ref: "9efb08a1.Decide.1", how: "sent", letters: ["A"], note: "" } as const;
+  const later = { ref: "9efb08a1.Decide.3", how: "sent", letters: ["Y"], note: "" } as const;
+
+  test("are held under the press that sent them, after any held before, another press's for the same item kept", () => {
     const [first, second] = sentOf(draft, raised);
-    const later = { ref: "9efb08a1.Decide.3", how: "sent", letters: ["Y"], note: "" } as const;
-    expect(withoutRead([first!, second!, later], [first!, second!])).toEqual([later]);
-    expect(withoutRead([first!], [])).toEqual([first]);
+    const held = withHeld([], 1, [first!, second!]);
+    expect(held).toEqual([
+      { press: 1, settled: first },
+      { press: 1, settled: second },
+    ]);
+    expect(withHeld(held, 2, [again])).toEqual([...held, { press: 2, settled: again }]);
   });
 
-  test("a new Submit's answer takes the place of one held for its ref, at the end", () => {
+  test("a press holding an item again takes the place of its own earlier hold, at the end", () => {
     const [first, second] = sentOf(draft, raised);
-    const again = { ref: "9efb08a1.Decide.1", how: "sent", letters: ["B"], note: "" } as const;
-    expect(withHeld([first!, second!], [again])).toEqual([second, again]);
-    expect(withHeld([], [first!])).toEqual([first]);
+    expect(withHeld(withHeld([], 1, [first!, second!]), 1, [again])).toEqual([
+      { press: 1, settled: second },
+      { press: 1, settled: again },
+    ]);
+  });
+
+  test("a press puts back only its own, leaving a later press's for the same item", () => {
+    const [first, second] = sentOf(draft, raised);
+    const held = withHeld(withHeld([], 1, [first!, second!]), 2, [again]);
+    expect(released(held, 1)).toEqual([{ press: 2, settled: again }]);
+    expect(released(held, 2)).toEqual(withHeld([], 1, [first!, second!]));
+    expect(released(held, 3)).toEqual(held);
+  });
+
+  test("once a refresh read the transcript, lose the holds it began with, by press and item, and keep any held since, one for the same item among them", () => {
+    const [first, second] = sentOf(draft, raised);
+    const before = withHeld([], 1, [first!, second!]);
+    const since = withHeld(withHeld(before, 2, [later]), 3, [again]);
+    expect(withoutRead(since, before)).toEqual([
+      { press: 2, settled: later },
+      { press: 3, settled: again },
+    ]);
+    expect(withoutRead(before, [])).toEqual(before);
+  });
+
+  test("make Done each item's most recently held answer, in the order they were held", () => {
+    const [first, second] = sentOf(draft, raised);
+    expect(heldNow(withHeld(withHeld([], 1, [first!, second!]), 2, [again]))).toEqual([second, again]);
+    expect(heldNow(withHeld(withHeld([], 2, [again]), 1, [first!]))).toEqual([first]);
+    expect(heldNow([])).toEqual([]);
   });
 
   test("make nothing Done for an item not raised", () => {

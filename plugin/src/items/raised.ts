@@ -6,7 +6,12 @@
 
 import { answerTo, isAnswered } from "./answers.ts";
 import { refOf } from "./items.ts";
-import type { DecideItem, Raised, Settlement } from "../../types/index.d.ts";
+import type {
+  DecideItem,
+  Held,
+  Raised,
+  Settlement,
+} from "../../types/index.d.ts";
 
 export const emptyRaised: Raised = {
   session: "",
@@ -154,22 +159,49 @@ export const withSent = (
       };
 };
 
+/** Whether two holds are one press's answer to one item. */
+const isSameHold = (a: Held, b: Held): boolean =>
+  a.press === b.press && a.settled.ref === b.settled.ref;
+
 /**
- * The answers Submit sent once a refresh has read the transcript they went
- * into: the ones `read`, as they stood when it began, taken out by ref, and
- * any a later Submit sent meanwhile kept.
+ * The answers Submit holds Done once press `press` sends `moved`: each
+ * tagged with the press, at the end, in place of any the press held for
+ * its ref before. Another press's hold for the same item stays, so the
+ * press's refusal can't take it back.
+ */
+export const withHeld = (
+  sent: readonly Held[],
+  press: number,
+  moved: readonly Settlement[],
+): readonly Held[] => {
+  const holds = moved.map((settled) => ({ press, settled }));
+
+  return [...sent.filter((h) => !holds.some((m) => isSameHold(h, m))), ...holds];
+};
+
+/** The answers held once press `press` puts its own back: every other press's kept, one for the same item among them. */
+export const released = (
+  sent: readonly Held[],
+  press: number,
+): readonly Held[] => sent.filter((h) => h.press !== press);
+
+/**
+ * The answers held once a refresh has read the transcript the holds `read`
+ * went into: those taken out, each by its press and item, and any held
+ * since kept, a later press's answer to the same item among them.
  */
 export const withoutRead = (
-  sent: readonly Settlement[],
-  read: readonly Settlement[],
-): readonly Settlement[] =>
-  sent.filter((settled) => !read.some((done) => done.ref === settled.ref));
+  sent: readonly Held[],
+  read: readonly Held[],
+): readonly Held[] => sent.filter((h) => !read.some((r) => isSameHold(h, r)));
 
-/** The answers Submit sent once a new Submit sends `moved`: each takes the place of one held for its ref, at the end. */
-export const withHeld = (
-  sent: readonly Settlement[],
-  moved: readonly Settlement[],
-): readonly Settlement[] => [...withoutRead(sent, moved), ...moved];
+/** What the held answers make Done: each item's most recently held answer, in the order they were held. */
+export const heldNow = (sent: readonly Held[]): readonly Settlement[] =>
+  sent
+    .filter(
+      (h, n) => !sent.slice(n + 1).some((later) => later.settled.ref === h.settled.ref),
+    )
+    .map((h) => h.settled);
 
 /**
  * Whether a Submit that went through closes the pane: with `isEnabled`, the

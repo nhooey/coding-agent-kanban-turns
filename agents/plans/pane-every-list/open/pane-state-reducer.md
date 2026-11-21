@@ -5,7 +5,7 @@ owner: pane-state-reducer
 kind: implementation
 part-of: pane-every-list
 needs: [neutral-turn-stream]
-touches: [plugin/src/pane/pane-state.ts, plugin/src/pane/view.ts, plugin/src/items/raised.ts, plugin/hooks/register.tsx, plugin/types/index.d.ts, plugin/test/unit/, plugin/test/engine/, plugin/test/oracle/, plugin/test/fixtures/]
+touches: [plugin/src/pane/pane-state.ts, plugin/src/pane/view.ts, plugin/src/items/raised.ts, plugin/hooks/register.tsx, plugin/types/index.d.ts, plugin/test/unit/, plugin/test/engine/, plugin/test/oracle/, plugin/test/fixtures/, AGENTS.md]
 cost: "about 29M tokens over 10 runs, 5 implementer and 5 review, one pair per area; about $30 at Opus 5.5's rates; weekly share not costed, no weekly limit set"
 ---
 
@@ -24,9 +24,9 @@ The pane's state is 15 atoms in `plugin/hooks/register.tsx` today: `raised`, `se
 - **The hooks are a thin interpreter.** Each hook builds one event and dispatches it. `dispatch` applies `step` in a single `update` of the one atom, runs the effects it returned, and dispatches each effect's result as an event. The view stays a pure function of the state, in `plugin/src/pane/view.ts`. Data flows one way, and no hook writes the state outside `dispatch`.
 - **Illegal states are unrepresentable.** Sum types replace loose flags:
   - **Submit** is one `submit` field, replacing `submits`, `submitting`, `runningTurn` and `submitProblem`: idle, a turn running (by its id, so a late end of an earlier turn leaves it), sending (with the draft and the refs it moved to Done), or refused (with why). A press does nothing while a turn runs or a draft is sending because `step` says so, not because of a stamp. The overlap of sending and the turn it starts is one defined transition.
-  - **Refresh** is one field replacing the `refreshes` stamp: idle, or reading, with the refresh asked for next. A stale read's result is dropped by `step`.
+  - **Refresh** is one field replacing the `refreshes` stamp: how many refreshes were asked for, the one whose transcript read is shown, and the reads still out, each under its refresh's number. Reads run side by side, and `step` drops a read no newer than the one shown, so an older refresh never replaces a newer one. A read that couldn't read the transcript shows nothing, so an older one that did still lands, and joining another session counts every read out as shown.
   - **Settings** keep their three states, unread, loaded or broken, as one field.
-- **A press a reload overtook keeps to itself.** A press a session's start overtakes finishes as it would have, under its own number. Each answer it holds Done is tagged with its press, so its refusal puts back only its own holds and leaves a later press's for the same item. Its message is kept apart from what the pane says of the press under way. Today the two presses share the prompt box, the held answers and that message, as the old handlers did. This lands with the refresh area, which moves `sent`.
+- **A press a reload overtook keeps to itself.** A press a session's start overtakes finishes as it would have, under its own number. Each answer it holds Done is tagged with its press, so its refusal puts back only its own holds and leaves a later press's for the same item. Its message is kept apart from what the pane says of the press under way, on a line of its own, until a turn starts, the session starts again or a press pressed since ends; a press that sends nothing and says nothing new, for a box of blanks, keeps it, as it keeps all the pane said before it. The two presses still share the prompt box, which the engine has one of.
 - **Order.** It starts with the Submit flow, the one with the races, and moves one area at a time, each its own commit: Submit, then the transcript refresh with `raised`, `sent`, `merged` and `counts`, then settings, then the pane's own state (`expanded`, `focused`, `isKeysOpen`, `noting`), then `draft`. Until an area moves, its atoms stay, and `step` doesn't touch them.
 
 ## One atom, not slices
