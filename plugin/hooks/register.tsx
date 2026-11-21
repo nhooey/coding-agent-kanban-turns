@@ -1030,6 +1030,15 @@ export const register: Register = (on) => {
     return changed;
   });
 
+  // The person typing or pasting raises `prompt.edit`, not `prompt.change`:
+  // the draft is the box as the edit leaves it.
+  on("prompt.edit", async ($, e, next) => {
+    const edited = await next(e);
+    await update($, draft, () => edited.text);
+
+    return edited;
+  });
+
   // Above the prompt: 🖥️ Kanban, then a faint ` · ` and the skill's count
   // line, then, while the draft answers open items, ` · ✏️ 2 picked`, each
   // opening the pane with the keyboard; 🖥️ Kanban alone when nothing is

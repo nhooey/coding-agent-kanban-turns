@@ -1,5 +1,13 @@
 import { expect, test } from "claude-code/testing";
-import type { On, Register } from "claude-code";
+import type { Engine } from "claude-code/testing";
+import type {
+  On,
+  PromptChangeInput,
+  PromptChangeResult,
+  PromptEditInput,
+  PromptEditResult,
+  Register,
+} from "claude-code";
 
 // The transcript's records, trimmed as test/fixtures/records.ts trims them for the
 // Node tests: the engine's test kit loads this file alone.
@@ -1383,12 +1391,18 @@ test("an option's pros and cons pick it too", async ($, on) => {
   expect(state.box).toBe(`${HEADER}9efb08a1.Decide.1.A\n`);
 
   // Under the pointer an option lights the gutter left of each of its
-  // lines, in the hover colour, and no longer inverts its text.
-  const drawn = JSON.stringify(await ui.drawn());
-  expect(drawn).toContain(
-    '"scope":"9efb08a1.Decide.1.A","backgroundColor":"suggestion"',
-  );
-  expect(drawn).not.toContain('"inverse":true');
+  // lines, its name, ➕ and ➖ lines alike, in the hover colour, and no
+  // longer inverts its text.
+  // The hover style rides on the gutter's cell, which the engine reports
+  // beside its props.
+  const gutter = async (key: string) =>
+    JSON.stringify(await ui.find({ type: "Box", key: `${key}-gutter` }));
+  for (const key of ["9efb08a1.Decide.1.A", "9efb08a1.Decide.1.A-pro-0", "9efb08a1.Decide.1.A-con-0"]) {
+    expect(await gutter(key)).toContain(
+      '"hover":{"scope":"9efb08a1.Decide.1.A","backgroundColor":"suggestion"}',
+    );
+  }
+  expect(JSON.stringify(await ui.drawn())).not.toContain('"inverse":true');
   await ui.unmount();
 });
 
@@ -1503,6 +1517,71 @@ test("a reply's Decide list found intact is cut out, its items' boxes drawn in i
   await reply.press({ key: "9efb08a1.Decide.2.B" });
   expect(state.box).toBe(`${HEADER}9efb08a1.Decide.2.B\n`);
   await reply.unmount();
+});
+
+/**
+ * The prompt box's own events, which the engine raises for the person's
+ * edits and the test kit's `$` carries, though its types list only the
+ * calls a plugin makes.
+ */
+type PromptEvents = Readonly<{
+  edit: (e: PromptEditInput) => Promise<PromptEditResult>;
+  change: (e: PromptChangeInput) => Promise<PromptChangeResult>;
+}>;
+
+const promptEvents = ($: Engine): PromptEvents => $.prompt as unknown as PromptEvents;
+
+test("a pick in a reply's box shows in the pane's, and one in the pane's in the reply's, both read from the draft, which the person's own edits change", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  // The engine's box takes the person's edit, as core splices it in, and
+  // echoes a change.
+  on("prompt.edit", (_, e) => {
+    state.box = `${e.text.slice(0, e.start)}${e.inputText}${e.text.slice(e.end)}`;
+
+    return { text: state.box, cursor: e.start + e.inputText.length };
+  });
+  on("prompt.change", (_, e) => {
+    state.box = e.text;
+
+    return { text: e.text };
+  });
+  await $.tool.call({ tool: TOOL, items: ITEMS } as never);
+  await $.turn.complete(replyDone("t0"));
+  const reply = await $.ui.mount(REPLY);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  const leads = async (key: string) => [await leadOf(reply, key), await leadOf(ui, key)];
+  expect(await leads("9efb08a1.Decide.1.B")).toEqual(["🔘 B. ", "🔘 B. "]);
+
+  await reply.press({ key: "9efb08a1.Decide.1.B" });
+  expect(await leads("9efb08a1.Decide.1.B")).toEqual(["✅ B. ", "✅ B. "]);
+  await ui.press({ key: "9efb08a1.Decide.3.N" });
+  expect(await leads("9efb08a1.Decide.3.N")).toEqual(["✅ N. ", "✅ N. "]);
+  const picked = `${HEADER}9efb08a1.Decide.1.B\n9efb08a1.Decide.3.N\n`;
+  expect(state.box).toBe(picked);
+
+  // The person deletes the second answer's line by hand: both copies unpick
+  // it. Taking the edit back puts it back in both.
+  const at = picked.indexOf("9efb08a1.Decide.3.N");
+  await promptEvents($).edit({
+    origin: { kind: "composer" },
+    text: picked,
+    cursor: picked.length,
+    start: at,
+    end: picked.length,
+    inputText: "",
+  });
+  expect(state.box).toBe(`${HEADER}9efb08a1.Decide.1.B\n`);
+  expect(await leads("9efb08a1.Decide.3.N")).toEqual(["👎 N. ", "👎 N. "]);
+  expect(await leads("9efb08a1.Decide.1.B")).toEqual(["✅ B. ", "✅ B. "]);
+  await promptEvents($).change({ text: picked, cursor: picked.length, origin: { kind: "undo" } });
+  expect(await leads("9efb08a1.Decide.3.N")).toEqual(["✅ N. ", "✅ N. "]);
+
+  // Unpicked in either, the option is unpicked in both.
+  await ui.press({ key: "9efb08a1.Decide.1.B" });
+  expect(await leads("9efb08a1.Decide.1.B")).toEqual(["🔘 B. ", "🔘 B. "]);
+  expect(state.sent).toEqual([]);
+  await reply.unmount();
+  await ui.unmount();
 });
 
 test("above the prompt, ✏️ n picked follows the count line while the draft answers open items", async ($, on) => {
