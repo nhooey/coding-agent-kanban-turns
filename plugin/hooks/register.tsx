@@ -63,9 +63,9 @@ import {
   replyLintText,
 } from "../src/lint/reply.ts";
 import { outstandingText, unreadText } from "../src/items/roll-up.ts";
-import { CHOSEN_MARK, itemsOf, optionMark, refOf } from "../src/items/items.ts";
+import { itemsOf, refOf } from "../src/items/items.ts";
 import { freesLineOf } from "../src/items/frees.ts";
-import { INDENT, codeSpans } from "../src/pane/layout.ts";
+import { LAYOUT, codeSpans } from "../src/pane/layout.ts";
 import { cellWidth } from "../src/text/cells.ts";
 import { DECIDE, DONE, REASSESS } from "../src/protocol/rules.ts";
 import { capitalized } from "../src/text/words.ts";
@@ -140,6 +140,7 @@ import {
   noteRows,
   notesKey,
   notesMode,
+  optionLead,
   pickedText,
   sentLetters,
   settledText,
@@ -156,16 +157,12 @@ import type {
 } from "../types/index.d.ts";
 import { loadSettings } from "./settings.ts";
 
-// The pane that lists the items, and its title. The keys and colours are
-// settings, in defaults/config.yaml.
+// The pane that lists the items, and its title. The keys, marks and colours
+// are settings, in defaults/config.yaml; its spacing is src/pane/layout.ts's.
 const PANE = {
   id: "kanban-turns",
   title: `${DECIDE.glyph} ${DECIDE.header}`,
 } as const;
-// The column left of an option's lines that lights while the pointer is over
-// the option, or stays lit once its item is Done: it comes out of the
-// option's indent, so its text stays put.
-const GUTTER = 1;
 // The most bytes one `$.fs.read` returns: the transcript is read in ranges
 // this long.
 const READ_BYTES = 4 * 1024 * 1024;
@@ -230,7 +227,7 @@ const lintNote = atom(
 const settings = atom(
   { plugin: "coding-agent-kanban-turns", key: "settings" } as const,
   UNREAD,
-  { shape: "settings-9" },
+  { shape: "settings-10" },
 );
 
 /** The settings in effect, or none while the defaults file can't be used. */
@@ -1061,7 +1058,7 @@ export const register: Register = (on) => {
       s,
       [
         { key: "counts", text: state.counts },
-        { key: "picked", text: pickedText(picked) },
+        { key: "picked", text: pickedText(picked, s.marks.note) },
       ],
       () => openPane($, true),
     );
@@ -1141,12 +1138,12 @@ export const register: Register = (on) => {
       <Box flexDirection="column">
         <Box
           key="header"
-          marginBottom={1}
-          columnGap={2}
+          marginBottom={LAYOUT.blockGap}
+          columnGap={LAYOUT.controlGap}
           flexWrap="wrap"
           justifyContent="space-between"
         >
-          <Box key="header-status" columnGap={2} flexWrap="wrap">
+          <Box key="header-status" columnGap={LAYOUT.controlGap} flexWrap="wrap">
             {kanbanLine(elements, s, [{ key: "counts", text: line }])}
             {openCount === 0 ? null : (
               <Text key="answered">
@@ -1154,10 +1151,10 @@ export const register: Register = (on) => {
               </Text>
             )}
           </Box>
-          <Box key="header-controls" columnGap={2}>
+          <Box key="header-controls" columnGap={LAYOUT.controlGap}>
             {control(elements, {
               key: STEPS.previous,
-              glyph: "↑",
+              glyph: s.marks.buttons.previous,
               label: "Previous",
               hotkey: s.keys.previous,
               isInert: steppedStop(stops, ring, -1) === undefined,
@@ -1165,7 +1162,7 @@ export const register: Register = (on) => {
             })}
             {control(elements, {
               key: STEPS.next,
-              glyph: "↓",
+              glyph: s.marks.buttons.next,
               label: "Next",
               hotkey: s.keys.next,
               isInert: steppedStop(stops, ring, 1) === undefined,
@@ -1173,14 +1170,14 @@ export const register: Register = (on) => {
             })}
             {control(elements, {
               key: "keys",
-              glyph: "?",
+              glyph: s.marks.buttons.help,
               label: "Keys",
               hotkey: s.keys.help,
               onPress: () => toggleKeys($),
             })}
             {control(elements, {
               key: "dismiss",
-              glyph: "✖",
+              glyph: s.marks.buttons.dismiss,
               glyphColor: s.colors.close,
               label: "Close",
               hotkey: s.keys.dismiss,
@@ -1217,7 +1214,7 @@ export const register: Register = (on) => {
           <Box
             key={`${section.turn}.section`}
             flexDirection="column"
-            marginTop={n === 0 && openCount > 0 ? 0 : 1}
+            marginTop={n === 0 && openCount > 0 ? 0 : LAYOUT.blockGap}
           >
             <Text key={`${section.turn}.turn`} dimColor>
               {section.header}
@@ -1233,28 +1230,30 @@ export const register: Register = (on) => {
         ))}
         <Box
           key="footer"
-          marginTop={1}
-          columnGap={2}
+          marginTop={LAYOUT.blockGap}
+          columnGap={LAYOUT.controlGap}
           flexWrap="wrap"
           justifyContent="space-between"
         >
           <Text key="draft-summary" wrap="wrap">
             {draftSummary(text)}
           </Text>
-          <Box key="footer-controls" columnGap={2}>
+          <Box key="footer-controls" columnGap={LAYOUT.controlGap}>
             {/* A toggle: it adds `reassess` as the draft's last line, for
                 Submit to send after any answers, or alone, and takes it out
-                again; its glyph is ✅ while the line is there. */}
+                again; its glyph is the chosen mark while the line is there. */}
             {control(elements, {
               key: REASSESS,
-              glyph: hasReassess(text) ? CHOSEN_MARK : "🔄",
+              glyph: hasReassess(text)
+                ? s.marks.chosen
+                : s.marks.buttons.reassess,
               label: capitalized(REASSESS),
               hotkey: s.keys.reassess,
               onPress: () => toggleReassess($),
             })}
             {control(elements, {
               key: "submit",
-              glyph: "📤",
+              glyph: s.marks.buttons.submit,
               label: "Submit",
               hotkey: s.keys.submit,
               isInert: "skip" in submitStep(text, isBusy),
@@ -1362,6 +1361,8 @@ const control = (
  * `🖥️ Kanban`, the word in its colour, then each of `pieces` that isn't
  * empty after a faint ` · `: above the prompt each a button that runs
  * `onOpen`; atop the pane, which is already open, the same text unpressable.
+ * The line carries on the count line, so its pieces part by the count
+ * line's own separator, the spec's, and the two can't differ.
  */
 const kanbanLine = (
   elements: Pick<Elements, "Box" | "Button" | "Text">,
@@ -1382,7 +1383,7 @@ const kanbanLine = (
   return (
     <Box key="kanban-line">
       {piece("kanban", `Open the ${DECIDE.header} pane`, [
-        "🖥️ ",
+        `${s.marks.buttons.kanban} `,
         <Text key="kanban-word" color={s.colors.kanban}>
           Kanban
         </Text>,
@@ -1391,16 +1392,13 @@ const kanbanLine = (
         .filter((p) => p.text !== "")
         .flatMap((p) => [
           <Text key={p.key === "counts" ? "divider" : `${p.key}-divider`} dimColor>
-            {" · "}
+            {SPEC["roll-up"]["count-separator"]}
           </Text>,
           piece(p.key, p.text, [p.text]),
         ])}
     </Box>
   );
 };
-
-/** The cells between a label and the text after it, on a title or a Done line. */
-const LABEL_GAP = 2;
 
 /**
  * A line with a lead, `🔘 A. `, `➕ ` or an item's label, whose wrapped rows
@@ -1437,12 +1435,16 @@ const hanging = (
  */
 const keysPanel = (elements: Pick<Elements, "Box" | "Text">, s: Settings) => {
   const { Box, Text } = elements;
-  const rows = keyRows(s.keys);
+  const rows = keyRows(s.keys, s.marks.buttons);
   const width =
-    Math.max(...rows.map((row) => cellWidth(row.key))) + LABEL_GAP;
+    Math.max(...rows.map((row) => cellWidth(row.key))) + LAYOUT.labelGap;
 
   return (
-    <Box key="keys-panel" flexDirection="column" marginBottom={1}>
+    <Box
+      key="keys-panel"
+      flexDirection="column"
+      marginBottom={LAYOUT.blockGap}
+    >
       {rows.map((row, n) =>
         hanging(
           elements,
@@ -1475,13 +1477,13 @@ const doneRow = (
   return (
     <Box key={`${refOf(item)}.row`}>
       <Text key={`${refOf(item)}.bar`} color={s.colors.settled}>
-        ▌
+        {s.marks["settled-bar"]}
       </Text>
       {hanging(
         elements,
         key,
         {
-          width: cellWidth(line.label) + LABEL_GAP,
+          width: cellWidth(line.label) + LAYOUT.labelGap,
           node: <Text dimColor>{line.label}</Text>,
         },
         <Button
@@ -1525,7 +1527,7 @@ const doneSection = (
         plain
         onPress={() => toggleExpanded($, key)}
       >
-        {doneHeader(section.done.length, isOpen)}
+        {doneHeader(section.done.length, isOpen, s.marks)}
       </Button>
       {isOpen
         ? section.done.map((item) =>
@@ -1590,10 +1592,10 @@ const itemBoxes = (
           <Box
             key={refOf(item)}
             flexDirection="column"
-            borderStyle="round"
+            borderStyle={LAYOUT.border}
             borderColor={s.colors.border}
             borderDimColor={isDone}
-            paddingX={1}
+            paddingX={LAYOUT.boxPadding}
           >
             {itemView(elements, s, item, {
               title: itemTitle(item, isDone),
@@ -1673,7 +1675,7 @@ const itemView = (
     key: string,
   ) =>
     (texts ?? []).map((line, n) => (
-      <Box key={`${key}-${n}`} marginLeft={INDENT}>
+      <Box key={`${key}-${n}`} marginLeft={LAYOUT.indent}>
         <Text
           dimColor={dim}
           {...(background ? { backgroundColor: background } : {})}
@@ -1716,7 +1718,7 @@ const itemView = (
       {hanging(
         elements,
         `${ref}.title`,
-        { width: cellWidth(view.title.label) + 1, node: label },
+        { width: cellWidth(view.title.label) + LAYOUT.titleGap, node: label },
         onTitle === undefined ? (
           summary
         ) : (
@@ -1732,7 +1734,7 @@ const itemView = (
         ),
       )}
       {view.settled ? (
-        <Box key="done-by" marginLeft={INDENT}>
+        <Box key="done-by" marginLeft={LAYOUT.indent}>
           <Text dimColor wrap="wrap">
             {view.settled}
           </Text>
@@ -1744,8 +1746,9 @@ const itemView = (
         // An option the answer that made the item Done picked: its own mark,
         // at full strength in the dimmed item, never underlined.
         const isSent = view.sent.includes(option.letter);
-        // A chosen option's line is underlined, its glyph turned to ✅;
-        // nothing of it, and none of its ➕ and ➖ lines, is highlighted.
+        // A chosen option's line is underlined, its glyph turned to the
+        // chosen mark; nothing of it, and none of its ➕ and ➖ lines, is
+        // highlighted.
         const pick = isChosen ? { underline: true } : {};
         const key = view.keyOf(option.letter);
         // A Button holds only text, so each of the option's lines is a button
@@ -1780,7 +1783,7 @@ const itemView = (
           <Box key={`${rowKey}-row`}>
             <Box
               key={`${rowKey}-gutter`}
-              width={GUTTER}
+              width={LAYOUT.gutter}
               flexShrink={0}
               {...gutter}
             >
@@ -1797,7 +1800,7 @@ const itemView = (
           (texts ?? []).map((line, n) =>
             row(
               `${key}-${part}-${n}`,
-              <Box key={`${key}-${part}-${n}-box`} marginLeft={INDENT} flexGrow={1} flexShrink={1}>
+              <Box key={`${key}-${part}-${n}-box`} marginLeft={LAYOUT.indent} flexGrow={1} flexShrink={1}>
                 {led(
                   `${key}-${part}-${n}`,
                   prefix ? `${prefix} ` : "",
@@ -1813,13 +1816,13 @@ const itemView = (
           <Box
             key={`${key}-box`}
             flexDirection="column"
-            marginLeft={INDENT - GUTTER}
+            marginLeft={LAYOUT.indent - LAYOUT.gutter}
           >
             {row(
               key,
               led(
                 key,
-                `${optionMark(item, option.letter, { chosen: isChosen, sent: isSent }, s.marks.sent)} ${option.letter}. `,
+                optionLead(item, option.letter, { chosen: isChosen, sent: isSent }, s.marks),
                 <Button key={key} label={option.name} {...press}>
                 {inline(option.name, `${option.letter}-name`, {
                   ...pick,
@@ -1840,21 +1843,21 @@ const itemView = (
       })}
       {lines("", freesLineOf(item.frees ?? []), undefined, "frees")}
       {view.notes === "none" ? null : view.notes === "button" ? (
-        <Box key={`${view.keyOf("add-note")}-box`} marginLeft={INDENT}>
+        <Box key={`${view.keyOf("add-note")}-box`} marginLeft={LAYOUT.indent}>
           <Button
             key={view.keyOf("add-note")}
             label="Add a note"
             plain
             onPress={() => view.onOpenNotes()}
           >
-            ✏️ Add a note
+            {`${s.marks.note} Add a note`}
           </Button>
         </Box>
       ) : (
-        <Box key={`${notesKey(item)}-box`} marginLeft={INDENT}>
+        <Box key={`${notesKey(item)}-box`} marginLeft={LAYOUT.indent}>
           <Input
             key={notesKey(item)}
-            label="✏️ "
+            label={`${s.marks.note} `}
             placeholder="Notes, or an answer in your own words"
             submitLabel="add to the draft"
             rows={noteRows(s.notes.rows)}

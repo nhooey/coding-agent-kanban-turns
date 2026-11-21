@@ -37,6 +37,12 @@ const shape: Shape = "shape" in derived ? derived.shape : {};
 const NO_TYPE =
   "so its default gives it no type; write a string, a number, or true or false, or name its section's type in KINDS in src/config/config.ts";
 const NO_KEYS = "keys is missing, a section KINDS names";
+const NO_MARKS = "marks is missing, a section KINDS names";
+
+// The least each section KINDS names must hold in a defaults file, as YAML
+// and as a value, so a test's own defaults give a shape.
+const KINDS_YAML = "keys:\n  dismiss: q\nmarks:\n  m: x\n";
+const MARKS = { m: "x" };
 
 const D = "defaults/config.yaml";
 const U = "~/.config/x/config.yaml";
@@ -49,28 +55,34 @@ describe("the shape the shipped defaults file gives", () => {
 });
 
 describe("the shape a defaults file gives", () => {
-  test("takes each setting's type from its default, and each pane key's from KINDS", () => {
-    expect(shapeOf({ a: { b: 1, c: "x", d: true }, keys: { e: "q", f: 3 } })).toEqual({
-      shape: { a: { b: "number", c: "string", d: "boolean" }, keys: { e: "key", f: "key" } },
+  test("takes each setting's type from its default, and each pane key's and mark's from KINDS", () => {
+    expect(
+      shapeOf({ a: { b: 1, c: "x", d: true }, keys: { e: "q", f: 3 }, marks: { g: "x", h: { i: 1 } } }),
+    ).toEqual({
+      shape: {
+        a: { b: "number", c: "string", d: "boolean" },
+        keys: { e: "key", f: "key" },
+        marks: { g: "mark", h: { i: "mark" } },
+      },
     });
   });
 
   test("names a setting `constructor` or `toString` as any other", () => {
-    expect(shapeOf({ keys: { e: "q" }, a: { constructor: "x", toString: 1 } })).toEqual({
-      shape: { keys: { e: "key" }, a: { constructor: "string", toString: "number" } },
+    expect(shapeOf({ keys: { e: "q" }, marks: MARKS, a: { constructor: "x", toString: 1 } })).toEqual({
+      shape: { keys: { e: "key" }, marks: { m: "mark" }, a: { constructor: "string", toString: "number" } },
     });
   });
 
   test("is none where a default gives no type", () => {
-    expect(shapeOf({ keys: { e: "q" }, a: { b: null, c: [1] }, d: null })).toEqual({
+    expect(shapeOf({ keys: { e: "q" }, marks: MARKS, a: { b: null, c: [1] }, d: null })).toEqual({
       problems: [`a.b is null, ${NO_TYPE}`, `a.c is a list, ${NO_TYPE}`, `d is null, ${NO_TYPE}`],
     });
   });
 
   test("is none where a section, or the file, holds no settings", () => {
-    expect(shapeOf({ keys: {} })).toEqual({ problems: ["keys holds no settings"] });
-    expect(shapeOf({ keys: { e: "q" }, a: {} })).toEqual({ problems: ["a holds no settings"] });
-    expect(shapeOf({})).toEqual({ problems: ["the file holds no settings", NO_KEYS] });
+    expect(shapeOf({ keys: {}, marks: MARKS })).toEqual({ problems: ["keys holds no settings"] });
+    expect(shapeOf({ keys: { e: "q" }, marks: MARKS, a: {} })).toEqual({ problems: ["a holds no settings"] });
+    expect(shapeOf({})).toEqual({ problems: ["the file holds no settings", NO_KEYS, NO_MARKS] });
   });
 
   test("is none where the file is no section", () => {
@@ -79,12 +91,16 @@ describe("the shape a defaults file gives", () => {
   });
 
   test("is none where a section KINDS names is missing, or is no section", () => {
-    expect(shapeOf({ a: { b: 1 } })).toEqual({ problems: [NO_KEYS] });
-    expect(shapeOf({ keys: "q", a: { b: 1 } })).toEqual({
+    expect(shapeOf({ a: { b: 1 } })).toEqual({ problems: [NO_KEYS, NO_MARKS] });
+    expect(shapeOf({ keys: { e: "q" }, a: { b: 1 } })).toEqual({ problems: [NO_MARKS] });
+    expect(shapeOf({ keys: "q", marks: MARKS, a: { b: 1 } })).toEqual({
       problems: ["keys is string, not the section KINDS names"],
     });
-    expect(shapeOf({ keys: null })).toEqual({
+    expect(shapeOf({ keys: null, marks: MARKS })).toEqual({
       problems: ["keys is null, not the section KINDS names"],
+    });
+    expect(shapeOf({ keys: { e: "q" }, marks: "x" })).toEqual({
+      problems: ["marks is string, not the section KINDS names"],
     });
   });
 });
@@ -116,9 +132,10 @@ const SOUND_USER = { path: U, text: "keys:\n  dismiss: x\nnotes:\n  rows: 5\n" }
 describe("a defaults file that is missing, empty or gives no shape", () => {
   const cases: readonly (readonly [string, string | undefined, readonly string[]])[] = [
     ["missing", undefined, ["is missing"]],
-    ["empty", "", ["the file holds no settings", NO_KEYS]],
-    ["an empty section", "{}", ["the file holds no settings", NO_KEYS]],
-    ["an empty keys section", '{"keys": {}}', ["keys holds no settings"]],
+    ["empty", "", ["the file holds no settings", NO_KEYS, NO_MARKS]],
+    ["an empty section", "{}", ["the file holds no settings", NO_KEYS, NO_MARKS]],
+    ["an empty keys section", '{"keys": {}, "marks": {"m": "x"}}', ["keys holds no settings"]],
+    ["no marks section", '{"keys": {"dismiss": "q"}}', [NO_MARKS]],
   ];
 
   for (const [name, text, problems] of cases) {
@@ -139,12 +156,12 @@ describe("a defaults file that is missing, empty or gives no shape", () => {
 });
 
 describe("a default named `constructor` or `toString`", () => {
-  const defaults = { path: D, text: "keys:\n  dismiss: q\nmisc:\n  constructor: x\n  toString: 1\n" };
+  const defaults = { path: D, text: `${KINDS_YAML}misc:\n  constructor: x\n  toString: 1\n` };
 
   test("is in effect where the user's file leaves it out", () => {
     const got = loaded(defaults, { path: U, text: "misc:\n  toString: 2\n" });
     expect(got.problems).toEqual([]);
-    expect(got.settings).toEqual({ keys: { dismiss: "q" }, misc: { constructor: "x", toString: 2 } });
+    expect(got.settings).toEqual({ keys: { dismiss: "q" }, marks: MARKS, misc: { constructor: "x", toString: 2 } });
   });
 
   test("is checked where the user's file sets it", () => {
@@ -155,11 +172,11 @@ describe("a default named `constructor` or `toString`", () => {
 
   test("is no setting where the defaults file leaves it out", () => {
     const got = loaded(
-      { path: D, text: "keys:\n  dismiss: q\nmisc:\n  rows: 1\n" },
+      { path: D, text: `${KINDS_YAML}misc:\n  rows: 1\n` },
       { path: U, text: "misc:\n  rows: 2\n" },
     );
     expect(got.problems).toEqual([]);
-    expect(got.settings).toEqual({ keys: { dismiss: "q" }, misc: { rows: 2 } });
+    expect(got.settings).toEqual({ keys: { dismiss: "q" }, marks: MARKS, misc: { rows: 2 } });
   });
 });
 
@@ -182,11 +199,11 @@ describe("the type a default gives its setting", () => {
   test("is the setting's being one: a default added is a setting, and one left out is none", () => {
     const added = stringify({ ...shipped, notes: { ...notes, extra: true } });
     expect(loaded({ path: D, text: added }, { path: U, text: "notes:\n  extra: false\n" }).problems).toEqual([]);
-    const withoutMarks = Object.fromEntries(Object.entries(shipped).filter(([key]) => key !== "marks"));
+    const withoutLint = Object.fromEntries(Object.entries(shipped).filter(([key]) => key !== "lint"));
     expect(
-      loaded({ path: D, text: stringify(withoutMarks) }, { path: U, text: "marks:\n  sent: x\n" }).problems,
+      loaded({ path: D, text: stringify(withoutLint) }, { path: U, text: "lint:\n  turn-end: false\n" }).problems,
     ).toEqual([
-      `${U}: marks is no setting; the keys here are counts, keys, pane, notes, colors, roll-up, lint`,
+      `${U}: lint is no setting; the keys here are counts, keys, pane, notes, marks, colors, roll-up`,
     ]);
   });
 });
@@ -349,17 +366,26 @@ const CASES: readonly Case[] = [
   retyped("with a default added", "notes", { ...sectionOf("notes"), extra: true }, [
     "notes.extra is no setting; the keys here are rows",
   ]),
-  retyped("with a section left out", "marks", undefined, ["marks is missing"]),
+  retyped("with a section left out", "lint", undefined, ["lint is missing"]),
   {
     name: "with a null default",
     text: stringify(withSection("counts", { ...sectionOf("counts"), turns: null })),
     change: { kind: "unshaped", problems: [`counts.turns is null, ${NO_TYPE}`] },
   },
+  {
+    name: "without the marks section, which KINDS names",
+    text: stringify(withSection("marks", undefined)),
+    change: { kind: "unshaped", problems: [NO_MARKS] },
+  },
   { name: "missing", text: undefined, change: { kind: "unshaped", problems: ["is missing"] } },
-  { name: "empty", text: "", change: { kind: "unshaped", problems: ["the file holds no settings", NO_KEYS] } },
+  {
+    name: "empty",
+    text: "",
+    change: { kind: "unshaped", problems: ["the file holds no settings", NO_KEYS, NO_MARKS] },
+  },
   {
     name: "with an empty keys section",
-    text: '{"keys": {}}',
+    text: '{"keys": {}, "marks": {"m": "x"}}',
     change: { kind: "unshaped", problems: ["keys holds no settings"] },
   },
 ];
@@ -445,6 +471,7 @@ describe("the settings in effect, against the oracle", () => {
       "not true or false",
       "not a finite number",
       "not one lowercase letter or digit",
+      "not a mark",
       "each key presses one button",
       "is no longer read",
       "YAML documents",
