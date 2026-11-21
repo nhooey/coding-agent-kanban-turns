@@ -70,6 +70,7 @@
       perSystem =
         {
           config,
+          lib,
           pkgs,
           ...
         }:
@@ -77,6 +78,12 @@
           # The one Node: the plugin's node_modules are built with it, and the
           # dev shell and the checks run it.
           nodejs = pkgs.nodejs_26;
+
+          # The package nodejs's own `node` is, without npm: the binary the
+          # standalone CLI is built from, and whose path it cuts out of it.
+          nodejsSlim = pkgs."nodejs-slim_${lib.versions.major nodejs.version}";
+
+          inherit (pkgs.stdenv.hostPlatform) isDarwin;
 
           # plugin/'s npm dependencies (the YAML parser, and for
           # development TypeScript, Node's types, Jest's expect, fast-check,
@@ -115,16 +122,70 @@
             bundled = pluginVendor;
           } (builtins.readFile ./nix/scripts/vendor/check.sh);
 
+          # The kanban CLI, plugin/cli/, and the core it runs, bundled into
+          # one ES module, bin/kanban.js, that runs under Node 20 or later
+          # with no node_modules: the derived skill's script where Node is
+          # on the path. Built from cli/, src/, types/ and vendor/ alone,
+          # with the defaults file inlined, since it runs with no plugin
+          # folder beside it, and the YAML parser's licence in
+          # share/licenses/. It names no store path, so it runs anywhere.
+          kanbanJs = pkgs.runCommand "coding-agent-kanban-turns-kanban-js" {
+            nativeBuildInputs = [ pkgs.esbuild ];
+            allowedReferences = [ ];
+            src = lib.fileset.toSource {
+              root = ./plugin;
+              fileset = lib.fileset.unions [
+                ./plugin/cli
+                ./plugin/src
+                ./plugin/types
+                ./plugin/vendor
+              ];
+            };
+            bundledDefaults = builtins.toJSON (builtins.readFile ./plugin/defaults/config.yaml);
+            meta.mainProgram = "kanban.js";
+          } (builtins.readFile ./nix/scripts/cli/bundle.sh);
+
+          # The same CLI as a standalone binary, bin/kanban, for this
+          # system: a Node single executable application, which needs no
+          # Node installed, but does need its Nix closure, the libraries
+          # Node links to; Node's own package is cut out of it. The derived
+          # skill's script where Node isn't on the path.
+          kanbanBin = pkgs.runCommand "coding-agent-kanban-turns-kanban" {
+            # macOS signs the binary again: sigtool's codesign, which
+            # runs cctools' codesign_allocate.
+            nativeBuildInputs = [
+              nodejsSlim
+              pkgs.removeReferencesTo
+            ]
+            ++ lib.optionals isDarwin [
+              pkgs.darwin.sigtool
+              pkgs.cctools
+            ];
+            node = nodejsSlim;
+            disallowedReferences = [
+              nodejs
+              nodejsSlim
+            ];
+            inherit kanbanJs;
+            seaConfig = ./nix/scripts/cli/sea.json;
+            signs = isDarwin;
+            meta.mainProgram = "kanban";
+          } (builtins.readFile ./nix/scripts/cli/binary.sh);
+
           # Runs one of plugin/package.json's scripts in a writable copy of
           # plugin/, with the flake's node_modules linked in, against the
-          # committed bundles in vendor/ that the plugin ships.
-          pluginCheck =
-            name: script:
+          # committed bundles in vendor/ that the plugin ships, with `env`
+          # set.
+          pluginCheckWith =
+            env: name: script:
             pkgs.runCommand "coding-agent-kanban-turns-${name}"
-              {
-                nativeBuildInputs = [ nodejs ];
-                src = ./plugin;
-              }
+              (
+                env
+                // {
+                  nativeBuildInputs = [ nodejs ];
+                  src = ./plugin;
+                }
+              )
               ''
                 cp -R "$src" plugin
                 chmod -R u+w plugin
@@ -134,6 +195,7 @@
                 npm run --silent ${script}
                 touch $out
               '';
+          pluginCheck = pluginCheckWith { };
         in
         {
           # The plugin as Claude Code loads it: plugin/ with only what runs,
@@ -156,7 +218,11 @@
             ];
           };
 
-          packages.default = config.packages.plugin;
+          packages = {
+            default = config.packages.plugin;
+            kanban-js = kanbanJs;
+            kanban = kanbanBin;
+          };
 
           # Repo-specific packages and commands, merged onto the modules'.
           devshells.default = {
@@ -218,8 +284,9 @@
 
           # What a build can run: the core's type-check and its tests, the
           # committed bundles against the flake's, and the module and JSON
-          # copy the protocol's spec compiles to against the committed ones.
-          # The hooks' type-check and test/engine/ need the engine (its API
+          # copy the protocol's spec compiles to against the committed ones;
+          # and kanban.js and the binary, each run on a golden case. The
+          # hooks' type-check and test/engine/ need the engine (its API
           # declarations, and claude plugin test), which a build has not.
           checks = {
             inherit (config.packages) plugin;
@@ -227,6 +294,10 @@
             spec = pluginCheck "spec" "spec:check";
             typecheck = pluginCheck "typecheck" "typecheck";
             tests = pluginCheck "tests" "test";
+            cli = pluginCheckWith {
+              KANBAN_JS = "${kanbanJs}/bin/kanban.js";
+              KANBAN_BIN = "${kanbanBin}/bin/kanban";
+            } "cli" "test:built";
           };
 
           treefmt = {

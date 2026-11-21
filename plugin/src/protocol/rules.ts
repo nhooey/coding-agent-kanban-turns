@@ -41,8 +41,18 @@ export const TURN_ID = `${TURN_ID_CHAR}{${TURN.length}}`;
 /** A pattern for a turn id or a prefix long enough to name it: `[0-9a-f]{6,8}`. */
 export const TURN_ID_PREFIX = `${TURN_ID_CHAR}{${TURN.shortest},${TURN.length}}`;
 
+/** Whether the reference grammar writes `id` as a turn's id: its length, in its alphabet. */
+export const isTurnId = (id: string): boolean =>
+  id.length === TURN.length && [...id].every((char) => TURN.alphabet.includes(char));
+
+const LETTERS = SPEC.reference.letters;
+
 /** A pattern for one option letter: `[A-Z]`. */
-export const LETTER = `[${SPEC.reference.letters.first}-${SPEC.reference.letters.last}]`;
+export const LETTER = `[${LETTERS.first}-${LETTERS.last}]`;
+
+/** Whether the reference grammar writes `letter` as an option's letter: one character, from its first letter to its last. */
+export const isOptionLetter = (letter: string): boolean =>
+  [...letter].length === 1 && letter >= LETTERS.first && letter <= LETTERS.last;
 
 /** A pattern for one character of a 🔖 tag's subscript index. */
 export const SUBSCRIPT_CHAR = classOf(SPEC.tag.digits + SPEC.tag.minus);

@@ -12,6 +12,6 @@
     "verbatimModuleSyntax": true,
     "types": ["node"]
   },
-  "include": ["src", "test", "tools"],
+  "include": ["cli", "src", "test", "tools"],
   "exclude": ["test/engine"]
 }

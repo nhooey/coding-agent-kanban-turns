@@ -135,7 +135,10 @@ definitions:
           # teach: a 👍 or 👎 glyph, or lettered `Y` or `N`
           - untaught-option
   # One of the agent's responses in the turn, and the lint's findings for
-  # it, in line order: empty for a clean reply.
+  # it, in line order: empty for a clean reply. `turn-end-lints` is an
+  # expectation: whether the turn's end lints the reply when it is the
+  # final response, false for one in no list's shape, which it passes over,
+  # so that only a draft's lint gives the findings `lint` lists.
   reply:
     type: object
     additionalProperties: false
@@ -145,6 +148,7 @@ definitions:
       lint:
         type: array
         items: { $ref: "#/definitions/finding" }
+      turn-end-lints: { type: boolean, default: true }
   # One turn: its id, its prompt and who wrote it, the agent's responses,
   # the Decide items its `kanban_options` calls raised, and the messages
   # sent while it ran. The prompt is the user's unless `owner` says

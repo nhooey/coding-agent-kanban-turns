@@ -149,6 +149,27 @@ Two more tools do what the kanban skill's `outstanding.py` and `lint_reply.py` s
 - **`kanban_lint`** takes a draft final response, `{"text": "..."}`, and gives each line that breaks a layout rule, by its line and rule, with what it found there where that helps: separator lines, a numbered item's summary line, a list among a Decide item's options, an option of a kind no longer taught (👍 Y. or 👎 N.), a header's underline, a list's end, where a table goes, and a list's numbers under topic headers ([`plugin/src/lint/reply.ts`](plugin/src/lint/reply.ts)).
 - **At the turn's end** the plugin lints the final response itself, where it has a list's header, the 📌 roll-up or its count line, while `lint.turn-end` is on, as it is by default. What it finds is shown beneath the response, and goes in the next prompt's context in the same conversation, so the agent reads it; a `/clear`, a compaction or a resume drops it. A clean response clears it.
 
+### The kanban CLI
+
+The `kanban` CLI runs the same core functions outside Claude Code's engine, for a skill or a harness with no plugin hooks ([`plugin/cli/`](plugin/cli/)):
+
+| Command   | Gives                                                                                                  |
+| --------- | ------------------------------------------------------------------------------------------------------ |
+| `count`   | the 📌 count line                                                                                      |
+| `rollup`  | the full 📌 roll-up, each item ending in its 🔖 tag                                                    |
+| `lint`    | the reply lint's findings for a `--draft` or the last final response; `--json` as JSON                 |
+| `turn-id` | the current turn's id                                                                                  |
+
+- **The turns** come from `--transcript <path>`, read through the adapter `--harness` names (`claude-code`, the only one so far), or from stdin, as a JSON list of neutral turns (`Turn` in [`plugin/types/index.d.ts`](plugin/types/index.d.ts)).
+  - A turn needs its `id`, 8 characters of `0-9a-f`, unique, and its `prompt`, `{"owner", "text"}`. Its `replies`, `decide` and `messages` may be left out, as may its `unanswered`, a message's `reportNames`, and a Decide item's `turn` and `kind`. A Decide item's `ref` and `list` are dropped and worked out afresh.
+  - Any other field, a field of the wrong type, an unknown option kind or an option letter outside A to Z, or outside the kind's own, is refused, by its place.
+- **`lint` reads the final response the turn's end lints.** It passes over an unanswered turn, `unanswered: true`, so text written on the way is no final response. The Claude Code adapter sets it on a turn whose last response didn't end it with an answer: one still running, interrupted, cut off by an API error or refused. It also passes over a response with no list's header, roll-up or count line.
+- **The settings** are the plugin's: `counts.turns` and `roll-up.summary-width`, from the defaults with the user's `config.yaml` merged over them, which `--window` and `--width` override. The CLI asks GitHub nothing: `--merged owner/repo#N`, or the pull request's URL, names each pull request known merged.
+- **Exit codes:** 0 when done, 1 when `lint` finds something, and 2 when the arguments, the input or the settings can't be used, as stderr says.
+- **Built by the flake,** each with the YAML parser's licence in `share/licenses/yaml/`:
+  - `nix build .#kanban-js` gives `bin/kanban.js`, one file that runs under Node 20 or later and names no store path;
+  - `nix build .#kanban` gives `bin/kanban`, a Node single executable application for the system building it. It needs no Node installed, but it runs only where its Nix closure is, the libraries Node links to, as the plugin's own package carries it.
+
 ### Questions in a reply
 
 Where a reply's Decide list isn't cut out, each raised item's summary line in it, such as `1. **Which cache to keep**`, is drawn as a link. Clicking it opens the pane with the keyboard, scrolled to that item. The link points at `https://kanban-turns.invalid/<ref>`, a name that never resolves.
@@ -194,6 +215,7 @@ claude --plugin-dir result-plugin
 | [`plugin/hooks/register.tsx`](plugin/hooks/register.tsx)       | the hooks: the pane, the count line, a reply's links and buttons, the tools (`kanban_options`, its row, `kanban_outstanding` and `kanban_lint`) and their instructions, the turn-end lint, `/answers`, `/answers-config`, the refreshes |
 | [`plugin/hooks/settings.ts`](plugin/hooks/settings.ts)         | reads the defaults file and the user's                                                                                                                                 |
 | [`plugin/src/`](plugin/src/)                                   | the pure core, a folder per concern: `protocol/` (the spec's and the fragments' modules, the rules derived from the spec, the fragments' assembly, the agent's instructions, the tools' names, descriptions and schemas), `transcript/` (the turns and what they hold), `items/` (the draft's answers, the items raised and Done, the count line, and what `kanban_outstanding` gives), `lint/` (the reply lint `kanban_lint` and the turn-end lint run), `pane/` (the pane's state and the step function that moves it, the turn sections and the stops its keys move between, the items' layout and links, the cut of a reply's Decide list, the text drawn), `config/` (the settings), `text/` (a string's cells in a terminal, words in a sentence, text escaped as a literal pattern) and `json/` (whether a value is an object, its fields, and JSON parsed without a throw); it reads harness-neutral turns, which the Claude Code adapter, [`transcript/claude-code.ts`](plugin/src/transcript/claude-code.ts), builds from the session's JSONL transcript |
+| [`plugin/cli/`](plugin/cli/)                                   | the kanban CLI: its commands over the core, the neutral turns it reads from stdin, and its edge, which the flake bundles into `kanban.js` and the standalone binary     |
 | [`plugin/defaults/config.yaml`](plugin/defaults/config.yaml)   | every setting, with its default and what it does                                                                                                                       |
 | [`plugin/spec/kanban.yaml`](plugin/spec/kanban.yaml)           | the protocol's checkable rules: the lists, the option kinds, the commands, the reference grammar, the 📌 roll-up, the 🔖 tag and the rule characters, which `spec-build` compiles into `plugin/src/protocol/spec.ts` and `plugin/spec/kanban.json` |
 | [`plugin/spec/fragments/`](plugin/spec/fragments/)             | the protocol's prose rules, a Markdown file per topic, each list, glyph or command named by a placeholder the spec fills, which `spec-build` compiles into `plugin/src/protocol/fragments.ts` |
@@ -202,5 +224,6 @@ claude --plugin-dir result-plugin
 | [`plugin/types/index.d.ts`](plugin/types/index.d.ts)           | the item, raised items, neutral turn and settings shapes, and the `$.state` contract                                                                                   |
 | [`plugin/test/unit/`](plugin/test/unit/)                       | the core's tests, run by `node --test`, in folders mirroring `src/`, and differential tests of the adapter and the core, of the pane's step function, and of the helpers that replaced the core's copies, against the oracles in `test/oracle/` |
 | [`plugin/test/engine/`](plugin/test/engine/)                   | the pane, the count line, a reply's buttons and the tool row driven through the engine, run by `claude plugin test`                                                    |
+| [`plugin/test/built/`](plugin/test/built/)                     | the flake's `kanban.js` and binary run on a golden case, which `checks.cli` runs                                                                                       |
 | [`plugin/test/fixtures/`](plugin/test/fixtures/)               | the transcript records, neutral turns and Submit's random events the tests build on                                                                                    |
 | [`plugin/test/types/`](plugin/test/types/)                     | the declarations Node's type-check needs in place of the engine's, and the check that the bundled YAML parser's types match its package's                              |

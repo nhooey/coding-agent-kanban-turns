@@ -663,6 +663,14 @@ export const replyLintText = (findings: readonly Finding[]): string =>
         ...findings.map(findingLine),
       ].join("\n");
 
+/** What the CLI's lint says of the last final response where it finds nothing, as the turn's end says nothing. */
+export const CLEAN_REPLY_TEXT =
+  "The reply lint finds nothing in the last final response: it keeps every rule the lint checks.";
+
+/** What the CLI's lint says of the last final response where it's in no list's shape, which the turn's end doesn't lint. */
+export const UNSHAPED_REPLY_TEXT =
+  "The last final response holds no list's header, roll-up or count line, so the reply lint passes over it, as the turn's end does.";
+
 /** Whether a reply is drawn in the protocol's shape, so the turn's end lints it: a line opens a list's header or the 📌 roll-up, or is the count line. */
 export const isKanbanReply = (text: string): boolean =>
   text
