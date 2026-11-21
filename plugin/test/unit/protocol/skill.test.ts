@@ -14,6 +14,7 @@ import {
   INSTRUCTION_FRAGMENTS,
   OUTSTANDING_CALLED,
   PLUGIN,
+  PLUGIN_SKILL,
 } from "../../../src/protocol/instructions.ts";
 import { optionGlyphs, taughtKinds } from "../../../src/protocol/kinds.ts";
 import { filled, placeholderValues, unusedFragments } from "../../../src/protocol/prose.ts";
@@ -146,11 +147,20 @@ describe("SKILL.md", () => {
     expect(SKILL_COMMANDS).toContain(`${PLUGIN}:${SKILL_NAME}`);
   });
 
-  test("has a description of 1024 characters at most, as skills allow, that doesn't say when to load it, which the hooks say", () => {
+  test("has a description of 1024 characters at most, as skills allow, that never says to load it every turn", () => {
     const description = filled(FRAGMENTS[SKILL_DESCRIPTION], VALUES).trim();
 
     expect(description.length).toBeLessThanOrEqual(1024);
     expect(description).not.toMatch(/every turn|before the first response/i);
+  });
+
+  test("has a description that defers to the hooks: load this skill only where the conversation holds no block opening on the instructions' first line", () => {
+    const description = filled(FRAGMENTS[SKILL_DESCRIPTION], VALUES).trim();
+    const opening = `This block is the \`${PLUGIN_SKILL}\` skill's format`;
+
+    expect(INSTRUCTIONS.startsWith(opening)).toBe(true);
+    expect(description).toContain(opening);
+    expect(description).toMatch(/Load this skill only where the conversation holds no block/);
   });
 
   test("loads both preferences files, the user's beside its folder and the project's, a missing one skipped", () => {

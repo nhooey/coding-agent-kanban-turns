@@ -2642,3 +2642,76 @@ test("where prompt.context reaches the plugin, the prompts' context gets no seco
   await $.prompt.submit(GO);
   expect(state.contexts).toEqual([[]]);
 });
+
+// The plugin's own skill, as Claude Code names a plugin's skill.
+const PLUGIN_SKILL = `${PLUGIN}:coding-agent-kanban-turn-responses`;
+
+/** The agent loading `skill` with the Skill tool, its use's id `id`, and the result it got, an error where `isError`. */
+const skillLoad = (
+  skill: string,
+  isError: boolean = false,
+  id: string = "toolu_skill",
+): readonly TranscriptRecord[] => [
+  {
+    isSidechain: false,
+    type: "assistant",
+    message: {
+      role: "assistant",
+      content: [{ type: "tool_use", id, name: "Skill", input: { skill } }],
+    },
+  },
+  {
+    isSidechain: false,
+    type: "user",
+    message: {
+      role: "user",
+      content: [
+        {
+          type: "tool_result",
+          tool_use_id: id,
+          content: isError ? "<tool_use_error>Unknown skill</tool_use_error>" : `Launching skill: ${skill}`,
+          ...(isError ? { is_error: true } : {}),
+        },
+      ],
+    },
+  },
+];
+
+/** The command record a user's slash command for `skill` leaves. */
+const skillCommandRecord = (skill: string): TranscriptRecord => ({
+  isSidechain: false,
+  type: "user",
+  message: {
+    role: "user",
+    content: `<command-message>${skill}</command-message>\n<command-name>/${skill}</command-name>\n<command-args></command-args>`,
+  },
+});
+
+test("where the transcript shows the agent loaded the plugin's skill, the hooks add no instructions", async ($, on) => {
+  const state = engine(on, () => [], listsText, () => skillLoad(PLUGIN_SKILL));
+  on("prompt.context", (_, e) => ({ blocks: e.blocks }));
+
+  const { blocks } = await $.prompt.context({ blocks: [] });
+  expect(blocks.map((block) => block.name)).toEqual([]);
+
+  await $.prompt.submit(GO);
+  expect(state.contexts).toEqual([[]]);
+});
+
+test("where the transcript shows the user's slash command for the plugin's skill, the prompts' context gets no instructions", async ($, on) => {
+  const state = engine(on, () => [], listsText, () => [skillCommandRecord(PLUGIN_SKILL)]);
+
+  await $.prompt.submit(GO);
+  expect(state.contexts).toEqual([[]]);
+});
+
+test("where the agent's load of the plugin's skill failed, or loaded another skill, the hooks still add the instructions", async ($, on) => {
+  const failed = engine(on, () => [], listsText, () => [
+    ...skillLoad(PLUGIN_SKILL, true, "toolu_failed"),
+    ...skillLoad("coding-agent-kanban-turn-responses", false, "toolu_bare"),
+  ]);
+
+  await $.prompt.submit(GO);
+  expect(failed.contexts).toHaveLength(1);
+  expect(failed.contexts[0]?.[0]).toContain(`\`${TOOL}\``);
+});
