@@ -27,24 +27,26 @@ import { branchSpans, reportNamesItem } from "../transcript/reports.ts";
 import { isObject, parsedJson } from "../json/fields.ts";
 import { escaped } from "../text/patterns.ts";
 import {
-  DECISIONS,
-  HEADER,
   isOwn,
-  isTopicRule,
   reassessStart,
   reassessStarts,
-  sectionsOf,
   withoutDraftHeader,
 } from "../transcript/turns.ts";
+import { parseReply, sectionsIn } from "../transcript/reply.ts";
+import type {
+  Block,
+  BodyLine,
+  ItemHead,
+  LineFacts,
+} from "../transcript/reply.ts";
 import {
   DECIDE,
-  LETTER,
+  DECISIONS,
   SUBSCRIPT_CHAR,
   SUBJECT_WORD,
   TURN_ID,
   namesOf,
 } from "../protocol/rules.ts";
-import { optionGlyphs } from "../protocol/kinds.ts";
 import { SPEC } from "../protocol/spec.ts";
 import type { DecideItem, Message, Settlement, Turn } from "../../types/index.d.ts";
 
@@ -68,13 +70,6 @@ const keyOfName = (name: string): ListKey | undefined =>
 
 const ROLL_UP = SPEC["roll-up"];
 
-/** The 📌 roll-up's header, under which the lists' headers repeat. */
-export const PIN = new RegExp(
-  String.raw`^\s*${escaped(ROLL_UP.glyph)}\s+\*\*(${namesOf(ROLL_UP).map(escaped).join("|")}):\*\*`,
-  "u",
-);
-// A top-level bullet or numbered line, the number kept.
-const ITEM = /^ {0,2}(?:[-*]|(\d+)[.)])\s+(.*)$/;
 // An older roll-up's tag before the item, and the 🔖 tag after it.
 const TAG = escaped(SPEC.tag.glyph);
 const PREFIX = new RegExp(String.raw`^${TAG}\s*\w+${SUBSCRIPT_CHAR}*:\s*`, "u");
@@ -152,162 +147,72 @@ export const subjectKey = (summary: string): string => {
         : normal(summary);
 };
 
-/** Whether an item line is its bold summary alone, its sentence on the line beneath. */
-const awaitsBody = (text: string): boolean => {
-  const bold = /^\*\*(.+?)\*\*/.exec(text);
+/**
+ * An item of a list that rolls up, read from its block: its own line, and,
+ * where that line is its bold summary alone, the line beneath joined to it,
+ * unless that's the `Frees:` line, which is no body; with any 🔖 tag cut off,
+ * and what its last line, a `Frees:` line, frees, as written.
+ */
+const listItemOf = (
+  list: ListKey,
+  isPinned: boolean,
+  head: ItemHead,
+  body: readonly BodyLine[],
+): Omit<ListItem, "at"> => {
+  const own = head.text.trim();
+  const beneath = body[0]?.line.trim();
+  const line =
+    head.isAlone && beneath !== undefined && !isFreesLine(beneath)
+      ? `${own} ${beneath}`
+      : own;
+  const tagged = SUFFIX.exec(line)?.[1];
 
-  return bold !== null && text.slice(bold[0].length).trim() === "";
+  return {
+    list,
+    number: head.number,
+    isPinned,
+    line: line.replace(SUFFIX, ""),
+    frees: freesOfLine(body.at(-1)?.line ?? "") ?? [],
+    ...(tagged === undefined ? {} : { tagged }),
+  };
 };
 
-/** An item as the scan found it: its last line under its own, where it has one, and none once that line ended it. */
-type Found = Readonly<{
-  list: ListKey;
-  number: number | undefined;
-  isPinned: boolean;
-  line: string;
-  last: string | undefined;
-}>;
-
-/**
- * Where the scan is: the list it's in, whether in a 📌 roll-up, the items
- * found, whether the last item's summary awaits its body on the line
- * beneath, whether the last item goes on, until a blank line, a separator,
- * a header or a topic header's rule ends it, and the fence of a code block
- * open in it, empty where none is.
- */
-type Scan = Readonly<{
+/** Where the reading of a reply's blocks is: the list it's in, whether in a 📌 roll-up, and the items found. */
+type Reading = Readonly<{
   list: ListKey | undefined;
   isPinned: boolean;
-  found: readonly Found[];
-  isAwaiting: boolean;
-  isInItem: boolean;
-  fence: string;
+  found: readonly Omit<ListItem, "at">[];
 }>;
 
-/** What opens or closes a Markdown code block: three backticks or tildes. */
-const FENCES: readonly string[] = ["```", "~~~"];
-
-/** The fence a line, its indent aside, opens or closes a code block with; empty where it's no fence. */
-const fenceOf = (body: string): string =>
-  FENCES.find((fence) => body.startsWith(fence)) ?? "";
-
 /**
- * A text's lines outside its code blocks, in order: a block opens on a
- * fence and holds every line until the same fence closes it, and the
- * fences' own lines are neither kept nor read for anything else.
+ * The reading once one more block is read: a header opens its list, the 📌
+ * roll-up's start leaves every list and pins what follows, a topic header
+ * leaves the list above it, and an item of a list that rolls up is found.
  */
-export const unfencedLines = (text: string): readonly string[] =>
-  text.split("\n").reduce(
-    ({ open, kept }, line) => {
-      const fence = fenceOf(line.trim());
-
-      return open !== ""
-        ? { open: fence === open ? "" : open, kept }
-        : fence !== ""
-          ? { open: fence, kept }
-          : { open, kept: [...kept, line] };
-    },
-    { open: "", kept: [] as readonly string[] },
-  ).kept;
-
-/**
- * The scan once `body`, a line under the last item `last`, is read: the
- * item's last line while the item goes on; where the summary awaits it, the
- * item's body, joined to its line, unless it's the `Frees:` line, which is
- * no body; and the code block it opens or closes.
- */
-const underItem = (state: Scan, last: Found, body: string): Scan => ({
-  ...state,
-  found: [
-    ...state.found.slice(0, -1),
-    {
-      ...last,
-      line:
-        state.isAwaiting && !isFreesLine(body)
-          ? `${last.line} ${body}`
-          : last.line,
-      last: state.isInItem ? body : last.last,
-    },
-  ],
-  isAwaiting: false,
-  fence: !state.isInItem
-    ? ""
-    : state.fence === ""
-      ? fenceOf(body)
-      : fenceOf(body) === state.fence
-        ? ""
-        : state.fence,
-});
-
-const scan = (state: Scan, line: string): Scan => {
-  const header = HEADER.exec(line)?.[1];
-  const item = ITEM.exec(line);
-  const body = line.trim();
-  const last = state.found.at(-1);
-  const ended = { isAwaiting: false, isInItem: false, fence: "" };
-
-  // A code block open in an item holds every line until its fence closes
-  // it, a blank line among them, so none ends the item.
-  return state.fence !== "" && last !== undefined
-    ? underItem(state, last, body)
-    : header !== undefined
-    ? { ...state, ...ended, list: keyOfName(header) }
-    : PIN.test(line)
-      ? { ...state, ...ended, list: undefined, isPinned: true }
-      : // A topic header's rule ends the list above it, and a blank line ends
-        // any list, so neither the topic header nor prose after a list is read
-        // as an item's body.
-        isTopicRule(line)
-        ? { ...state, ...ended, list: undefined }
-        : body === ""
-          ? { ...state, ...ended }
-          : state.list !== undefined && item !== null
-            ? {
-                ...state,
-                found: [
-                  ...state.found,
-                  {
-                    list: state.list,
-                    number: item[1] === undefined ? undefined : Number(item[1]),
-                    isPinned: state.isPinned,
-                    line: (item[2] ?? "").trim(),
-                    last: undefined,
-                  },
-                ],
-                isAwaiting: awaitsBody((item[2] ?? "").trim()),
-                isInItem: true,
-              }
-            : body === SEPARATOR
-              ? { ...state, isInItem: false }
-              : // A line under the item: its last line so far, and its body
-                // where the summary's own line holds no sentence.
-                last !== undefined && (state.isAwaiting || state.isInItem)
-                ? underItem(state, last, body)
-                : state;
-};
+const readBlock = (state: Reading, block: Block): Reading =>
+  block.kind === "header"
+    ? { ...state, list: keyOfName(block.name) }
+    : block.kind === "roll-up"
+      ? { ...state, list: undefined, isPinned: true }
+      : block.kind === "topic"
+        ? { ...state, list: undefined }
+        : block.kind === "item" && state.list !== undefined
+          ? {
+              ...state,
+              found: [
+                ...state.found,
+                listItemOf(state.list, state.isPinned, block.head, block.body),
+              ],
+            }
+          : state;
 
 /** The items of one reply text's lists that roll up, and of its 📌 roll-up, in order, each freeing the references its last line names as written. */
 export const itemsOfText = (text: string): readonly Omit<ListItem, "at">[] =>
-  text
-    .split("\n")
-    .reduce(scan, {
-      list: undefined,
-      isPinned: false,
-      found: [],
-      isAwaiting: false,
-      isInItem: false,
-      fence: "",
-    } as Scan)
-    .found.map(({ last, ...found }) => {
-      const tagged = SUFFIX.exec(found.line)?.[1];
-
-      return {
-        ...found,
-        line: found.line.replace(SUFFIX, ""),
-        frees: freesOfLine(last ?? "") ?? [],
-        ...(tagged === undefined ? {} : { tagged }),
-      };
-    });
+  parseReply(text).reduce(readBlock, {
+    list: undefined,
+    isPinned: false,
+    found: [],
+  }).found;
 
 /** The reference an item of a reply's own list goes by, `9efb08a1.Todo.2`, by its turn's id; none for a 📌 roll-up's bullet or an item with no number. */
 export const listItemRef = (
@@ -472,35 +377,117 @@ export const isAnswered = (
 
 // --- Decide items a reply's own list prints --------------------------------
 
-const DECIDE_ITEM = /^ {0,3}(\d+)[.)]\s+\*\*(.+?)\*\*/gm;
-// Every glyph an option is drawn with, a kind not taught's among them, so
-// an older reply's options still read.
-const OPTION_GLYPHS = optionGlyphs(SPEC.options.kinds);
-const DECIDE_OPTION = new RegExp(
-  String.raw`^\s*(?:${OPTION_GLYPHS.map(escaped).join("|")})\s+${LETTER}\.\s+\*\*.+?\*\*`,
-  "mu",
-);
+/** A Decide item a reply's list prints: its number and its summary. */
+type PrintedItem = Readonly<{ number: number; summary: string }>;
+
+/**
+ * One line of a Decide list as its items are read from it: a numbered
+ * item's own line, its number and the bold summary it opens on; the number
+ * a line holds alone, `1.`, or a numbered item's own line holds with no
+ * text; the bold text a line opens on, its indent aside; whether it's
+ * blank; and whether it writes an option outside code.
+ */
+type DecideLine = Readonly<{
+  number: number | undefined;
+  summary: string | undefined;
+  bare: number | undefined;
+  bold: string | undefined;
+  isBlank: boolean;
+  isOption: boolean;
+}>;
+
+/** A line that opens no item and writes no option: code, a separator, an underline, a bullet. */
+const OTHER: DecideLine = {
+  number: undefined,
+  summary: undefined,
+  bare: undefined,
+  bold: undefined,
+  isBlank: false,
+  isOption: false,
+};
+
+/** A line of prose, by what it's read as besides. */
+const proseLine = (facts: LineFacts): DecideLine => ({
+  ...OTHER,
+  bare: facts.bare,
+  bold: facts.bold,
+  isOption: facts.option !== undefined,
+});
+
+/** An item's own line. */
+const headLine = (head: ItemHead): DecideLine =>
+  head.number === undefined
+    ? OTHER
+    : head.summary !== undefined
+      ? { ...OTHER, number: head.number, summary: head.summary }
+      : head.text.trim() === ""
+        ? { ...OTHER, bare: head.number }
+        : OTHER;
+
+/** A block's lines, as a Decide list's items are read from them; a header's none. */
+const decideLinesOf = (block: Block): readonly DecideLine[] =>
+  block.kind === "item"
+    ? [
+        headLine(block.head),
+        ...block.body.map((under) => (under.isCode ? OTHER : proseLine(under))),
+      ]
+    : block.kind === "text"
+      ? [proseLine(block)]
+      : block.kind === "blank"
+        ? [{ ...OTHER, isBlank: true }]
+        : block.kind === "header"
+          ? []
+          : block.lines.map(() => OTHER);
+
+/**
+ * The item the line at `n` opens: a numbered item's own line opening on its
+ * bold summary, or a number alone, `1.`, where the next line not blank opens
+ * on the bold summary.
+ */
+const headAt = (
+  lines: readonly DecideLine[],
+  n: number,
+): PrintedItem | undefined => {
+  const line = lines[n];
+  const next = lines.slice(n + 1).find((later) => !later.isBlank);
+
+  return line?.number !== undefined && line.summary !== undefined
+    ? { number: line.number, summary: line.summary }
+    : line?.bare !== undefined && next?.bold !== undefined
+      ? { number: line.bare, summary: next.bold }
+      : undefined;
+};
+
+/**
+ * The items of one Decide list's lines that carry an option: each item's
+ * chunk runs from its line to the next item's, across blank lines, bullets
+ * and prose, as the kanban skill's `decide_items_of_text` reads it, and
+ * holds an option outside code.
+ */
+const printedIn = (lines: readonly DecideLine[]): readonly PrintedItem[] => {
+  const heads = lines.flatMap((_, n) => {
+    const head = headAt(lines, n);
+
+    return head === undefined ? [] : [{ head, at: n }];
+  });
+
+  return heads
+    .filter(({ at }, k) =>
+      lines
+        .slice(at + 1, heads[k + 1]?.at ?? lines.length)
+        .some((line) => line.isOption),
+    )
+    .map(({ head }) => ({
+      number: head.number,
+      summary: head.summary.trim().replace(/:$/, "").trim(),
+    }));
+};
 
 /** The numbered items of a reply's Decide lists that carry an option; a 📌 roll-up's bullets carry none. */
-export const decideItemsOfText = (
-  text: string,
-): readonly Readonly<{ number: number; summary: string }>[] =>
-  sectionsOf(text)
+export const decideItemsOfText = (text: string): readonly PrintedItem[] =>
+  sectionsIn(parseReply(text))
     .filter((section) => DECISIONS.includes(section.name))
-    .flatMap(({ text: body }) => {
-      const heads = [...body.matchAll(DECIDE_ITEM)];
-
-      return heads
-        .map((head, n) => ({
-          head,
-          chunk: body.slice(head.index, heads[n + 1]?.index ?? body.length),
-        }))
-        .filter(({ chunk }) => DECIDE_OPTION.test(chunk))
-        .map(({ head }) => ({
-          number: Number(head[1]),
-          summary: (head[2] ?? "").trim().replace(/:$/, "").trim(),
-        }));
-    });
+    .flatMap((section) => printedIn(section.blocks.flatMap(decideLinesOf)));
 
 /** A Decide item a reply's own list printed: its number and summary, and the id and place of its turn. */
 type PrintedDecide = Readonly<{

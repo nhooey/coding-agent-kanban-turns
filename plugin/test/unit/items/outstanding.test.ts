@@ -33,7 +33,6 @@ import {
   settlingOf,
   subjectKey,
   summaryOf,
-  unfencedLines,
   unsettled,
   windowStart,
   withRepliedFrees,
@@ -795,17 +794,6 @@ describe("an item's summary", () => {
   });
 });
 
-describe("unfencedLines", () => {
-  test("keeps the lines outside code blocks, dropping each block and its fences", () => {
-    expect(unfencedLines("a\n```text\nb\n```\nc\n  ~~~\nd\n  ~~~\ne")).toEqual(["a", "c", "e"]);
-  });
-
-  test("closes a block only on its own fence, and drops the rest of a block left open", () => {
-    expect(unfencedLines("a\n```\n~~~\nb\n```\nc")).toEqual(["a", "c"]);
-    expect(unfencedLines("a\n```\nb")).toEqual(["a"]);
-  });
-});
-
 describe("subjectKey", () => {
   test("a backlog entry is its key", () => {
     expect(subjectKey("Entries 0550 and 0455, dead code")).toBe("entry 0550");
@@ -1451,5 +1439,99 @@ describe("openItemsIn and settlementsIn", () => {
   test("are empty for no states", () => {
     expect(openItemsIn([])).toEqual([]);
     expect(settlementsIn([])).toEqual([]);
+  });
+});
+
+describe("itemsOfText, as parseReply reads a reply", () => {
+  test("an older roll-up header bare pins nothing: only the 📌 glyph and bold do", () => {
+    for (const older of ["Still open from earlier", "Still open from earlier:", "Still open from earlier, the README."]) {
+      const text = `👉 **Todo:**${BR}\n1. **Run it**\n\n${older}\n📋 **To review:**${BR}\n- **The README** 🔖 b2c3d4e5₋₁\n`;
+
+      expect(itemsOfText(text).map((item) => item.isPinned)).toEqual([false, false]);
+    }
+  });
+
+  test("a fence less indented than an item's text ends the item, and is no line beneath its summary", () => {
+    const text = `👉 **Todo:**${BR}\n 2) **Run it**${BR}\n   \`\`\`text\n   \`\`\`\n`;
+
+    expect(itemsOfText(text).map((item) => item.line)).toEqual(["**Run it**"]);
+  });
+
+  test("a code block holds code wherever it is: outside a list, or under an item of a list that doesn't roll up", () => {
+    const outside = `Some work.\n\n\`\`\`text\n👉 **Todo:**\n1. **Not an item**\n\`\`\`\n`;
+    const underDone = `✅ **Done:**${BR}\n1. **Fixed it**\n   \`\`\`\n📌 **Outstanding from previous turns:**\n   \`\`\`\n👉 **Todo:**${BR}\n1. **Run it**\n`;
+
+    expect(itemsOfText(outside)).toEqual([]);
+    expect(itemsOfText(underDone).map((item) => item.isPinned)).toEqual([false]);
+  });
+
+  test("a topic's title, the line above its rule, is no part of the item above it", () => {
+    const text = `👉 **Todo:**${BR}\n1. **Run the benchmark**${BR}\nThe loader\n═══════════\n`;
+
+    expect(itemsOfText(text).map((item) => item.line)).toEqual(["**Run the benchmark**"]);
+  });
+
+  test("a line after a separator is no body of the summary alone above it", () => {
+    const text = `👉 **Todo:**${BR}\n1. **Run it**${BR}\n   ${SEP}\n   Its sentence.\n`;
+
+    expect(itemsOfText(text).map((item) => item.line)).toEqual(["**Run it**"]);
+  });
+
+  test("a CRLF reply's items are its LF form's", () => {
+    expect(itemsOfText(ITEMS_REPLY.replaceAll("\n", "\r\n"))).toEqual(itemsOfText(ITEMS_REPLY));
+  });
+});
+
+describe("decideItemsOfText, as parseReply reads a reply", () => {
+  const OPTIONED = `1. **Which cache to keep**${BR}\n   🔘 A. **Disk**`;
+
+  test("a numbered line 3 spaces in is under the item above, no item of its own", () => {
+    expect(decideItemsOfText(`🧠 **Decide:**${BR}\n${OPTIONED}\n   2. **Nested**\n      🔘 A. **Disk**`)).toEqual([
+      { number: 1, summary: "Which cache to keep" },
+    ]);
+  });
+
+  test("an item's options are read up to the next item: after blank lines, under a later bullet or a later plain item", () => {
+    for (const text of [
+      `🧠 **Decide:**${BR}\n1. **Which cache to keep**${BR}\n\n   🔘 A. **Disk**`,
+      `🧠 **Decide:**${BR}\n1. **Which cache to keep**${BR}\n\n\n   It still reads twice.\n\n   🔘 A. **Disk**`,
+      `🧠 **Decide:**${BR}\n1. **Which cache to keep**${BR}\n- **A bullet**\n   🔘 A. **Disk**`,
+      `🧠 **Decide:**${BR}\n1. **Which cache to keep**${BR}\n\n- **A bullet**\n\n   🔘 A. **Disk**`,
+      `🧠 **Decide:**${BR}\n1. **Which cache to keep**${BR}\n2. Plain words\n   🔘 A. **Disk**`,
+    ]) {
+      expect(decideItemsOfText(text)).toEqual([{ number: 1, summary: "Which cache to keep" }]);
+    }
+  });
+
+  test("an option goes to the nearest item above it, and an item with none below it before the next is none", () => {
+    expect(
+      decideItemsOfText(`🧠 **Decide:**${BR}\n1. **Which cache to keep**${BR}\n\n2. **Ship it**${BR}\n\n   🔘 A. **Disk**`),
+    ).toEqual([{ number: 2, summary: "Ship it" }]);
+  });
+
+  test("a number alone on its line opens an item, its bold summary on the next line not blank", () => {
+    for (const text of [
+      `🧠 **Decide:**${BR}\n1.\n**Which cache to keep**\n   🔘 A. **Disk**`,
+      `🧠 **Decide:**${BR}\n1. \n\n   **Which cache to keep**\n   🔘 A. **Disk**`,
+      `🧠 **Decide:**${BR}\n1)\n**Which cache to keep**: why\n\n   🔘 A. **Disk**`,
+    ]) {
+      expect(decideItemsOfText(text)).toEqual([{ number: 1, summary: "Which cache to keep" }]);
+    }
+    expect(decideItemsOfText(`🧠 **Decide:**${BR}\n1.\nPlain **bold**\n   🔘 A. **Disk**`)).toEqual([]);
+  });
+
+  test("an option or an item inside code is none, and an older roll-up header bare ends the list", () => {
+    for (const text of [
+      `🧠 **Decide:**${BR}\n1. **Which cache to keep**${BR}\n   \`\`\`\n   🔘 A. **Disk**\n   \`\`\``,
+      `🧠 **Decide:**${BR}\n1. **Which cache to keep**${BR}\n\n\`\`\`\n   🔘 A. **Disk**\n\`\`\``,
+      `🧠 **Decide:**${BR}\n\`\`\`\n1. **Which cache to keep**${BR}\n\`\`\`\n   🔘 A. **Disk**`,
+      `🧠 **Decide:**${BR}\n1. **Which cache to keep**${BR}\nStill open from earlier\n   🔘 A. **Disk**`,
+    ]) {
+      expect(decideItemsOfText(text)).toEqual([]);
+    }
+  });
+
+  test("a Decide list inside a code block is code", () => {
+    expect(decideItemsOfText(`\`\`\`\n🧠 **Decide:**${BR}\n${OPTIONED}\n\`\`\``)).toEqual([]);
   });
 });

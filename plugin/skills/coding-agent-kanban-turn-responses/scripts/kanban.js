@@ -952,16 +952,16 @@ function foldFlowLines(text, indent, mode = "flow", { indentAtStart, lineWidth =
     onFold();
   let res = text.slice(0, folds[0]);
   for (let i2 = 0; i2 < folds.length; ++i2) {
-    const fold2 = folds[i2];
+    const fold = folds[i2];
     const end2 = folds[i2 + 1] || text.length;
-    if (fold2 === 0)
+    if (fold === 0)
       res = `
 ${indent}${text.slice(0, end2)}`;
     else {
-      if (mode === FOLD_QUOTED && escapedFolds[fold2])
-        res += `${text[fold2]}\\`;
+      if (mode === FOLD_QUOTED && escapedFolds[fold])
+        res += `${text[fold]}\\`;
       res += `
-${indent}${text.slice(fold2 + 1, end2)}`;
+${indent}${text.slice(fold + 1, end2)}`;
     }
   }
   return res;
@@ -4046,8 +4046,8 @@ function doubleQuotedValue(source, onError) {
     if (ch === "\r" && source[i + 1] === "\n")
       continue;
     if (ch === "\n") {
-      const { fold: fold2, offset } = foldNewline(source, i);
-      res += fold2;
+      const { fold, offset } = foldNewline(source, i);
+      res += fold;
       i = offset;
     } else if (ch === "\\") {
       let next = source[++i];
@@ -4087,19 +4087,19 @@ function doubleQuotedValue(source, onError) {
   return res;
 }
 function foldNewline(source, offset) {
-  let fold2 = "";
+  let fold = "";
   let ch = source[offset + 1];
   while (ch === " " || ch === "	" || ch === "\n" || ch === "\r") {
     if (ch === "\r" && source[offset + 2] !== "\n")
       break;
     if (ch === "\n")
-      fold2 += "\n";
+      fold += "\n";
     offset += 1;
     ch = source[offset + 1];
   }
-  if (!fold2)
-    fold2 = " ";
-  return { fold: fold2, offset };
+  if (!fold)
+    fold = " ";
+  return { fold, offset };
 }
 var escapeCodes = {
   "0": "\0",
@@ -5644,8 +5644,8 @@ var Parser = class {
   *parse(source, incomplete = false) {
     if (this.onNewLine && this.offset === 0)
       this.onNewLine(0);
-    for (const lexeme of this.lexer.lex(source, incomplete))
-      yield* this.next(lexeme);
+    for (const lexeme2 of this.lexer.lex(source, incomplete))
+      yield* this.next(lexeme2);
     if (!incomplete)
       yield* this.end();
   }
@@ -6964,6 +6964,8 @@ var DONE = SPEC.lists.done;
 var REASSESS = "reassess";
 var DEFAULT_KIND = "radio";
 var namesOf = (list) => [list.header, ...list.aliases];
+var SECTION_NAMES = Object.values(SPEC.lists).flatMap(namesOf);
+var DECISIONS = namesOf(DECIDE);
 var TURN2 = SPEC.reference["turn-id"];
 var TURN_ID_CHAR = classOf(TURN2.alphabet);
 var TURN_ID = `${TURN_ID_CHAR}{${TURN2.length}}`;
@@ -7743,39 +7745,12 @@ var answersOfLine = (line) => {
 
 // src/transcript/turns.ts
 var isOwn = (owner) => owner === "user" || owner === "this-plugin";
-var SECTION_NAMES = Object.values(SPEC.lists).flatMap(namesOf);
-var DECISIONS = namesOf(DECIDE);
-var HEADER = new RegExp(
-  String.raw`^\s*\S+\s+\*\*(${SECTION_NAMES.map(escaped).join("|")}):\*\*`
-);
-var STOPS = SPEC["roll-up"].aliases;
-var TOPIC_RULE = SPEC.characters["topic-underline"];
 var DRAFT_HEADER = new RegExp(
   String.raw`^${escaped(PLUGIN)}(?:@[\w.-]+)?:\r?\n`
 );
 var withoutDraftHeader = (text) => text.replace(DRAFT_HEADER, "");
 var UTF8 = new TextDecoder();
 var NOT_DECODED = { text: "", carry: new Uint8Array() };
-var isTopicRule = (line) => isLineOf(TOPIC_RULE, line);
-var fold = ({ open, done }, [line, following]) => {
-  const header = HEADER.exec(line)?.[1];
-  return header !== void 0 ? { open: header, done: [...done, { name: header, lines: [line] }] } : STOPS.some((stop) => line.startsWith(stop)) || isTopicRule(line) || isTopicRule(following) ? { open: void 0, done } : open !== void 0 ? {
-    open,
-    done: done.map(
-      (section, n) => n === done.length - 1 ? { ...section, lines: [...section.lines, line] } : section
-    )
-  } : { open, done };
-};
-var sectionsOf = (text) => {
-  const lines = text.split("\n");
-  const pairs2 = lines.map(
-    (line, n) => [line, lines[n + 1] ?? ""]
-  );
-  return pairs2.reduce(fold, { open: void 0, done: [] }).done.map(({ name, lines: own }) => ({
-    name,
-    text: own.join("\n").trimEnd()
-  }));
-};
 var COMMANDS = Object.fromEntries(
   Object.entries(SPEC.commands.names).map(([command, { synonyms }]) => [
     command,
@@ -7838,26 +7813,173 @@ var reassessStarts = (turns) => {
   );
 };
 
-// src/items/outstanding.ts
-var LIST_KEYS = Object.keys(SPEC.lists).filter((key) => SPEC.lists[key]["rolls-up"]);
-var SEPARATOR = SPEC.characters.separator;
-var keyOfName = (name) => LIST_KEYS.find((key) => namesOf(SPEC.lists[key]).includes(name));
+// src/transcript/reply.ts
+var HEADER = new RegExp(
+  String.raw`^\s*\S+\s+\*\*(${SECTION_NAMES.map(escaped).join("|")}):\*\*`
+);
 var ROLL_UP2 = SPEC["roll-up"];
 var PIN = new RegExp(
   String.raw`^\s*${escaped(ROLL_UP2.glyph)}\s+\*\*(${namesOf(ROLL_UP2).map(escaped).join("|")}):\*\*`,
   "u"
 );
-var ITEM = /^ {0,2}(?:[-*]|(\d+)[.)])\s+(.*)$/;
+var isOlderRollUp = (line) => {
+  const end = line.trimEnd();
+  return ROLL_UP2.aliases.some((older) => end === older || end === `${older}:`);
+};
+var COUNT_LINE = `${ROLL_UP2.glyph} ${ROLL_UP2["count-label"]}:`;
+var CHARS = SPEC.characters;
+var UNDERLINES = [
+  CHARS["header-underline"],
+  CHARS["roll-up-underline"]
+];
+var isTopicRule = (line) => isLineOf(CHARS["topic-underline"], line);
+var FENCE_CHARS = ["`", "~"];
+var runOf = (char, text) => {
+  const end = [...text].findIndex((each) => each !== char);
+  return end < 0 ? text.length : end;
+};
+var fenceOpening = (line) => {
+  const body = line.trimStart();
+  const char = FENCE_CHARS.find((each) => body.startsWith(each));
+  const length = char === void 0 ? 0 : runOf(char, body);
+  return char !== void 0 && length >= 3 && !(char === "`" && body.slice(length).includes("`")) ? { char, length } : void 0;
+};
+var isFenceClosing = (fence, line) => {
+  const body = line.trim();
+  return body.length >= fence.length && runOf(fence.char, body) === body.length;
+};
+var ITEM = /^( {0,2}(?:[-*]|(\d+)([.)]))\s+)(.*)$/;
+var BARE = /^ {0,2}(\d+)[.)]\s*$/;
+var BOLD = /^\*\*(.+?)\*\*/;
+var OPTION = new RegExp(
+  String.raw`^\s*(${optionGlyphs(SPEC.options.kinds).map(escaped).join("|")})\s+(${LETTER})\.\s+\*\*(.+?)\*\*`,
+  "u"
+);
+var withoutCr = (line) => line.endsWith("\r") ? line.slice(0, -1) : line;
+var headOf = (line) => {
+  const found2 = ITEM.exec(line);
+  const text = found2?.[4] ?? "";
+  const bold = BOLD.exec(text);
+  return found2 === null ? void 0 : {
+    lead: found2[1] ?? "",
+    number: found2[2] === void 0 ? void 0 : Number(found2[2]),
+    delimiter: found2[3],
+    text,
+    summary: bold?.[1],
+    isAlone: bold !== null && text.slice(bold[0].length).trim() === ""
+  };
+};
+var factsOf = (line) => {
+  const option = OPTION.exec(line);
+  const bare = BARE.exec(line)?.[1];
+  return {
+    option: option === null ? void 0 : { glyph: option[1] ?? "", letter: option[2] ?? "", name: option[3] ?? "" },
+    bare: bare === void 0 ? void 0 : Number(bare),
+    bold: BOLD.exec(line.trimStart())?.[1]
+  };
+};
+var NO_FACTS = { option: void 0, bare: void 0, bold: void 0 };
+var lexeme = (raw) => {
+  const line = withoutCr(raw);
+  const name = HEADER.exec(line)?.[1];
+  const head = headOf(line);
+  const char = UNDERLINES.find((under) => isLineOf(under, line));
+  return name !== void 0 ? { kind: "header", line: raw, name } : PIN.test(line) ? { kind: "roll-up", line: raw } : isOlderRollUp(line) ? { kind: "stop", line: raw } : isTopicRule(line) ? { kind: "rule", line: raw } : char !== void 0 ? { kind: "underline", line: raw, char } : line.trim() === "" ? { kind: "blank", line: raw } : line.trim() === CHARS.separator ? { kind: "separator", line: raw } : head !== void 0 ? { kind: "item", line: raw, head } : fenceOpening(line) !== void 0 ? { kind: "code", line: raw, opens: true } : { kind: "text", line: raw, facts: factsOf(line) };
+};
+var fenceOfLexeme = (lex) => lex.kind === "code" ? fenceOpening(withoutCr(lex.line)) : lex.kind === "item" ? fenceOpening(lex.head.text) : void 0;
+var lexed = ({ fence, done }, raw) => {
+  const read = fence === void 0 ? lexeme(raw) : void 0;
+  return read === void 0 ? {
+    fence: fence !== void 0 && isFenceClosing(fence, withoutCr(raw)) ? void 0 : fence,
+    done: [...done, { kind: "code", line: raw, opens: false }]
+  } : { fence: fenceOfLexeme(read), done: [...done, read] };
+};
+var TITLES = [
+  "text",
+  "item",
+  "separator",
+  "underline",
+  "stop"
+];
+var lexemesOf = (lines) => {
+  const read = lines.reduce(lexed, { fence: void 0, done: [] }).done;
+  return read.map(
+    (lex, n) => read[n + 1]?.kind === "rule" && TITLES.includes(lex.kind) ? { kind: "title", line: lex.line } : lex
+  );
+};
+var indentOf = (line) => line.length - line.trimStart().length;
+var isUnder = (head, lex) => lex.kind === "text" || lex.kind === "underline" || lex.kind === "stop" || lex.kind === "code" && !(lex.opens && indentOf(lex.line) < head.lead.length);
+var bodyLineOf = (lex) => ({
+  line: lex.line,
+  isCode: lex.kind === "code",
+  isStop: lex.kind === "stop",
+  ...lex.kind === "text" ? lex.facts : NO_FACTS
+});
+var blockOf = (lex, at2) => {
+  const lines = [lex.line];
+  switch (lex.kind) {
+    case "header":
+      return { kind: "header", at: at2, lines, name: lex.name };
+    case "item":
+      return { kind: "item", at: at2, lines, head: lex.head, body: [] };
+    case "underline":
+      return { kind: "underline", at: at2, lines, char: lex.char };
+    case "text":
+      return { kind: "text", at: at2, lines, ...lex.facts };
+    case "code":
+      return { kind: "code", at: at2, lines };
+    case "title":
+      return { kind: "topic", at: at2, lines, isTitled: true };
+    case "rule":
+      return { kind: "topic", at: at2, lines, isTitled: false };
+    default:
+      return { kind: lex.kind, at: at2, lines };
+  }
+};
+var extended = (last, lex) => last.kind === "item" && isUnder(last.head, lex) ? {
+  ...last,
+  lines: [...last.lines, lex.line],
+  body: [...last.body, bodyLineOf(lex)]
+} : last.kind === "topic" && last.isTitled && last.lines.length === 1 && lex.kind === "rule" || last.kind === "code" && lex.kind === "code" ? { ...last, lines: [...last.lines, lex.line] } : void 0;
+var grouped = (blocks, lex, at2) => {
+  const last = blocks.at(-1);
+  const grown2 = last === void 0 ? void 0 : extended(last, lex);
+  return grown2 === void 0 ? [...blocks, blockOf(lex, at2)] : [...blocks.slice(0, -1), grown2];
+};
+var parseReply = (text) => lexemesOf(text.split("\n")).reduce(grouped, []);
+var proseLines = (blocks) => blocks.flatMap(
+  (block) => block.kind === "code" ? [] : block.kind === "item" ? [
+    ...block.lines.slice(0, 1),
+    ...block.body.filter((under) => !under.isCode).map((under) => under.line)
+  ] : block.lines
+);
+var isCountLine = (line) => line.trimStart().startsWith(COUNT_LINE);
+var stopAt = (block) => block.kind === "item" ? block.body.findIndex((under) => under.isStop) : -1;
+var cutAt = (block, at2) => block.kind === "item" ? { ...block, lines: block.lines.slice(0, 1 + at2), body: block.body.slice(0, at2) } : block;
+var appended = (done, block) => done.map(
+  (section, n) => n === done.length - 1 ? { ...section, blocks: [...section.blocks, block] } : section
+);
+var sectioned = ({ isOpen, done }, block) => {
+  const stop = stopAt(block);
+  return block.kind === "header" ? { isOpen: true, done: [...done, { name: block.name, blocks: [block] }] } : block.kind === "roll-up" || block.kind === "stop" || block.kind === "topic" ? { isOpen: false, done } : !isOpen ? { isOpen, done } : stop >= 0 ? { isOpen: false, done: appended(done, cutAt(block, stop)) } : { isOpen, done: appended(done, block) };
+};
+var sectionsIn = (blocks) => blocks.reduce(sectioned, { isOpen: false, done: [] }).done;
+
+// src/items/outstanding.ts
+var LIST_KEYS = Object.keys(SPEC.lists).filter((key) => SPEC.lists[key]["rolls-up"]);
+var SEPARATOR = SPEC.characters.separator;
+var keyOfName = (name) => LIST_KEYS.find((key) => namesOf(SPEC.lists[key]).includes(name));
+var ROLL_UP3 = SPEC["roll-up"];
 var TAG2 = escaped(SPEC.tag.glyph);
 var PREFIX = new RegExp(String.raw`^${TAG2}\s*\w+${SUBSCRIPT_CHAR}*:\s*`, "u");
 var SUFFIX = new RegExp(
   String.raw`\s*${TAG2}\s+(${TURN_ID})${SUBSCRIPT_CHAR}*\s*$`,
   "u"
 );
-var BOLD = /\*\*(.+?)\*\*/;
+var BOLD2 = /\*\*(.+?)\*\*/;
 var summaryOf = (line) => {
   const text = line.replace(PREFIX, "");
-  return (BOLD.exec(text)?.[1] ?? text).trim().replace(/:$/, "").trim();
+  return (BOLD2.exec(text)?.[1] ?? text).trim().replace(/:$/, "").trim();
 };
 var SUBJECT = SPEC.subject;
 var ENTRY_DIGITS = SUBJECT.entry.digits;
@@ -7876,79 +7998,32 @@ var subjectKey = (summary) => {
   );
   return entry !== void 0 ? `${SUBJECT.entry.label} ${entry}` : branch !== void 0 ? `${SUBJECT.branch.label} ${branch}` : words.length > 0 ? words.slice(0, SUBJECT["words-kept"]).join(" ") : normal(summary);
 };
-var awaitsBody = (text) => {
-  const bold = /^\*\*(.+?)\*\*/.exec(text);
-  return bold !== null && text.slice(bold[0].length).trim() === "";
-};
-var FENCES = ["```", "~~~"];
-var fenceOf = (body) => FENCES.find((fence) => body.startsWith(fence)) ?? "";
-var unfencedLines = (text) => text.split("\n").reduce(
-  ({ open, kept }, line) => {
-    const fence = fenceOf(line.trim());
-    return open !== "" ? { open: fence === open ? "" : open, kept } : fence !== "" ? { open: fence, kept } : { open, kept: [...kept, line] };
-  },
-  { open: "", kept: [] }
-).kept;
-var underItem = (state, last, body) => ({
-  ...state,
-  found: [
-    ...state.found.slice(0, -1),
-    {
-      ...last,
-      line: state.isAwaiting && !isFreesLine(body) ? `${last.line} ${body}` : last.line,
-      last: state.isInItem ? body : last.last
-    }
-  ],
-  isAwaiting: false,
-  fence: !state.isInItem ? "" : state.fence === "" ? fenceOf(body) : fenceOf(body) === state.fence ? "" : state.fence
-});
-var scan = (state, line) => {
-  const header = HEADER.exec(line)?.[1];
-  const item = ITEM.exec(line);
-  const body = line.trim();
-  const last = state.found.at(-1);
-  const ended = { isAwaiting: false, isInItem: false, fence: "" };
-  return state.fence !== "" && last !== void 0 ? underItem(state, last, body) : header !== void 0 ? { ...state, ...ended, list: keyOfName(header) } : PIN.test(line) ? { ...state, ...ended, list: void 0, isPinned: true } : (
-    // A topic header's rule ends the list above it, and a blank line ends
-    // any list, so neither the topic header nor prose after a list is read
-    // as an item's body.
-    isTopicRule(line) ? { ...state, ...ended, list: void 0 } : body === "" ? { ...state, ...ended } : state.list !== void 0 && item !== null ? {
-      ...state,
-      found: [
-        ...state.found,
-        {
-          list: state.list,
-          number: item[1] === void 0 ? void 0 : Number(item[1]),
-          isPinned: state.isPinned,
-          line: (item[2] ?? "").trim(),
-          last: void 0
-        }
-      ],
-      isAwaiting: awaitsBody((item[2] ?? "").trim()),
-      isInItem: true
-    } : body === SEPARATOR ? { ...state, isInItem: false } : (
-      // A line under the item: its last line so far, and its body
-      // where the summary's own line holds no sentence.
-      last !== void 0 && (state.isAwaiting || state.isInItem) ? underItem(state, last, body) : state
-    )
-  );
-};
-var itemsOfText = (text) => text.split("\n").reduce(scan, {
-  list: void 0,
-  isPinned: false,
-  found: [],
-  isAwaiting: false,
-  isInItem: false,
-  fence: ""
-}).found.map(({ last, ...found2 }) => {
-  const tagged = SUFFIX.exec(found2.line)?.[1];
+var listItemOf = (list, isPinned, head, body) => {
+  const own = head.text.trim();
+  const beneath = body[0]?.line.trim();
+  const line = head.isAlone && beneath !== void 0 && !isFreesLine(beneath) ? `${own} ${beneath}` : own;
+  const tagged = SUFFIX.exec(line)?.[1];
   return {
-    ...found2,
-    line: found2.line.replace(SUFFIX, ""),
-    frees: freesOfLine(last ?? "") ?? [],
+    list,
+    number: head.number,
+    isPinned,
+    line: line.replace(SUFFIX, ""),
+    frees: freesOfLine(body.at(-1)?.line ?? "") ?? [],
     ...tagged === void 0 ? {} : { tagged }
   };
-});
+};
+var readBlock = (state, block) => block.kind === "header" ? { ...state, list: keyOfName(block.name) } : block.kind === "roll-up" ? { ...state, list: void 0, isPinned: true } : block.kind === "topic" ? { ...state, list: void 0 } : block.kind === "item" && state.list !== void 0 ? {
+  ...state,
+  found: [
+    ...state.found,
+    listItemOf(state.list, state.isPinned, block.head, block.body)
+  ]
+} : state;
+var itemsOfText = (text) => parseReply(text).reduce(readBlock, {
+  list: void 0,
+  isPinned: false,
+  found: []
+}).found;
 var listItemRef = (turns, item) => item.isPinned || item.number === void 0 ? void 0 : refText({
   turn: turns[item.at]?.id ?? "",
   list: SPEC.lists[item.list].header,
@@ -7996,22 +8071,43 @@ var answerFor = (answers2, id, at2, number) => answers2.findLast(
   (answer2) => answer2.number === number && (answer2.turn === "" ? answer2.at === at2 : id !== "" && id.startsWith(answer2.turn))
 );
 var isAnswered = (answers2, id, at2, number) => answerFor(answers2, id, at2, number) !== void 0;
-var DECIDE_ITEM = /^ {0,3}(\d+)[.)]\s+\*\*(.+?)\*\*/gm;
-var OPTION_GLYPHS = optionGlyphs(SPEC.options.kinds);
-var DECIDE_OPTION = new RegExp(
-  String.raw`^\s*(?:${OPTION_GLYPHS.map(escaped).join("|")})\s+${LETTER}\.\s+\*\*.+?\*\*`,
-  "mu"
-);
-var decideItemsOfText = (text) => sectionsOf(text).filter((section) => DECISIONS.includes(section.name)).flatMap(({ text: body }) => {
-  const heads = [...body.matchAll(DECIDE_ITEM)];
-  return heads.map((head, n) => ({
-    head,
-    chunk: body.slice(head.index, heads[n + 1]?.index ?? body.length)
-  })).filter(({ chunk }) => DECIDE_OPTION.test(chunk)).map(({ head }) => ({
-    number: Number(head[1]),
-    summary: (head[2] ?? "").trim().replace(/:$/, "").trim()
-  }));
+var OTHER = {
+  number: void 0,
+  summary: void 0,
+  bare: void 0,
+  bold: void 0,
+  isBlank: false,
+  isOption: false
+};
+var proseLine = (facts) => ({
+  ...OTHER,
+  bare: facts.bare,
+  bold: facts.bold,
+  isOption: facts.option !== void 0
 });
+var headLine = (head) => head.number === void 0 ? OTHER : head.summary !== void 0 ? { ...OTHER, number: head.number, summary: head.summary } : head.text.trim() === "" ? { ...OTHER, bare: head.number } : OTHER;
+var decideLinesOf = (block) => block.kind === "item" ? [
+  headLine(block.head),
+  ...block.body.map((under) => under.isCode ? OTHER : proseLine(under))
+] : block.kind === "text" ? [proseLine(block)] : block.kind === "blank" ? [{ ...OTHER, isBlank: true }] : block.kind === "header" ? [] : block.lines.map(() => OTHER);
+var headAt = (lines, n) => {
+  const line = lines[n];
+  const next = lines.slice(n + 1).find((later) => !later.isBlank);
+  return line?.number !== void 0 && line.summary !== void 0 ? { number: line.number, summary: line.summary } : line?.bare !== void 0 && next?.bold !== void 0 ? { number: line.bare, summary: next.bold } : void 0;
+};
+var printedIn = (lines) => {
+  const heads = lines.flatMap((_, n) => {
+    const head = headAt(lines, n);
+    return head === void 0 ? [] : [{ head, at: n }];
+  });
+  return heads.filter(
+    ({ at: at2 }, k) => lines.slice(at2 + 1, heads[k + 1]?.at ?? lines.length).some((line) => line.isOption)
+  ).map(({ head }) => ({
+    number: head.number,
+    summary: head.summary.trim().replace(/:$/, "").trim()
+  }));
+};
+var decideItemsOfText = (text) => sectionsIn(parseReply(text)).filter((section) => DECISIONS.includes(section.name)).flatMap((section) => printedIn(section.blocks.flatMap(decideLinesOf)));
 var latestDecideItems = (turns, start) => {
   const raised = turns.flatMap(
     (turn, at2) => at2 < start ? [] : turn.replies.flatMap(
@@ -8036,7 +8132,7 @@ var pullRequestsOf = (text) => [
 var windowStart = (turns, window) => windowFrom(turns.length, window, reassessStart(turns));
 var windowFrom = (length, window, floor) => Math.max(window > 0 && window <= length ? length - window : 0, floor);
 var keyOf2 = (item) => `${item.list}	${subjectKey(summaryOf(item.line))}`;
-var rollUp = (turns, window) => rollUpIn(factsOf(turns), window);
+var rollUp = (turns, window) => rollUpIn(factsOf2(turns), window);
 var rollUpIn = (facts, window) => {
   const start = windowFrom(facts.turns.length, window, facts.start);
   const items = facts.items.filter((item) => item.at >= start);
@@ -8087,7 +8183,7 @@ var reportsOf = (turns) => turns.flatMap(
     ({ owner, text, reportNames: reportNames2 }) => isOwn(owner) || reportNames2 === void 0 ? [] : [{ n, names: reportNames2, report: text }]
   )
 );
-var unsettled = (turns, items, merged) => unsettledIn(factsOf(turns), items, merged);
+var unsettled = (turns, items, merged) => unsettledIn(factsOf2(turns), items, merged);
 var unsettledIn = (facts, items, merged) => {
   const settling = settlingIn(facts, merged);
   return items.filter((item) => !settlerOf(item).settles(item, settling));
@@ -8099,11 +8195,11 @@ var countsOf = (items) => {
       items.filter((item) => item.list === key).length
     ]
   ).filter(([, count]) => count > 0).map(([glyph, count]) => `${glyph} ${count}`);
-  return shown.length > 0 ? `${ROLL_UP2.glyph} ${ROLL_UP2["count-label"]}: ${shown.join(ROLL_UP2["count-separator"])}` : "";
+  return shown.length > 0 ? `${ROLL_UP3.glyph} ${ROLL_UP3["count-label"]}: ${shown.join(ROLL_UP3["count-separator"])}` : "";
 };
-var countLine = (turns, window, merged = /* @__PURE__ */ new Set()) => countLineIn(factsOf(turns), window, merged);
+var countLine = (turns, window, merged = /* @__PURE__ */ new Set()) => countLineIn(factsOf2(turns), window, merged);
 var countLineIn = (facts, window, merged) => countsOf(unsettledIn(facts, rollUpIn(facts, window), merged));
-var factsOf = (turns) => {
+var factsOf2 = (turns) => {
   const starts = reassessStarts(turns);
   const start = starts.at(-1) ?? 0;
   const items = itemsIn(turns, starts);
@@ -8125,7 +8221,7 @@ var timeOf = (text) => {
   const time = text === void 0 ? Number.NaN : Date.parse(text);
   return Number.isNaN(time) ? void 0 : time;
 };
-var printsFullRollUp = (text) => unfencedLines(text).some((line) => PIN.test(line));
+var printsFullRollUp = (text) => parseReply(text).some((block) => block.kind === "roll-up");
 var turnDurations = (turns) => turns.slice(0, -1).flatMap((turn, n) => {
   const start = timeOf(turn.promptedAt);
   const end = timeOf(turns[n + 1]?.promptedAt);
@@ -8165,10 +8261,10 @@ var SUBSCRIPT = {
 var subscriptOf = (index) => [...String(index)].map((c) => SUBSCRIPT[c] ?? c).join("");
 
 // src/items/roll-up.ts
-var ROLL_UP3 = SPEC["roll-up"];
-var BOLD2 = /\*\*.+?\*\*/;
+var ROLL_UP4 = SPEC["roll-up"];
+var BOLD3 = /\*\*.+?\*\*/;
 var bodyOf = (line) => {
-  const bold = BOLD2.exec(line);
+  const bold = BOLD3.exec(line);
   return bold === null ? line : line.slice(bold.index + bold[0].length);
 };
 var normal2 = (text) => text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
@@ -8246,7 +8342,7 @@ var rollUpDraft = (turns, window, merged = /* @__PURE__ */ new Set(), width = Nu
     key,
     members: items.filter((item) => item.list === key)
   })).filter(({ members }) => members.length > 0);
-  const header = headerLine(ROLL_UP3.glyph, ROLL_UP3.header);
+  const header = headerLine(ROLL_UP4.glyph, ROLL_UP4.header);
   const body = groups.flatMap(({ key, members }, n) => [
     ...n > 0 ? [""] : [],
     headerLine(SPEC.lists[key].glyph, SPEC.lists[key].header),
@@ -8265,7 +8361,6 @@ var rollUpDraft = (turns, window, merged = /* @__PURE__ */ new Set(), width = Nu
 var MERGES_UNKNOWN = `Which pull requests merged is unknown: \`gh\` didn't answer, so the count line and the draft keep every ${SPEC.lists.review.header} item whose pull request isn't already known merged; check those before printing them.`;
 
 // src/lint/reply.ts
-var ROLL_UP4 = SPEC["roll-up"];
 var KINDS3 = SPEC.options.kinds;
 var TAUGHT = taughtKinds(KINDS3);
 var UNTAUGHT = Object.fromEntries(
@@ -8292,14 +8387,14 @@ var RULES = {
   "untaught-option": `an option is ${glyphsInWords(TAUGHT)} lettered from ${PAIR2[0] ?? ""}; write a yes-or-no question as ${DEFAULT_GLYPH} ${PAIR2[0] ?? ""}. and ${DEFAULT_GLYPH} ${PAIR2[1] ?? ""}.`
 };
 var RULE_NAMES = Object.keys(RULES);
-var { characters: CHARS } = SPEC;
-var SEPARATOR2 = CHARS.separator;
-var HEADER_RULE = CHARS["header-underline"];
-var TOPIC_RULE2 = CHARS["topic-underline"];
-var UNDERLINES = [
+var { characters: CHARS2 } = SPEC;
+var SEPARATOR2 = CHARS2.separator;
+var HEADER_RULE = CHARS2["header-underline"];
+var TOPIC_RULE = CHARS2["topic-underline"];
+var UNDERLINES2 = [
   HEADER_RULE,
-  CHARS["roll-up-underline"],
-  TOPIC_RULE2
+  CHARS2["roll-up-underline"],
+  TOPIC_RULE
 ];
 var SEP_LINE = new RegExp(`^( *)${escaped(SEPARATOR2)} *$`, "u");
 var SPACES = /^[ \t ]+$/;
@@ -8308,13 +8403,13 @@ var SUMMARY = /^\*\*.+?\*\*/;
 var LIST_NAME = /\*\*([^*]+?):\*\*/;
 var FENCE = /^ *(```|~~~)/;
 var ROW = /^ *\|/;
-var OPTION = new RegExp(
+var OPTION2 = new RegExp(
   `^( *)(${optionGlyphs(KINDS3).map(escaped).join("|")}) (${LETTER})\\. `,
   "u"
 );
 var isUnderline = (line) => {
   const chars = [...line.trim()];
-  return chars.length > 0 && chars.every((char) => UNDERLINES.includes(char));
+  return chars.length > 0 && chars.every((char) => UNDERLINES2.includes(char));
 };
 var START = {
   findings: [],
@@ -8333,7 +8428,7 @@ var START = {
   isFirstItem: false,
   lastNumber: {}
 };
-var indentOf = (text) => text.length - text.replace(/^ +/, "").length;
+var indentOf2 = (text) => text.length - text.replace(/^ +/, "").length;
 var found = (state, line, rule, detail) => ({
   ...state,
   findings: [
@@ -8406,7 +8501,7 @@ var separatorStep = (state, number, indent) => {
 var underlineStep = (state, number, line, header) => {
   const width = [...line.trim()].length;
   const rule = [...line.trim()][0] ?? "";
-  const topics = state.topics + (rule === TOPIC_RULE2 ? 1 : 0);
+  const topics = state.topics + (rule === TOPIC_RULE ? 1 : 0);
   const named2 = rule === HEADER_RULE && topics > 0 ? LIST_NAME.exec(header)?.[1] : void 0;
   const want = headerWidth2(header);
   const checked2 = header !== "" && width !== want ? found(
@@ -8481,7 +8576,7 @@ var itemStep = (state, number, line, item) => {
   };
 };
 var textStep = (state, line) => {
-  const indent = indentOf(line);
+  const indent = indentOf2(line);
   const options = state.options !== void 0 && indent < state.options ? void 0 : state.options;
   const grew = grown(popped({ ...state, options }, (item) => indent <= item.indent));
   return { ...grew, fence: FENCE.exec(line)?.[1] ?? grew.fence };
@@ -8522,7 +8617,7 @@ var lineStep = (before, raw, at2) => {
   }
   const sep = SEP_LINE.exec(line);
   const first = state.items[state.stack[0] ?? -1];
-  const endsList = first !== void 0 && !ITEM2.test(line) && indentOf(line) < first.column;
+  const endsList = first !== void 0 && !ITEM2.test(line) && indentOf2(line) < first.column;
   const afterBlank = state.blankUnderSep !== void 0 && !(endsList && sep === null) ? found(state, state.blankUnderSep, "blank-beside-separator") : state;
   const cleared = { ...afterBlank, blankUnderSep: void 0 };
   const isRow = ROW.test(line);
@@ -8541,7 +8636,7 @@ var lineStep = (before, raw, at2) => {
   if (isUnderline(line)) {
     return underlineStep(texted, number, line, header);
   }
-  const option = OPTION.exec(line);
+  const option = OPTION2.exec(line);
   const optioned = option === null ? texted : optionStep(texted, number, option);
   const item = ITEM2.exec(line);
   return item === null ? textStep(optioned, line) : itemStep(optioned, number, line, item);
@@ -8585,9 +8680,10 @@ var replyLintText = (findings) => findings.length === 0 ? "" : [
 ].join("\n");
 var CLEAN_REPLY_TEXT = "The reply lint finds nothing in the last final response: it keeps every rule the lint checks.";
 var UNSHAPED_REPLY_TEXT = "The last final response holds no list's header, roll-up or count line, so the reply lint passes over it, as the turn's end does.";
-var isKanbanReply = (text) => text.split("\n").some(
-  (line) => HEADER.test(line) || PIN.test(line) || line.trimStart().startsWith(`${ROLL_UP4.glyph} ${ROLL_UP4["count-label"]}:`)
-);
+var isKanbanReply = (text) => {
+  const blocks = parseReply(text);
+  return blocks.some((block) => block.kind === "header" || block.kind === "roll-up") || proseLines(blocks).some(isCountLine);
+};
 
 // cli/neutral.ts
 var OWNERS = {

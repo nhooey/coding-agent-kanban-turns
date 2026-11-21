@@ -18,9 +18,9 @@ import { PLUGIN } from "../../../src/protocol/instructions.ts";
 import {
   SKILL_COMMANDS,
   isOwn,
-  sectionsOf,
   withoutDraftHeader,
 } from "../../../src/transcript/turns.ts";
+import { sectionsOf } from "../../fixtures/sections.ts";
 import {
   CASES_DIR,
   CASE_SCHEMA_FILE,
