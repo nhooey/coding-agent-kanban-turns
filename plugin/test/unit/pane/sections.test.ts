@@ -21,8 +21,9 @@ import {
   withKeys,
 } from "../../../src/pane/sections.ts";
 import type { DecideItem } from "../../../types/index.d.ts";
+import { SHIPPED_SETTINGS } from "../../fixtures/shipped-settings.ts";
 
-const item = (turn: string, number: number, summary: string): DecideItem => ({
+const item =(turn: string, number: number, summary: string): DecideItem => ({
   turn,
   list: "Decide",
   number,
@@ -111,8 +112,8 @@ describe("where /answers scrolls", () => {
 
 describe("the Done section and its lines", () => {
   test("the header is a toggle naming the count, its glyph saying whether it's open", () => {
-    expect(doneHeader(2, false)).toBe("▸ Done (2)");
-    expect(doneHeader(2, true)).toBe("▾ Done (2)");
+    expect(doneHeader(2, false, SHIPPED_SETTINGS.marks)).toBe("▸ Done (2)");
+    expect(doneHeader(2, true, SHIPPED_SETTINGS.marks)).toBe("▾ Done (2)");
   });
 
   test("a Done item's line is its label, then its summary and what made it Done", () => {

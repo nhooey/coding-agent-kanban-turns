@@ -31,7 +31,7 @@ The plugin reads the open items from the session's transcript itself, with no Py
 
 ## Settings
 
-Every setting, with its default and what it does, is in [`plugin/defaults/config.yaml`](plugin/defaults/config.yaml): how many turns the count line reads, how long `gh` may take to say which pull requests merged, the pane's keys, whether Submit closes the pane once nothing is left open, and the colours the items are drawn in. To change one, write only that key in your own file, `$XDG_CONFIG_HOME/coding-agent-kanban-turns/config.yaml` (`~/.config/coding-agent-kanban-turns/config.yaml` when `XDG_CONFIG_HOME` is unset):
+Every setting, with its default and what it does, is in [`plugin/defaults/config.yaml`](plugin/defaults/config.yaml): how many turns the count line reads, how long `gh` may take to say which pull requests merged, the pane's keys, whether Submit closes the pane once nothing is left open, the marks and button glyphs the pane draws, and the colours the items are drawn in. To change one, write only that key in your own file, `$XDG_CONFIG_HOME/coding-agent-kanban-turns/config.yaml` (`~/.config/coding-agent-kanban-turns/config.yaml` when `XDG_CONFIG_HOME` is unset):
 
 ```yaml
 keys:
@@ -202,7 +202,8 @@ The pane, the line above the prompt and the boxes under a reply share one style:
 - **Wrapping:** a line that wraps continues under its text, never under its lead, a glyph, a letter or a label.
 - **Labels:** a list's label is the skill's glyph and name, `🧠 Decide.1`, as the skill writes it.
 - **Colours:** every colour is a theme colour named by a setting under `colors`; no other colour is drawn.
-- **Spacing:** one blank row between turns, and none between a turn's items.
+- **Marks:** every mark and button glyph the pane draws, such as ✅, ☑️, ▸, ▌ or 📤, is a setting under `marks`; a list's glyph and an option kind's are the protocol's, from the spec.
+- **Spacing:** one blank row between turns, and none between a turn's items. The indents, gaps and the characters that part a line's pieces are fixed, in one table, `LAYOUT` in [`plugin/src/pane/layout.ts`](plugin/src/pane/layout.ts).
 
 ## Where the items come from
 

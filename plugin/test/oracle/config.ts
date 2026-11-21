@@ -1,7 +1,8 @@
 // The settings differential test's oracle: src/config/config.ts as it was
 // while it checked both files against a hand-written SETTINGS_SHAPE, copied
 // below this header from commit fc64639, unchanged but for SETTINGS_SHAPE,
-// which gains each section added since (roll-up, lint).
+// which gains each section added since (roll-up, lint) and each setting
+// added to one (marks' chosen to buttons).
 //
 // Temporary: the oracle and its test are deleted once the derived shape has
 // shipped in a release.
@@ -52,7 +53,23 @@ export const SETTINGS_SHAPE: Shape = {
   },
   pane: { "close-when-all-submitted": "boolean" },
   notes: { rows: "number" },
-  marks: { sent: "string" },
+  marks: {
+    sent: "string",
+    chosen: "string",
+    note: "string",
+    "settled-bar": "string",
+    collapsed: "string",
+    expanded: "string",
+    buttons: {
+      dismiss: "string",
+      next: "string",
+      previous: "string",
+      submit: "string",
+      reassess: "string",
+      help: "string",
+      kanban: "string",
+    },
+  },
   colors: {
     border: "string",
     "title-label": "string",

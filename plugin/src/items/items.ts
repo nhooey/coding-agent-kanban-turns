@@ -1,5 +1,5 @@
 // The Decide items themselves: the reference an answer names one by, the
-// glyph an option is drawn with, and the items read out of whatever input a
+// glyph or mark an option is drawn with, and the items read out of whatever input a
 // `kanban_options` call handed over.
 
 import { uniqueRefs } from "./frees.ts";
@@ -20,33 +20,33 @@ const kindGlyph = (kind: DecideKind, letter: string): string => {
   return Object.hasOwn(lettered, letter) ? (lettered[letter] ?? spec.glyph) : spec.glyph;
 };
 
-/** The mark a chosen option is drawn with, in place of its glyph. */
-export const CHOSEN_MARK = "✅";
-
 /** The glyph an option is drawn with: its own, else its item kind's. */
 export const glyphOf = (item: DecideItem, letter: string): string =>
   item.options.find((o) => o.letter === letter)?.glyph ||
   kindGlyph(item.kind, letter);
 
-/** What an option is drawn with: ✅ while the draft chooses it, else its glyph. */
+/** What an option is drawn with: `chosenMark`, the `marks.chosen` setting, while the draft chooses it, else its glyph. */
 export const markOf = (
   item: DecideItem,
   letter: string,
   isChosen: boolean,
-): string => (isChosen ? CHOSEN_MARK : glyphOf(item, letter));
+  chosenMark: string,
+): string => (isChosen ? chosenMark : glyphOf(item, letter));
 
 /**
- * What an option is drawn with in its item, open or Done: ✅ while the draft
- * chooses it, else `sentMark` where the answer that made the item Done
- * picked it, else its glyph.
+ * What an option is drawn with in its item, open or Done, by the `marks`
+ * settings: `chosen` while the draft chooses it, else `sent` where the
+ * answer that made the item Done picked it, else its glyph.
  */
 export const optionMark = (
   item: DecideItem,
   letter: string,
   is: Readonly<{ chosen: boolean; sent: boolean }>,
-  sentMark: string,
+  marks: Readonly<{ chosen: string; sent: string }>,
 ): string =>
-  is.sent && !is.chosen ? sentMark : markOf(item, letter, is.chosen);
+  is.sent && !is.chosen
+    ? marks.sent
+    : markOf(item, letter, is.chosen, marks.chosen);
 
 const isOption = (value: unknown): boolean =>
   isObject(value) &&

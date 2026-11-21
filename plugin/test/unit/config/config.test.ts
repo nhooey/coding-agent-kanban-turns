@@ -425,7 +425,7 @@ describe("a config.yaml written as JSON", () => {
 
   test("reads minified onto one line past YAML's 1024 characters for an implicit key", () => {
     const everything = loaded(defaults, undefined).settings;
-    const long = { ...everything, marks: { sent: "☑".repeat(2000) } };
+    const long = { ...everything, marks: { ...everything?.marks, sent: "☑".repeat(2000) } };
     const minified = JSON.stringify(long);
     expect(minified.length).toBeGreaterThan(2000);
     expect(minified).not.toContain("\n");

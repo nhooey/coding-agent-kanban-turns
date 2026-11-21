@@ -124,7 +124,23 @@ const DEFAULTS = JSON.stringify({
   keys: { dismiss: "q", next: "j", previous: "k", submit: "s", reassess: "r", help: "h" },
   pane: { "close-when-all-submitted": true },
   notes: { rows: 3 },
-  marks: { sent: "☑️" },
+  marks: {
+    sent: "☑️",
+    chosen: "✅",
+    note: "✏️",
+    "settled-bar": "▌",
+    collapsed: "▸",
+    expanded: "▾",
+    buttons: {
+      dismiss: "✖",
+      next: "↓",
+      previous: "↑",
+      submit: "📤",
+      reassess: "🔄",
+      help: "?",
+      kanban: "🖥️",
+    },
+  },
   colors: {
     border: "promptBorder",
     "title-label": "inverseText",
@@ -2194,6 +2210,21 @@ test("with pane.close-when-all-submitted off, a Submit answering every open item
 
   expect(state.sent).toHaveLength(1);
   expect(state.isPaneOpen).toBe(true);
+  await ui.unmount();
+});
+
+test("a user's marks draw the chosen option and a button in their own glyphs", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  state.userFiles = { "config.yaml": 'marks:\n  chosen: "✔"\n  buttons:\n    submit: ">"\n' };
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  await ui.press({ key: "9efb08a1.Decide.1.B" });
+
+  expect(await leadOf(ui, "9efb08a1.Decide.1.B")).toBe("✔ B. ");
+  expect(await leadOf(ui, "9efb08a1.Decide.1.A")).toBe("🔘 A. ");
+  expect((await ui.find({ type: "Button", key: "submit" }))?.text).toBe("> Submit");
+  // The other buttons keep the shipped glyphs.
+  expect((await ui.find({ type: "Button", key: "dismiss" }))?.text).toBe("✖ Close");
   await ui.unmount();
 });
 

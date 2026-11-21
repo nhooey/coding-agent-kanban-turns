@@ -12,6 +12,7 @@ import { DECIDE, DONE, REASSESS, itemLabel } from "../protocol/rules.ts";
 import { problemsOf, stillOpen } from "../items/raised.ts";
 import { capitalized } from "../text/words.ts";
 import { isReassessLine, withoutDraftHeader } from "../transcript/turns.ts";
+import { LAYOUT } from "./layout.ts";
 
 /** What the pane and /answers say when there are no open items, with why when it's known. */
 export const noItemsText = (problem: string): string =>
@@ -144,9 +145,11 @@ export const notesMode = (
         ? "focused"
         : "field";
 
-/** How many lines tall the notes field is drawn: the setting, a whole number of at least 1. */
+/** How many lines tall the notes field is drawn: the setting, a whole number of at least `LAYOUT.fewestNoteRows`. */
 export const noteRows = (rows: number): number =>
-  Number.isFinite(rows) ? Math.max(1, Math.floor(rows)) : 1;
+  Number.isFinite(rows)
+    ? Math.max(LAYOUT.fewestNoteRows, Math.floor(rows))
+    : LAYOUT.fewestNoteRows;
 
 /**
  * The style of the column left of an option's lines: a settled item's
@@ -179,7 +182,9 @@ export const itemTitle = (
 
 /** An answer's letters, then its note after ` · ` or in their place. */
 const lettersAndNote = (letters: readonly string[], note: string): string =>
-  [letters.join(","), note].filter((part) => part !== "").join(" · ");
+  [letters.join(","), note]
+    .filter((part) => part !== "")
+    .join(LAYOUT.divider);
 
 /**
  * The line under a Done item's title saying what made it Done: the answer,
@@ -238,16 +243,16 @@ export const draftSummary = (draft: string): string => {
     ...(ownLines(body).length > 0 ? ["your words"] : []),
   ];
 
-  return `Draft: ${parts.length > 0 ? parts.join(" · ") : "empty"}`;
+  return `Draft: ${parts.length > 0 ? parts.join(LAYOUT.divider) : "empty"}`;
 };
 
 /** The pane header's count: the open items the draft answers, out of every open item. */
 export const answeredText = (answered: number, open: number): string =>
   `${answered} of ${open} answered`;
 
-/** What the line above the prompt adds while the draft answers open items: `✏️ 2 picked`; empty while it answers none. */
-export const pickedText = (picked: number): string =>
-  picked > 0 ? `✏️ ${picked} picked` : "";
+/** What the line above the prompt adds while the draft answers open items: `✏️ 2 picked`, opened by `noteMark`, the `marks.note` setting; empty while it answers none. */
+export const pickedText = (picked: number, noteMark: string): string =>
+  picked > 0 ? `${noteMark} ${picked} picked` : "";
 
 /** One row of the pane's keys panel: a key, and what it does. */
 export type KeyRow = Readonly<{ key: string; does: string }>;
@@ -255,19 +260,26 @@ export type KeyRow = Readonly<{ key: string; does: string }>;
 /**
  * The pane's keys panel, opened by `? Keys`: each key the pane takes while
  * it holds the keyboard and what it does, the pane's own read from the
- * `keys` settings, so a rebound key shows as rebound, then the keys
- * Claude Code moves the focus ring and the keyboard with.
+ * `keys` settings, so a rebound key shows as rebound, each beside its
+ * button's glyph from the `marks.buttons` settings, then the keys Claude
+ * Code moves the focus ring and the keyboard with.
  */
-export const keyRows = (keys: Settings["keys"]): readonly KeyRow[] => [
-  { key: keys.next, does: `↓ Next: the next item, or ${DONE.header} header` },
-  { key: keys.previous, does: "↑ Previous: the item before" },
-  { key: keys.submit, does: "📤 Submit: send the draft" },
+export const keyRows = (
+  keys: Settings["keys"],
+  glyphs: Settings["marks"]["buttons"],
+): readonly KeyRow[] => [
+  {
+    key: keys.next,
+    does: `${glyphs.next} Next: the next item, or ${DONE.header} header`,
+  },
+  { key: keys.previous, does: `${glyphs.previous} Previous: the item before` },
+  { key: keys.submit, does: `${glyphs.submit} Submit: send the draft` },
   {
     key: keys.reassess,
-    does: `🔄 ${capitalized(REASSESS)}: add or take out the ${REASSESS} line`,
+    does: `${glyphs.reassess} ${capitalized(REASSESS)}: add or take out the ${REASSESS} line`,
   },
-  { key: keys.help, does: "? Keys: open or close this panel" },
-  { key: keys.dismiss, does: "✖ Close: close the pane" },
+  { key: keys.help, does: `${glyphs.help} Keys: open or close this panel` },
+  { key: keys.dismiss, does: `${glyphs.dismiss} Close: close the pane` },
   { key: "↑ ↓ tab", does: "move between options and fields" },
   { key: "enter", does: "pick the option the ring is on" },
   { key: "esc", does: "give the keyboard back to the prompt" },

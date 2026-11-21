@@ -71,12 +71,48 @@ notes:
   # drawn as 1.
   rows: 3
 
-# The marks an option is drawn with, beside its letter.
+# The marks the pane draws, each a short string, such as an emoji or one
+# character, drawn as it is; a line's text wraps under its start, however
+# many cells its mark takes.
 marks:
   # A Done item's options that the answer which made it Done picked,
-  # drawn at full strength in the dimmed item, with no underline: the
-  # draft's own picks keep ✅ underlined.
+  # drawn at full strength in the dimmed item, with no underline, beside
+  # its letter: the draft's own picks keep `chosen` underlined.
   sent: ☑️
+  # An option the draft picks, in place of its glyph beside its letter,
+  # the option's line underlined; also the glyph of 🔄 Reassess while the
+  # draft ends on the `reassess` line.
+  chosen: ✅
+  # The label of the notes field under each open item in the pane, the
+  # glyph of the ✏️ Add a note button under a reply, and what opens the
+  # count of picks above the prompt, `✏️ 2 picked`.
+  note: ✏️
+  # The bar that opens a Done item's line in its turn's Done section,
+  # drawn in colors.settled.
+  settled-bar: ▌
+  # What opens a turn's Done header while its section is closed, such as
+  # `▸ Done (2)`.
+  collapsed: ▸
+  # What opens it while the section is open, such as `▾ Done (2)`.
+  expanded: ▾
+  # The glyph each of the pane's buttons is drawn with, before its label,
+  # and beside its key in the panel ? Keys opens; a keyed button's by the
+  # name of its key in `keys`.
+  buttons:
+    # ✖ Close.
+    dismiss: ✖
+    # ↓ Next.
+    next: ↓
+    # ↑ Previous.
+    previous: ↑
+    # 📤 Submit.
+    submit: 📤
+    # 🔄 Reassess, while the draft doesn't end on the `reassess` line.
+    reassess: 🔄
+    # ? Keys. Quoted, since YAML reads a bare `?` as the start of a key.
+    help: "?"
+    # 🖥️ Kanban, above the prompt and atop the pane, which opens the pane.
+    kanban: 🖥️
 
 # The colours each part is drawn in, by the name of a colour in Claude
 # Code's theme, so each keeps its contrast in light and dark themes.
@@ -95,8 +131,9 @@ colors:
   # full height while the pointer is over any of its lines.
   hover: suggestion
   # The bar in the same column beside each of a Done item's option, ➕
-  # and ➖ lines, which stays lit, and the ▌ that opens a Done item's
-  # line in its turn's Done section; a Done item lights no hover bar.
+  # and ➖ lines, which stays lit, and marks.settled-bar, which opens a
+  # Done item's line in its turn's Done section; a Done item lights no
+  # hover bar.
   settled: ide
   # The ✖ of the button that closes the pane.
   close: error

@@ -7,6 +7,9 @@ import { expect } from "expect";
 import { answersIn, answerTo, lettersAfter } from "../../../src/items/answers.ts";
 import { glyphOf, markOf, optionMark, refOf } from "../../../src/items/items.ts";
 import type { DecideItem } from "../../../types/index.d.ts";
+import { SHIPPED_SETTINGS } from "../../fixtures/shipped-settings.ts";
+
+const MARKS = SHIPPED_SETTINGS.marks;
 
 const radio: DecideItem = {
   turn: "9efb08a1",
@@ -96,16 +99,16 @@ describe("the items themselves", () => {
   });
 
   test("a chosen option is marked ✅, the others keep their glyph", () => {
-    expect(markOf(radio, "A", true)).toBe("✅");
-    expect(markOf(checkbox, "A", true)).toBe("✅");
-    expect(markOf(radio, "A", false)).toBe("🔘");
-    expect(markOf(binary, "N", false)).toBe("👎");
+    expect(markOf(radio, "A", true, MARKS.chosen)).toBe("✅");
+    expect(markOf(checkbox, "A", true, MARKS.chosen)).toBe("✅");
+    expect(markOf(radio, "A", false, MARKS.chosen)).toBe("🔘");
+    expect(markOf(binary, "N", false, MARKS.chosen)).toBe("👎");
   });
 
   test("an option is ✅ while chosen, else the sent mark where a Done item's answer picked it, else its glyph", () => {
-    expect(optionMark(radio, "A", { chosen: true, sent: true }, "☑️")).toBe("✅");
-    expect(optionMark(radio, "A", { chosen: false, sent: true }, "☑️")).toBe("☑️");
-    expect(optionMark(radio, "A", { chosen: false, sent: false }, "☑️")).toBe("🔘");
+    expect(optionMark(radio, "A", { chosen: true, sent: true }, MARKS)).toBe("✅");
+    expect(optionMark(radio, "A", { chosen: false, sent: true }, MARKS)).toBe("☑️");
+    expect(optionMark(radio, "A", { chosen: false, sent: false }, MARKS)).toBe("🔘");
   });
 });
 

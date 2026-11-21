@@ -32,6 +32,7 @@ import {
   submitStep,
 } from "../../../src/pane/view.ts";
 import type { DecideItem, Raised } from "../../../types/index.d.ts";
+import { SHIPPED_SETTINGS } from "../../fixtures/shipped-settings.ts";
 
 const radio: DecideItem = {
   turn: "9efb08a1",
@@ -341,8 +342,8 @@ describe("how much of what's open the draft answers", () => {
   });
 
   test("above the prompt: how many it picks, none while it picks nothing", () => {
-    expect(pickedText(2)).toBe("✏️ 2 picked");
-    expect(pickedText(0)).toBe("");
+    expect(pickedText(2, SHIPPED_SETTINGS.marks.note)).toBe("✏️ 2 picked");
+    expect(pickedText(0, SHIPPED_SETTINGS.marks.note)).toBe("");
   });
 });
 
@@ -350,7 +351,7 @@ describe("the keys panel", () => {
   const keys = { dismiss: "q", next: "j", previous: "k", submit: "s", reassess: "r", help: "?" };
 
   test("lists each key the pane takes and what it does, then the engine's", () => {
-    expect(keyRows(keys)).toEqual([
+    expect(keyRows(keys, SHIPPED_SETTINGS.marks.buttons)).toEqual([
       { key: "j", does: "↓ Next: the next item, or Done header" },
       { key: "k", does: "↑ Previous: the item before" },
       { key: "s", does: "📤 Submit: send the draft" },
@@ -364,6 +365,6 @@ describe("the keys panel", () => {
   });
 
   test("shows a rebound key as rebound", () => {
-    expect(keyRows({ ...keys, submit: "x" })[2]).toEqual({ key: "x", does: "📤 Submit: send the draft" });
+    expect(keyRows({ ...keys, submit: "x" }, SHIPPED_SETTINGS.marks.buttons)[2]).toEqual({ key: "x", does: "📤 Submit: send the draft" });
   });
 });
