@@ -6,10 +6,9 @@
 
 - [The pane's state is one value that a pure step function moves, and the hooks only dispatch events and run the effects it returns](pane-every-list/open/pane-state-reducer.md) `pane-state-reducer`, part of [The pane and the boxes under replies hold every list's items, grouped by turn, list and state, filtered, and answered in grouped references](pane-every-list/open/pane-every-list.md), pane-state-reducer
 
-## Ready (5)
+## Ready (4)
 
 - [The pane's header row and footer stay in sight while its items scroll](open/pane-controls-stay-visible.md) `pane-controls-stay-visible`
-- [A reply's Decide items are answered by buttons drawn in its Decide list's place and in the pane, and by reference through the skill inside the plugin where the hooks don't load](kanban-answers-in-transcript/open/kanban-answers-in-transcript.md) `kanban-answers-in-transcript`, part of [The plugin is the only source of the kanban turn-response protocol, and carries a skill derived from it, built deterministically](plugin-sole-source/open/plugin-sole-source.md)
 - [The pane and the boxes under replies hold every list's items, grouped by turn, list and state, filtered, and answered in grouped references](pane-every-list/open/pane-every-list.md) `pane-every-list`
 - [With the plugin's hooks and its skill both loaded, the agent gets the protocol's instructions once](plugin-sole-source/open/instructions-once-with-skill.md) `instructions-once-with-skill`, part of [The plugin is the only source of the kanban turn-response protocol, and carries a skill derived from it, built deterministically](plugin-sole-source/open/plugin-sole-source.md)
 - [The plugin is the only source of the kanban turn-response protocol, and carries a skill derived from it, built deterministically](plugin-sole-source/open/plugin-sole-source.md) `plugin-sole-source`
@@ -38,4 +37,4 @@
 
 ## Closed
 
-34 in [closed/](closed/): 22 implemented, 1 rejected, 1 abandoned, 10 superseded.
+35 in [closed/](closed/): 23 implemented, 1 rejected, 1 abandoned, 10 superseded.

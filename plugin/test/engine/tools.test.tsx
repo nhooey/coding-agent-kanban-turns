@@ -134,6 +134,7 @@ const engine = (on: On, options: Options = {}) => {
     runs: [] as (readonly string[])[],
     submitAnswer: undefined as { drop: string } | undefined,
     sessions: ["session-1"],
+    answers: [] as string[],
   };
   const transcript = () =>
     new TextEncoder().encode(
@@ -208,7 +209,11 @@ const engine = (on: On, options: Options = {}) => {
     return answer ?? { text: e.text };
   });
   on("turn.start", (_, e) => ({ turnId: e.turnId }));
-  on("turn.complete", (_, e) => ({ text: e.answer }));
+  on("turn.complete", (_, e) => {
+    state.answers.push(e.answer);
+
+    return { text: e.answer };
+  });
 
   return state;
 };
@@ -334,6 +339,19 @@ test("the turn's end lints its answer, shows the findings beneath it and hands t
   expect(state.contexts).toHaveLength(2);
   expect(state.contexts[0]).toEqual([done.text]);
   expect(state.contexts[1]).toEqual([]);
+});
+
+test("the turn's end passes the answer down as written, its lists and Decide items whole, so the stored reply keeps them", async ($, on) => {
+  const state = engine(on);
+  on("prompt.context", (_, e) => ({ blocks: e.blocks }));
+  await $.prompt.context({ blocks: [] });
+
+  // A clean answer and one the lint finds something in: neither is rewritten,
+  // the findings going beneath the answer, never into it.
+  await $.turn.complete(answered("t1", REPLY));
+  const found = await $.turn.complete(answered("t2", SHORT_UNDERLINE));
+  expect(state.answers).toEqual([REPLY, SHORT_UNDERLINE]);
+  expect(found.text).not.toContain("🧠 **Decide:**");
 });
 
 test("a clean answer, or one in no list's shape, shows nothing beneath it and clears what waits", async ($, on) => {

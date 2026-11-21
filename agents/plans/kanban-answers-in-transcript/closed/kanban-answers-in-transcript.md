@@ -1,9 +1,10 @@
 ---
 title: A reply's Decide items are answered by buttons drawn in its Decide list's place and in the pane, and by reference through the skill inside the plugin where the hooks don't load
-state: approved
+state: implemented
 kind: end-state
 part-of: plugin-sole-source
 needs: [derived-skill-package]
+implemented-by: kanban-answers-in-transcript
 ---
 
 # A reply's Decide items are answered by buttons drawn in its Decide list's place and in the pane, and by reference through the skill inside the plugin where the hooks don't load
@@ -17,6 +18,11 @@ With the coding-agent-kanban-turns plugin loaded:
 - **Done items stay answerable.** Once the plugin finds a Decide item answered, its box is dimmed, says what made it Done and keeps the sent options' `☑️`, and its options still pick, writing a fresh reference into the draft.
 - **The skill inside the plugin is the fallback** ([derived-skill-package](../../plugin-sole-source/closed/derived-skill-package.md)). The plugin ships the derived skill, which teaches the format and reads typed answers when the plugin's hooks fail to load, and the same skill is `packages.skill-standalone` for a harness with no plugins. In either, every answer can still be typed by reference.
 
-All but the last bullet are true on master (#36, #40). The last waits on [derived-skill-package](../../plugin-sole-source/closed/derived-skill-package.md), so the node stays open until that lands.
+Checks: the plugin's repository's checks pass with a test for each bullet above:
 
-Checks: the plugin's repository's checks pass with a test for each bullet above.
+- **The stored reply:** `test/engine/tools.test.tsx`'s turn's end passes the answer down as written, its lint findings beneath it; `test/engine/pane.test.tsx`'s context teaches every list's header; `test/unit/protocol/instructions.test.ts:103` finds every fragment in the instructions, among them the one saying `reassess` restates every open item.
+- **The buttons:** `test/engine/pane.test.tsx` cuts an intact Decide list out for its boxes, draws a list it can't find under the reply's text, and shows a pick in a reply's box in the pane's and the other way round, both following the person's own edits of the prompt box; `test/unit/protocol/instructions.test.ts` says when to call `kanban_options`.
+- **The bar:** `test/engine/pane.test.tsx` lights an option's gutter beside each of its lines, its name, ➕ and ➖ lines, under the pointer, and gives a Done item's lines the settled bar alone.
+- **A click:** `test/engine/pane.test.tsx` builds the draft from the options and the notes field, and sends nothing.
+- **Done items:** `test/engine/pane.test.tsx` says what made an item Done, keeps its `☑️` and its options at full strength, and lets a Done item's options in a reply still pick.
+- **The fallback:** `checks.plugin` finds the skill in `packages.plugin`, the same as `packages.skill-standalone`, and `checks.skill` holds `plugin/skills/` to the build; `test/unit/protocol/skill.test.ts` finds every fragment, the answers by reference among them, in SKILL.md; `test/unit/cli/golden-cases.test.ts` runs every golden case through the CLI with no `kanban_options` call, as a turn where only the skill loads has none, and gets what it expects.
