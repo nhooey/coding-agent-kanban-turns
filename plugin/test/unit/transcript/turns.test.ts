@@ -12,10 +12,8 @@ import {
   isOwn,
   isReassessLine,
   isReassessTurn,
-  isTopicRule,
   reassessStart,
   reassessStarts,
-  sectionsOf,
   textOfChunks,
   wholeEnd,
   withoutDraftHeader,
@@ -23,6 +21,7 @@ import {
 import { PLUGIN } from "../../../src/protocol/instructions.ts";
 import { SPEC } from "../../../src/protocol/spec.ts";
 import type { Owner } from "../../../types/index.d.ts";
+import { sectionsOf } from "../../fixtures/sections.ts";
 import { turnOf } from "../../fixtures/turns.ts";
 
 /** The user's turns, one a prompt, each its place as its id. */
@@ -165,12 +164,6 @@ describe("sectionsOf", () => {
       "Review",
       "Authorizations",
     ]);
-  });
-
-  test("a topic rule is a line of ═ alone", () => {
-    expect(isTopicRule("  ═══  ")).toBe(true);
-    expect(isTopicRule("══ x")).toBe(false);
-    expect(isTopicRule("   ")).toBe(false);
   });
 });
 
@@ -345,5 +338,22 @@ describe("a command on the last line", () => {
     expect(isReassessLine("RECHECK.")).toBe(true);
     expect(isReassessLine("res")).toBe(false);
     expect(isReassessLine("")).toBe(false);
+  });
+});
+
+describe("sectionsOf, as parseReply reads a reply", () => {
+  test("the 📌 roll-up's header closes the section above it", () => {
+    const text = "🧠 **Decide:**  \n1. **Which cache**\n\n📌 **Outstanding from previous turns:**  \n━━━━━\n🧠 **Decide:**  \n- **Old** 🔖 b2c3d4e5₋₁";
+
+    expect(sectionsOf(text)).toEqual([
+      { name: "Decide", text: "🧠 **Decide:**  \n1. **Which cache**" },
+      { name: "Decide", text: "🧠 **Decide:**  \n- **Old** 🔖 b2c3d4e5₋₁" },
+    ]);
+  });
+
+  test("a header or a topic rule inside a code block is code", () => {
+    const text = "👉 **Todo:**  \n1. **Run it**\n   ```\n🧠 **Decide:**\n═══\n   ```\n2. **Then this**";
+
+    expect(sectionsOf(text)).toEqual([{ name: "Todo", text }]);
   });
 });

@@ -3,8 +3,10 @@ import { expect } from "expect";
 
 import {
   DECIDE,
+  DECISIONS,
   DEFAULT_KIND,
   DONE,
+  SECTION_NAMES,
   LETTER,
   REASSESS,
   SUBJECT_WORD,
@@ -101,6 +103,14 @@ describe("SUBJECT_WORD", () => {
 describe("namesOf", () => {
   test("gives a list's header, then its aliases", () => {
     expect(namesOf(SPEC.lists.decide)).toEqual(["Decide", "Decisions", "Blocked"]);
+  });
+});
+
+describe("SECTION_NAMES and DECISIONS", () => {
+  test("give every list's names, and the Decide list's", () => {
+    expect(SECTION_NAMES).toContain("To review");
+    expect(SECTION_NAMES).toContain("Decide");
+    expect(DECISIONS).toEqual(["Decide", "Decisions", "Blocked"]);
   });
 });
 

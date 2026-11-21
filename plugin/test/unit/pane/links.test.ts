@@ -4,7 +4,11 @@
 import { describe, test } from "node:test";
 import { expect } from "expect";
 
-import { decideListCut } from "../../../src/pane/links.ts";
+import {
+  QUESTION_LINK,
+  decideListCut,
+  linkedQuestions,
+} from "../../../src/pane/links.ts";
 import type { DecideItem } from "../../../types/index.d.ts";
 
 const item = (number: number, summary: string): DecideItem => ({
@@ -128,5 +132,56 @@ describe("a reply's Decide list cut out", () => {
   test("ends the list at prose straight after it, with no blank line between", () => {
     const text = [...DECIDE, "Back to the loader."].join("\n");
     expect(decideListCut(text, [cache, ship])?.after).toBe("Back to the loader.");
+  });
+});
+
+describe("a reply's Decide list cut out, as parseReply reads the reply", () => {
+  test("cuts an item's code block whole, a blank line inside it", () => {
+    const decide = [...DECIDE, "   ```text", "   one", "", "   two", "   ```"];
+    expect(decideListCut(reply(decide), [cache, ship])?.after).toBe("📌 Outstanding: 🚧 1 · 🧠 2");
+  });
+
+  test("reads an item 1 or 2 spaces in, or numbered `1)`, as one of the list's items", () => {
+    const decide = DECIDE.map((line) =>
+      line.startsWith("2. ") ? `  2) ${line.slice(3)}` : line,
+    );
+    expect(decideListCut(reply(decide), [cache, ship])?.after).toBe("📌 Outstanding: 🚧 1 · 🧠 2");
+  });
+
+  test("takes an older roll-up header bare for no roll-up: a Decide list after it is a second list", () => {
+    const text = [...DECIDE, "", "Still open from earlier", "🧠 **Decide:**", "- **Which cache to keep** 🔖 b2c3d4e5₋₁"].join("\n");
+    expect(decideListCut(text, [cache, ship])).toBeUndefined();
+  });
+
+  test("ends the list at a fence at the line's start, its code after the cut", () => {
+    const text = [...DECIDE, "```", "a column-0 block", "```"].join("\n");
+    expect(decideListCut(text, [cache, ship])?.after).toBe("```\na column-0 block\n```");
+  });
+
+  test("keeps a fence as indented as an item's text, and the code under it, in the list", () => {
+    const text = [...DECIDE, "   ```", "code", "```", "After."].join("\n");
+    expect(decideListCut(text, [cache, ship])?.after).toBe("After.");
+  });
+
+  test("reads an option only with its glyph, as a Decide item's is read", () => {
+    const glyphless = DECIDE.map((line) => line.replace(/[🔘🔲👍👎] /u, ""));
+    expect(decideListCut(reply(glyphless), [cache, ship])).toBeUndefined();
+  });
+
+  test("links a summary line whose bold summary ends at the line's end, not one holding two bold spans", () => {
+    const two = { ...cache, summary: "a** and **b" };
+    expect(linkedQuestions("1. **a** and **b**", [two]).hrefs).toEqual([]);
+    expect(linkedQuestions(`1. **${cache.summary}**  \r`, [cache]).text).toBe(
+      `1. **[${cache.summary}](${QUESTION_LINK}${cache.ref})**  \r`,
+    );
+  });
+
+  test("cuts a CRLF reply's list as its LF form's", () => {
+    expect(decideListCut(reply(DECIDE).replaceAll("\n", "\r\n"), [cache, ship])).toBeDefined();
+  });
+
+  test("finds no Decide list inside a code block", () => {
+    const text = ["```", ...DECIDE, "```"].join("\n");
+    expect(decideListCut(text, [cache, ship])).toBeUndefined();
   });
 });

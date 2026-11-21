@@ -1,7 +1,7 @@
-// What the core reads from a turn's texts: the sections of a reply, the
-// command a prompt runs and where the latest `reassess` starts, the kanban
-// skill's `reply_turns.py` in TypeScript; and the text of a file read in
-// ranges. No `$`, no I/O, and no harness's records: an adapter, such as
+// What the core reads from a turn's texts: the command a prompt runs and
+// where the latest `reassess` starts, the kanban skill's `reply_turns.py`
+// in TypeScript; and the text of a file read in ranges. A reply's sections
+// are reply.ts's. No `$`, no I/O, and no harness's records: an adapter, such as
 // claude-code.ts, builds the neutral turns read here.
 //
 // The user's own text is a prompt they typed, or one this plugin submitted
@@ -11,13 +11,7 @@
 // the user's own, and answer nothing.
 
 import { PLUGIN } from "../protocol/instructions.ts";
-import {
-  DECIDE,
-  REASSESS,
-  classOf,
-  isLineOf,
-  namesOf,
-} from "../protocol/rules.ts";
+import { REASSESS, classOf } from "../protocol/rules.ts";
 import { SPEC } from "../protocol/spec.ts";
 import { escaped } from "../text/patterns.ts";
 import type { Owner, Turn } from "../../types/index.d.ts";
@@ -25,25 +19,6 @@ import type { Owner, Turn } from "../../types/index.d.ts";
 /** Whether text its owner wrote is the user's own: the user's, or this plugin's sent for them. */
 export const isOwn = (owner: Owner): boolean =>
   owner === "user" || owner === "this-plugin";
-
-/** One section of a reply: its list's name as the header writes it, and its text, the header first. */
-export type Section = Readonly<{ name: string; text: string }>;
-
-/** Each list header followed by its aliases, the names older replies in a transcript still carry. */
-export const SECTION_NAMES: readonly string[] =
-  Object.values(SPEC.lists).flatMap(namesOf);
-
-/** The Decide list's names, the first its own. */
-export const DECISIONS: readonly string[] = namesOf(DECIDE);
-
-/** A list's header line: any glyph, then its name in bold with a colon. */
-export const HEADER = new RegExp(
-  String.raw`^\s*\S+\s+\*\*(${SECTION_NAMES.map(escaped).join("|")}):\*\*`,
-);
-// The lines older replies opened their roll-up with, which end a section.
-const STOPS: readonly string[] = SPEC["roll-up"].aliases;
-// One per column under a topic header, in a reply grouped by topic.
-const TOPIC_RULE = SPEC.characters["topic-underline"];
 
 // The line a draft the plugin's clicks started opens with: the plugin's
 // name, its marketplace after `@` where the engine gave one, and a colon,
@@ -131,58 +106,6 @@ export const decodedText = (decoding: Decoding): string =>
 /** The text of a file read in ranges, each as base64, in order. */
 export const textOfChunks = (chunks: readonly string[]): string =>
   decodedText(chunks.reduce(withRange, NOT_DECODED));
-
-/** A topic header's underline: a line of `═` alone. */
-export const isTopicRule = (line: string): boolean =>
-  isLineOf(TOPIC_RULE, line);
-
-type Fold = Readonly<{
-  open: string | undefined;
-  done: readonly Readonly<{ name: string; lines: readonly string[] }>[];
-}>;
-
-const fold = (
-  { open, done }: Fold,
-  [line, following]: readonly [string, string],
-): Fold => {
-  const header = HEADER.exec(line)?.[1];
-
-  return header !== undefined
-    ? { open: header, done: [...done, { name: header, lines: [line] }] }
-    : STOPS.some((stop) => line.startsWith(stop)) ||
-        isTopicRule(line) ||
-        isTopicRule(following)
-      ? { open: undefined, done }
-      : open !== undefined
-        ? {
-            open,
-            done: done.map((section, n) =>
-              n === done.length - 1
-                ? { ...section, lines: [...section.lines, line] }
-                : section,
-            ),
-          }
-        : { open, done };
-};
-
-/**
- * Each section of one reply text, in order, trailing blank lines trimmed. A
- * section ends at the next header, at a line opening `Still open from
- * earlier`, or at a topic header, the line above a line of `═`.
- */
-export const sectionsOf = (text: string): readonly Section[] => {
-  const lines = text.split("\n");
-  const pairs = lines.map(
-    (line, n) => [line, lines[n + 1] ?? ""] as const,
-  );
-
-  return pairs
-    .reduce(fold, { open: undefined, done: [] } as Fold)
-    .done.map(({ name, lines: own }) => ({
-      name,
-      text: own.join("\n").trimEnd(),
-    }));
-};
 
 /** Each command by its names, the primary one first. */
 export const COMMANDS: Readonly<Record<string, readonly string[]>> =
