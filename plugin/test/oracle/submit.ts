@@ -5,6 +5,11 @@
 // record, and holds each prompt call until the test answers it, so the
 // handlers interleave between their awaits as they do in the engine.
 //
+// The fake also keeps the refresh's atoms, `raised`, `refreshes`, `merged`
+// and `counts`, and holds each transcript read and `gh` call the same way,
+// for the refresh's oracle in ./refresh.ts, which shares `sent` with
+// Submit. Submit's handlers read `raised` from its atom, as they did.
+//
 // Temporary: the oracle and its test are deleted once the last of the
 // pane's areas has moved into src/pane/pane-state.ts.
 
@@ -16,7 +21,8 @@ import {
   putBackText,
   submitStep,
 } from "../../src/pane/view.ts";
-import type { Raised, Settlement } from "../../types/index.d.ts";
+import type { Raised, Settings, Settlement, Turn } from "../../types/index.d.ts";
+import { COUNTS } from "../fixtures/refresh.ts";
 import type { Reply } from "../fixtures/submit.ts";
 
 /** A prompt call the plugin made, as the engine sees it. */
@@ -33,21 +39,43 @@ type Atoms = {
   submitProblem: string;
   sent: readonly Settlement[];
   draft: string;
+  raised: Raised;
+  refreshes: number;
+  merged: readonly string[];
+  counts: string;
 };
 
-/** The fake engine: the atoms, the prompt calls waiting for an answer, what was submitted and how often the pane closed. */
+/** What a read of the transcript answers: the session's turns, or why they couldn't be read, which the read throws. */
+export type TranscriptReply = Readonly<{ turns: readonly Turn[] } | { problem: string }>;
+
+/** The settings as the refresh reads them: the count line's, or none while the defaults file can't be used; and what was wrong with the files. */
+export type OldLoaded = Readonly<{
+  counts: Settings["counts"] | null;
+  problems: readonly string[];
+}>;
+
+/**
+ * The fake engine: the atoms, the settings, the prompt calls, transcript
+ * reads and `gh` calls waiting for an answer, what was submitted, and how
+ * often the pane closed and opened by itself.
+ */
 export type OldEngine = {
   atoms: Atoms;
-  readonly raised: Raised;
   readonly isClosedWhenAllSubmitted: boolean;
+  /** The settings files as they stand: a test may change them between refreshes. */
+  loaded: OldLoaded;
   pending: { call: Call; answer: (a: Reply) => void }[];
+  reads: { answer: (r: TranscriptReply) => void }[];
+  asks: { refs: readonly string[]; answer: (found: readonly string[]) => void }[];
   submitted: string[];
   closes: number;
+  opens: number;
 };
 
 export const oldEngine = (
   raised: Raised,
   isClosedWhenAllSubmitted: boolean,
+  loaded: OldLoaded = { counts: COUNTS, problems: [] },
 ): OldEngine => ({
   atoms: {
     submits: 0,
@@ -56,18 +84,27 @@ export const oldEngine = (
     submitProblem: "",
     sent: [],
     draft: "",
+    raised,
+    refreshes: 0,
+    merged: [],
+    counts: "",
   },
-  raised,
   isClosedWhenAllSubmitted,
+  loaded,
   pending: [],
+  reads: [],
+  asks: [],
   submitted: [],
   closes: 0,
+  opens: 0,
 });
 
-const read = async <K extends keyof Atoms>($: OldEngine, key: K): Promise<Atoms[K]> =>
-  $.atoms[key];
+export const read = async <K extends keyof Atoms>(
+  $: OldEngine,
+  key: K,
+): Promise<Atoms[K]> => $.atoms[key];
 
-const update = async <K extends keyof Atoms>(
+export const update = async <K extends keyof Atoms>(
   $: OldEngine,
   key: K,
   change: (value: Atoms[K]) => Atoms[K],
@@ -93,8 +130,8 @@ const prompt = {
   },
 };
 
-const shownNow = async ($: OldEngine): Promise<Raised> =>
-  withSent($.raised, await read($, "sent"));
+export const shownNow = async ($: OldEngine): Promise<Raised> =>
+  withSent(await read($, "raised"), await read($, "sent"));
 
 const closePane = async ($: OldEngine): Promise<void> => {
   $.closes += 1;
@@ -143,7 +180,13 @@ const sendDraft = async ($: OldEngine, text: string): Promise<void> => {
   }
   await update($, "submitProblem", () => "");
 
-  if (closesOnSubmit($.raised, await read($, "sent"), $.isClosedWhenAllSubmitted)) {
+  if (
+    closesOnSubmit(
+      await read($, "raised"),
+      await read($, "sent"),
+      $.isClosedWhenAllSubmitted,
+    )
+  ) {
     await closePane($);
   }
 };

@@ -1914,14 +1914,19 @@ test("a turn that starts while the session's start registers keeps Submit waitin
 
 test("raised items stored under an older shape are not drawn", async ($, on) => {
   engine(on, () => []);
-  // What the plugin kept before Raised gained settlements, as a reload
-  // finds it.
+  // What the plugin kept before the raised items moved into the pane's
+  // state, under the pane's earlier shape, as a reload finds it.
   const stale = {
-    shape: "raised-2",
-    value: { session: "session-1", items: ITEMS, settledRefs: [], seenRefs: [], problem: "", warnings: [] },
+    shape: "pane-2",
+    value: {
+      presses: 0,
+      submit: { tag: "idle" },
+      overtaken: [],
+      raised: { session: "session-1", items: ITEMS, settledRefs: [], seenRefs: [], problem: "", warnings: [] },
+    },
   };
   on("state.get", (_, e, next) =>
-    e.key === "raised" ? { value: { value: stale, version: 1 } } : next(e),
+    e.key === "pane" ? { value: { value: stale, version: 1 } } : next(e),
   );
   await $.command.run({ ...ANSWERS, command: "answers-config" });
   const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
@@ -2139,6 +2144,108 @@ test("a Submit the engine refuses moves nothing to Done", async ($, on) => {
 
   expect(await titles(ui)).toHaveLength(3);
   expect(await ui.find({ type: "Button", key: "9efb08a1.done" })).toBeUndefined();
+  await ui.unmount();
+});
+
+test("a Submit the engine refuses puts back only its own answers: an earlier Submit's answer to the same item stays Done", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  await ui.press({ key: "9efb08a1.Decide.1.A" });
+  await ui.press({ key: "submit" });
+  expect(state.sent).toHaveLength(1);
+
+  // Before a turn starts, a second Submit answers the same item again, and
+  // the engine refuses it.
+  state.submitAnswer = { drop: "a hook refused it" };
+  state.box = `${HEADER}9efb08a1.Decide.1.B\n`;
+  await ui.press({ key: "submit" });
+  await openDone(ui);
+
+  expect(await doneLines(ui)).toEqual(["🧠 Decide.1  Which cache to keep · Sent: A"]);
+  expect(await titles(ui)).toEqual([
+    "🧠 Decide.2 · Cleanups to start",
+    "🧠 Decide.3 · Ship tonight?",
+  ]);
+  await ui.unmount();
+});
+
+test("a Submit a reload overtook keeps to itself: its refusal leaves a later Submit's answers Done, and what the pane says of it outlasts the later Submit", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  const said = async () =>
+    (await ui.findAll({ type: "Text", text: /^Not sent/ })).map((found) => found.text);
+  const refusal = "Not sent, the draft put back in the prompt box: a hook refused it";
+
+  // The first Submit waits on the engine as the plugin reloads.
+  const first = gate();
+  state.holdSubmit = first.wait;
+  state.box = `${HEADER}9efb08a1.Decide.1.B\n`;
+  const overtaken = ui.press({ key: "submit" });
+  await first.reached;
+  await $.session.start({ cwd: "/work", surface: "terminal", isInteractive: true });
+  await $.command.run(ANSWERS);
+
+  // A later Submit answers the same item and another, and waits too.
+  const second = gate();
+  state.holdSubmit = second.wait;
+  state.box = `${HEADER}9efb08a1.Decide.1.A\n9efb08a1.Decide.2.B\n`;
+  const later = ui.press({ key: "submit" });
+  await second.reached;
+
+  // The engine refuses the first Submit's draft.
+  state.submitAnswer = { drop: "a hook refused it" };
+  first.release();
+  await overtaken;
+  await openDone(ui);
+
+  expect(await doneLines(ui)).toEqual([
+    "🧠 Decide.1  Which cache to keep · Sent: A",
+    "🧠 Decide.2  Cleanups to start · Sent: B",
+  ]);
+  expect(await said()).toEqual([refusal]);
+
+  // The later Submit goes through, and what the pane says of the first stays.
+  state.submitAnswer = undefined;
+  second.release();
+  await later;
+
+  expect(state.sent).toEqual([`${HEADER}9efb08a1.Decide.1.A\n9efb08a1.Decide.2.B\n`]);
+  expect(await said()).toEqual([refusal]);
+  await ui.unmount();
+});
+
+test("a refresh whose transcript read answers after a later refresh's leaves what the later one found", async ($, on) => {
+  const later: TranscriptRecord[] = [];
+  const state = engine(on, () => ITEMS, listsText, () => later);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+
+  // The first turn's end reads the transcript, and its read waits.
+  const held = gate();
+  state.holdRead = held.wait;
+  const first = $.turn.complete(replyDone("t1"));
+  await held.reached;
+
+  // A later turn answers an item, and its end's read answers first.
+  later.push(human("b2c3d4e5", "9efb08a1.Decide.1.A"), assistant("On it."));
+  await $.turn.complete(replyDone("t2"));
+  expect(await titles(ui)).toEqual([
+    "🧠 Decide.2 · Cleanups to start",
+    "🧠 Decide.3 · Ship tonight?",
+  ]);
+
+  // The first read answers last, with the transcript as it stood when it
+  // began, before the later turn.
+  later.length = 0;
+  held.release();
+  await first;
+
+  expect(await titles(ui)).toEqual([
+    "🧠 Decide.2 · Cleanups to start",
+    "🧠 Decide.3 · Ship tonight?",
+  ]);
   await ui.unmount();
 });
 

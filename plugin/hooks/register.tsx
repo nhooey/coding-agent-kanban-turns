@@ -77,41 +77,31 @@ import {
   linkedQuestions,
 } from "../src/pane/links.ts";
 import {
-  countLine,
   isMergeKnown,
   mergedOfResponse,
   mergedQuery,
-  openOf,
   pullRequestsToAsk,
 } from "../src/items/outstanding.ts";
 import {
   answeredCount,
-  emptyRaised,
-  forSession,
   isSettled,
   problemsOf,
-  refreshed,
-  seen,
   settlementOf,
   stillOpen,
-  unread,
-  unseen,
-  withHeld,
-  withItems,
-  withSent,
-  withoutRead,
 } from "../src/items/raised.ts";
 import {
   INITIAL_PANE,
   NO_OUTSIDE,
   failingPress,
   readsOutside,
+  shownOf,
   step as paneStep,
   submitShown,
 } from "../src/pane/pane-state.ts";
 import type {
   Effect,
   Event,
+  Found,
   Outside,
   Stepped,
 } from "../src/pane/pane-state.ts";
@@ -160,9 +150,9 @@ import type {
   DecideItem,
   LintNote,
   Loaded,
+  PaneState,
   Raised,
   Settings,
-  Settlement,
 } from "../types/index.d.ts";
 import { loadSettings } from "./settings.ts";
 
@@ -185,21 +175,6 @@ const UNREAD: Loaded = { settings: null, effective: [], problems: [] };
 // a hotkey leaves on one of them is no item's, so j and k don't count from it.
 const STEPS = { next: "next", previous: "previous" } as const;
 
-// Change the tag when Raised's fields change: it declines what an earlier
-// version stored, which outlives a reload.
-const raised = atom(
-  { plugin: "coding-agent-kanban-turns", key: "raised" } as const,
-  emptyRaised,
-  { shape: "raised-4" },
-);
-// The answers the last Submit sent, Done at once: the turn's end reads the
-// transcript, which confirms each or puts it back among the open items.
-// Change the tag when Settlement's fields change.
-const sent = atom(
-  { plugin: "coding-agent-kanban-turns", key: "sent" } as const,
-  [] as readonly Settlement[],
-  { shape: "sent-1" },
-);
 // The Done sections a click opened, by `doneKey`, and the Done items a click
 // opened to their full box, by ref: everything else Done stays collapsed.
 const expanded = atom(
@@ -218,18 +193,6 @@ const isKeysOpen = atom(
   { plugin: "coding-agent-kanban-turns", key: "isKeysOpen" } as const,
   false,
 );
-// How many refreshes have started: a `gh` answer redraws the count line only
-// while the refresh that asked is the latest.
-const refreshes = atom(
-  { plugin: "coding-agent-kanban-turns", key: "refreshes" } as const,
-  0,
-);
-// The pull requests `gh` said merged, as `owner/repo#N`: a merge stays, so
-// none is asked about again.
-const merged = atom(
-  { plugin: "coding-agent-kanban-turns", key: "merged" } as const,
-  [] as readonly string[],
-);
 const draft = atom(
   { plugin: "coding-agent-kanban-turns", key: "draft" } as const,
   "",
@@ -242,20 +205,16 @@ const noting = atom(
   "",
 );
 // The pane's state, one value that `step` moves and `dispatch` alone writes:
-// Submit, so far. Change the tag when PaneState's fields change, as for
-// Raised.
+// Submit and the refresh, with the raised items, the answers Submit holds
+// Done, the pull requests known merged and the count line, so far. Change
+// the tag when PaneState's fields, or those of a type it holds, change: it
+// declines what an earlier version stored, which outlives a reload.
 const pane = atom(
   { plugin: "coding-agent-kanban-turns", key: "pane" } as const,
   INITIAL_PANE,
-  { shape: "pane-2" },
+  { shape: "pane-3" },
 );
 
-// The skill's count line, `📌 Outstanding: 🚧 2 · … · 🧠 3`, from the last
-// refresh; empty when nothing is open.
-const counts = atom(
-  { plugin: "coding-agent-kanban-turns", key: "counts" } as const,
-  "",
-);
 // What the reply lint found in the main loop's last final response, for the
 // next prompt's context to hand the agent, and the conversation it was
 // found in: a prompt in another, after a `/clear`, a compaction or a
@@ -267,7 +226,7 @@ const lintNote = atom(
   NO_LINT_NOTE,
   { shape: "lint-note-1" },
 );
-// Change the tag when Settings' fields change, as for Raised.
+// Change the tag when Settings' fields change, as for PaneState.
 const settings = atom(
   { plugin: "coding-agent-kanban-turns", key: "settings" } as const,
   UNREAD,
@@ -280,20 +239,22 @@ const settingsNow = async ($: EngineInterface): Promise<Settings | null> =>
 
 /** The raised items as the pane and a reply draw them: the answers Submit sent Done until the turn's end reads them. */
 const shownNow = async ($: EngineInterface): Promise<Raised> =>
-  withSent(await read($, raised), await read($, sent));
+  shownOf(await read($, pane));
 
-/** The pane's sections, newest turn first, the Done sections and items a click opened, and the stops j and k move between. */
+/** The pane's state, read once, with its sections, newest turn first, the Done sections and items a click opened, and the stops j and k move between. */
 const paneNow = async (
   $: EngineInterface,
 ): Promise<
   Readonly<{
+    state: PaneState;
     shown: Raised;
     sections: readonly TurnSection[];
     open: readonly string[];
     stops: ReturnType<typeof paneStops>;
   }>
 > => {
-  const shown = await shownNow($);
+  const state = await read($, pane);
+  const shown = shownOf(state);
   const sections = turnSections(
     shown.items,
     (item) => isSettled(shown, item),
@@ -301,7 +262,7 @@ const paneNow = async (
   );
   const open = await read($, expanded);
 
-  return { shown, sections, open, stops: paneStops(sections, open) };
+  return { state, shown, sections, open, stops: paneStops(sections, open) };
 };
 
 /** This session's transcript file: where the engine says it is, else, when it can't say, where Claude Code keeps it. */
@@ -420,59 +381,6 @@ const reloadSettings = async ($: EngineInterface): Promise<Loaded> => {
   return now;
 };
 
-/** Sets the count line and the raised items from what `turns` leave open, given the pull requests known merged. */
-const settle = async (
-  $: EngineInterface,
-  turns: readonly Turn[],
-  window: number,
-  warnings: readonly string[],
-): Promise<void> => {
-  const open = openOf(turns, window, new Set(await read($, merged)));
-  await update($, counts, () => open.counts);
-  await update($, raised, (r) =>
-    refreshed(
-      r,
-      open.items,
-      open.settlements,
-      warnings,
-      turns.map((turn) => turn.id),
-    ),
-  );
-};
-
-/**
- * Asks `gh` which of the Review items' pull requests not yet known merged
- * have merged since, the pane and the count line drawn without waiting for
- * it. A merge joins the known ones, and redraws the count line from the
- * refresh's turns while no later refresh has started; one that has reads
- * the merge itself. The raised items don't hang on merges, so they stay.
- */
-const askMerged = async (
-  $: EngineInterface,
-  stamp: number,
-  turns: readonly Turn[],
-  window: Settings["counts"],
-): Promise<void> => {
-  const known = new Set(await read($, merged));
-  const { found } = await mergedNow(
-    $,
-    pullRequestsToAsk(turns, window.turns, known),
-    window["gh-timeout-ms"],
-  );
-
-  if (found.size > 0) {
-    const now = await update($, merged, (m) =>
-      [...new Set([...m, ...found])].sort(),
-    );
-
-    if ((await read($, refreshes)) === stamp) {
-      await update($, counts, () =>
-        countLine(turns, window.turns, new Set(now)),
-      );
-    }
-  }
-};
-
 /**
  * `kanban_outstanding`: the count line, the roll-up's draft and the open
  * Decide items over the window the count line reads, once `gh` has said
@@ -488,53 +396,44 @@ const outstandingNow = async ($: EngineInterface): Promise<string> => {
     return unreadText(problems.join("; "));
   }
   const turns = await turnsNow($);
-  const known = new Set(await read($, merged));
+  const known = new Set((await read($, pane)).merged);
   const { found, isKnown } = await mergedNow(
     $,
     pullRequestsToAsk(turns, s.counts.turns, known),
     s.counts["gh-timeout-ms"],
   );
-  const now =
-    found.size === 0
-      ? [...known]
-      : await update($, merged, (m) => [...new Set([...m, ...found])].sort());
+
+  if (found.size > 0) {
+    await dispatch($, { type: "merged-found", found: [...found] });
+  }
 
   return outstandingText(turns, {
     window: s.counts.turns,
     width: s["roll-up"]["summary-width"],
-    merged: new Set(now),
+    merged: new Set([...known, ...found]),
     isMergeKnown: isKnown,
   });
 };
 
 /**
- * Reads the settings, the open items and the count line again: open items
- * join the raised ones, and raised ones no longer open settle. A transcript
- * that can't be read, or settings that can't be used, settle nothing.
- * Resolves to whether it read the transcript.
+ * What a refresh's transcript read finds: the settings read again, then
+ * the session's turns, with the count line's settings. Without settings
+ * there's no window to read, and the settings' problems say why; a read
+ * that fails, or throws, says why it couldn't read the transcript.
  */
-const refresh = async ($: EngineInterface): Promise<boolean> => {
-  const stamp = await update($, refreshes, (n) => n + 1);
+const transcriptFound = async (
+  $: EngineInterface,
+): Promise<Readonly<{ found: Found; warnings: readonly string[] }>> => {
   const { settings: s, problems } = await reloadSettings($);
-  // Without settings there's no window to read: the settings' problems say why.
-  const found: Readonly<{ turns: readonly Turn[] } | { problem: string }> =
+  const found: Found =
     s === null
       ? { problem: "" }
       : await turnsNow($).then(
-          (turns) => ({ turns }),
+          (turns) => ({ turns, counts: s.counts }),
           (error: unknown) => ({ problem: String(error) }),
         );
 
-  if (s === null || "problem" in found) {
-    const problem = "problem" in found ? found.problem : "";
-    await update($, raised, (r) => unread(r, problem, problems));
-
-    return false;
-  }
-  await settle($, found.turns, s.counts.turns, problems);
-  void askMerged($, stamp, found.turns, s.counts).catch(() => undefined);
-
-  return true;
+  return { found, warnings: problems };
 };
 
 /**
@@ -575,8 +474,6 @@ const attempt = <T,>(call: () => T | Promise<T>): Promise<T> =>
 
 /** What `paneStep` reads of the areas whose state is still in atoms of their own; a read that throws rejects. */
 const outsideNow = async ($: EngineInterface): Promise<Outside> => ({
-  raised: await attempt(() => read($, raised)),
-  sent: await attempt(() => read($, sent)),
   isClosedWhenAllSubmitted:
     (await attempt(() => settingsNow($)))?.pane["close-when-all-submitted"] ===
     true,
@@ -655,7 +552,8 @@ const runEffects = async (
  * of the pane's atom, then the effects it asked for run in order, each
  * prompt call's answer dispatched in turn. Resolves once they all have.
  * A step that fails, before anything is written, is judged by the state as
- * it stands.
+ * it stands; a transcript read whose answer fails to step is dropped, so
+ * nothing waits on it.
  */
 const dispatch = async ($: EngineInterface, event: Event): Promise<void> => {
   const done = await stepNow($, event).then(
@@ -664,6 +562,11 @@ const dispatch = async ($: EngineInterface, event: Event): Promise<void> => {
   );
 
   if ("error" in done) {
+    if (event.type === "transcript-read") {
+      await dispatch($, { type: "read-dropped", refresh: event.refresh }).catch(
+        () => undefined,
+      );
+    }
     const state = await attempt(() => read($, pane)).catch(() => INITIAL_PANE);
 
     return failedOn($, event, { state, effects: [] }, done.error);
@@ -674,10 +577,14 @@ const dispatch = async ($: EngineInterface, event: Event): Promise<void> => {
 
 /**
  * Runs one effect `paneStep` asked for, and resolves to the event its
- * answer makes, under the press's number, if it is a prompt call. A read
- * that throws reads as an empty box, a put-back fill that throws as not
- * taken, and a submit that throws as refused, for why; emptying the box
- * that throws rejects, failing the press, as the box may have been emptied.
+ * answer makes: under the press's number for a prompt call, and under the
+ * refresh's for a transcript read. A read that throws reads as an empty
+ * box, a put-back fill that throws as not taken, and a submit that throws
+ * as refused, for why; emptying the box that throws rejects, failing the
+ * press, as the box may have been emptied. A transcript read that throws
+ * reads as one that couldn't read the transcript. `gh` is asked without
+ * waiting for it, so the pane and the count line are drawn first; its
+ * answer is dispatched once it comes, and one that fails changes nothing.
  */
 const runEffect = async (
   $: EngineInterface,
@@ -730,14 +637,34 @@ const runEffect = async (
       await attempt(() => update($, draft, () => effect.text));
 
       return undefined;
-    case "hold-sent":
-      await attempt(() => update($, sent, (held) => withHeld(held, effect.moved)));
+    case "read-transcript": {
+      const read = await attempt(() => transcriptFound($)).catch(
+        (error: unknown) => ({
+          found: { problem: String(error) },
+          warnings: [],
+        }),
+      );
+
+      return { type: "transcript-read", refresh: effect.refresh, ...read };
+    }
+    case "ask-merged":
+      void attempt(() => mergedNow($, effect.refs, effect.timeoutMs))
+        .then(({ found }) =>
+          dispatch($, {
+            type: "merged-found",
+            found: [...found],
+            asked: effect.asked,
+          }),
+        )
+        .catch(() => undefined);
 
       return undefined;
-    case "release-sent":
-      await attempt(() =>
-        update($, sent, (held) => withoutRead(held, effect.moved)),
-      );
+    case "open-pane":
+      await openPane($, false);
+
+      return undefined;
+    case "reveal":
+      await reveal($, effect.to);
 
       return undefined;
     default:
@@ -823,21 +750,19 @@ const closePane = async ($: EngineInterface): Promise<void> => {
 const toggleKeys = ($: EngineInterface) =>
   update($, isKeysOpen, (isOpen) => !isOpen);
 
-/** The end of a main-loop turn, or the session's start: opens the pane at its top, the newest turn, when an item is open that the pane hasn't been opened over. */
-const announce = async ($: EngineInterface): Promise<void> => {
-  const r = await read($, raised);
-  await update($, raised, seen);
-
-  if (unseen(r).length > 0) {
-    await openPane($, false);
-    await reveal($, "start");
-  }
-};
+/**
+ * Reads the settings, the open items and the count line again, once the
+ * transcript read and its result have been stepped; a turn's end's read
+ * also takes out the answers Submit held when it began. `gh` may answer
+ * later.
+ */
+const refresh = ($: EngineInterface, releases = false): Promise<void> =>
+  dispatch($, { type: "refresh-asked", releases });
 
 /** /answers: re-reads the open items and opens the pane with the keyboard, at the first item the draft doesn't answer. */
 const reopen = async ($: EngineInterface): Promise<Raised> => {
   await refresh($);
-  await update($, raised, seen);
+  await dispatch($, { type: "seen" });
   await openPane($, true);
   const { shown, sections } = await paneNow($);
   const item = firstUnansweredIn(sections, await read($, draft));
@@ -878,7 +803,6 @@ export const register: Register = (on) => {
     // starts the session again in the same conversation, and the note's
     // conversation key keeps it from any other.
     await dispatch($, { type: "session-started" });
-    await update($, sent, () => []);
     await update($, focused, () => "");
     const started = await next(e);
     await $.command.register({
@@ -909,9 +833,9 @@ export const register: Register = (on) => {
       inputSchema: LINT_SCHEMA,
     });
     const session = await $.session.id();
-    await update($, raised, (r) => forSession(r, session));
+    await dispatch($, { type: "session-joined", session });
     void refresh($)
-      .then(() => announce($))
+      .then(() => dispatch($, { type: "announced" }))
       .catch(() => undefined);
 
     return started;
@@ -993,7 +917,7 @@ export const register: Register = (on) => {
 
   on("tool.call", { tool: TOOL_CALLED }, async ($, e) => {
     const items = itemsOf(e);
-    await update($, raised, (r) => withItems(r, items));
+    await dispatch($, { type: "items-drawn", items });
 
     return { result: drewText(items) };
   }).catch(() => ({
@@ -1025,8 +949,9 @@ export const register: Register = (on) => {
   // A main-loop turn ending: it clears the running turn only where that is
   // this turn, so an earlier turn's late end leaves a later one running; and
   // the transcript read again confirms the answers Submit sent or puts their
-  // items back among the open ones. Only the answers sent before the read
-  // began are taken out: a Submit pressed while it reads keeps its own.
+  // items back among the open ones. Only the answers held when the read
+  // began are taken out: a Submit pressed while it reads keeps its own, one
+  // to the same item among them.
   // Then the reply lint, on an answer, while the `lint.turn-end` setting is
   // on: what it finds in one in the protocol's shape is shown beneath it,
   // after whatever a hook beneath showed there, and waits, keyed by the
@@ -1044,12 +969,8 @@ export const register: Register = (on) => {
     }
     const session = await $.session.id();
     await dispatch($, { type: "turn-completed", turn: e.turnId });
-    const before = await read($, sent);
-
-    if (await refresh($)) {
-      await update($, sent, (held) => withoutRead(held, before));
-    }
-    await announce($);
+    await refresh($, true);
+    await dispatch($, { type: "announced" });
     // The refresh has read the settings again.
     const isLinting =
       (await read($, settings)).settings?.lint["turn-end"] === true;
@@ -1123,13 +1044,14 @@ export const register: Register = (on) => {
     }
 
     const elements = $.ui.resolve(e);
-    const picked = answeredCount(await shownNow($), await read($, draft));
+    const state = await read($, pane);
+    const picked = answeredCount(shownOf(state), await read($, draft));
 
     return kanbanLine(
       elements,
       s,
       [
-        { key: "counts", text: await read($, counts) },
+        { key: "counts", text: state.counts },
         { key: "picked", text: pickedText(picked) },
       ],
       () => openPane($, true),
@@ -1193,17 +1115,17 @@ export const register: Register = (on) => {
     const elements = $.ui.resolve(e);
     const { Box, Text } = elements;
     const s = await settingsNow($);
-    const { shown: r, sections, open, stops } = await paneNow($);
+    const { state, shown: r, sections, open, stops } = await paneNow($);
 
     if (s === null) {
       return <Text dimColor>{noItemsText(problemsOf(r))}</Text>;
     }
 
     const text = await read($, draft);
-    const { isBusy, problem } = submitShown((await read($, pane)).submit);
+    const { isBusy, problem } = submitShown(state.submit);
     const ring = await read($, focused);
     const notingNow = await read($, noting);
-    const line = await read($, counts);
+    const line = state.counts;
     const openCount = stillOpen(r).length;
 
     return (
@@ -1260,6 +1182,13 @@ export const register: Register = (on) => {
         </Box>
         {(await read($, isKeysOpen)) ? keysPanel(elements, s) : null}
         {/* The filters will go here, a row under the header. */}
+        {/* What a Submit a reload overtook said as it ended, on a line of
+            its own, apart from what the pane says of the press since. */}
+        {state.aside.said ? (
+          <Text key="submit-overtaken" wrap="wrap">
+            {state.aside.said}
+          </Text>
+        ) : null}
         {problem ? (
           <Text key="submit-problem" wrap="wrap">
             {problem}
