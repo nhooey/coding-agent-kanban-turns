@@ -181,6 +181,25 @@ const fenceOf = (body: string): string =>
   FENCES.find((fence) => body.startsWith(fence)) ?? "";
 
 /**
+ * A text's lines outside its code blocks, in order: a block opens on a
+ * fence and holds every line until the same fence closes it, and the
+ * fences' own lines are neither kept nor read for anything else.
+ */
+export const unfencedLines = (text: string): readonly string[] =>
+  text.split("\n").reduce(
+    ({ open, kept }, line) => {
+      const fence = fenceOf(line.trim());
+
+      return open !== ""
+        ? { open: fence === open ? "" : open, kept }
+        : fence !== ""
+          ? { open: fence, kept }
+          : { open, kept: [...kept, line] };
+    },
+    { open: "", kept: [] as readonly string[] },
+  ).kept;
+
+/**
  * The scan once `body`, a line under the last item `last`, is read: the
  * item's last line while the item goes on; where the summary awaits it, the
  * item's body, joined to its line, unless it's the `Frees:` line, which is

@@ -3,8 +3,8 @@ title: >-
   `Frees:` line naming items of their own turn, a Decide item's under its
   last option, and a later turn's names an earlier turn's item by a prefix
   of its id: each item frees what its line names, by the turn's whole id,
-  and the Decide item's line wins over the `frees` its `kanban_options` call
-  gave
+  and the Decide item's line wins over the `frees` the plugin's buttons were
+  given for it
 turns:
   - id: a1b2c3d4
     prompt: Where does the deploy stand?

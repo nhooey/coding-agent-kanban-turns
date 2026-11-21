@@ -9,7 +9,7 @@ touches: [AGENTS.md, nix/skills-devshell/flake.nix, nix/skills-devshell/flake.lo
 
 # The coding-agent-kanban-turn-responses skill is retired, and no repository or session installs it
 
-Done once the plugin carries its own skill ([derived-skill-package](derived-skill-package.md)) and is in use, so no session is left without the format. A copy of the old skill left installed beside the plugin would load a second set of instructions under the unprefixed name, which [instructions-once-with-skill](instructions-once-with-skill.md) doesn't recognise as the plugin's.
+Done once the plugin carries its own skill ([derived-skill-package](../closed/derived-skill-package.md)) and is in use, so no session is left without the format. A copy of the old skill left installed beside the plugin would load a second set of instructions under the unprefixed name, which [instructions-once-with-skill](instructions-once-with-skill.md) doesn't recognise as the plugin's.
 
 - **`AGENTS.md`.** The "Rules shared with the kanban skill" section is rewritten: the plugin is the only source of the protocol, the spec, fragments and golden cases in `plugin/spec/` hold it, and the plugin builds its skill from them. No rule is kept in step with another repository.
 - **The project-level install is gone.** This repository's skills-devshell no longer installs `coding-agent-kanban-turn-responses`, so `.agents/skills/` holds no copy.

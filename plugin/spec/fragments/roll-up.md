@@ -1,8 +1,8 @@
 ## Earlier turns' items
 
-The final response closes, before any ETA line, on what earlier turns left open and no later turn settled: every {{glyphs.rolled-up}} item. It prints in full or as one count line, by the roll-up interval. The tool `{{outstanding-tool}}` drafts both from the session's transcript: the count line as it prints, and the full roll-up, with each item's {{tag.glyph}} tag, to prune of what is settled.
+The final response closes, before any ETA line, on what earlier turns left open and no later turn settled: every {{glyphs.rolled-up}} item. It prints in full or as one count line, by the roll-up interval. {{roll-up-drafter}} both from the session's transcript: the count line as it prints, and the full roll-up, with each item's {{tag.glyph}} tag, to prune of what is settled.
 
-**The roll-up interval.** The full roll-up prints once min(30 min, 5 × the average duration of the last 5 completed turns) has passed since the last final response that printed it in full; otherwise the final response closes on one count line.
+**The roll-up interval.** The full roll-up prints once min({{roll-up.interval.most-minutes}} min, {{roll-up.interval.times}} × the average duration of the last {{roll-up.interval.turns}} completed turns) has passed since the last final response that printed it in full; otherwise the final response closes on one count line.
 
 - A prompt is any turn the user sees a usage line for, an agent's report and a task notification included.
 - A turn's duration runs from its prompt to the next turn's prompt, so it covers the final response and the user's reading, and only a turn the next prompt has closed is completed.

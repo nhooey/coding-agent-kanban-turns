@@ -20,6 +20,8 @@ import {
   wholeEnd,
   withoutDraftHeader,
 } from "../../../src/transcript/turns.ts";
+import { PLUGIN } from "../../../src/protocol/instructions.ts";
+import { SPEC } from "../../../src/protocol/spec.ts";
 import type { Owner } from "../../../types/index.d.ts";
 import { turnOf } from "../../fixtures/turns.ts";
 
@@ -230,6 +232,20 @@ describe("commandOf", () => {
     expect(commandOf(sent("coding-agent-kanban-turn-responses", "pending"))).toBe("open");
     expect(commandOf(sent("coding-agent-kanban-turn-responses", "re"))).toBeUndefined();
     expect(commandOf(sent("other-skill", "reassess"))).toBeUndefined();
+  });
+
+  test("the plugin's skill by its own slash command, the plugin's name before the skill's, typed and as a command-name record", () => {
+    const own = `${PLUGIN}:${SPEC.skill.name}`;
+    const sent = (name: string, args: string) =>
+      `<command-message>${name}</command-message>\n<command-name>/${name}</command-name>\n<command-args>${args}</command-args>`;
+
+    expect(own).toBe("coding-agent-kanban-turns:coding-agent-kanban-turn-responses");
+    expect(commandOf(`/${own} reassess`)).toBe("reassess");
+    expect(commandOf(`/${own} restate`)).toBe("open");
+    expect(commandOf(sent(own, "recalc"))).toBe("reassess");
+    expect(commandOf(sent(own, "pending"))).toBe("open");
+    expect(commandOf(`/other-plugin:${SPEC.skill.name} reassess`)).toBeUndefined();
+    expect(commandOf(sent(`${PLUGIN}:other-skill`, "reassess"))).toBeUndefined();
   });
 });
 

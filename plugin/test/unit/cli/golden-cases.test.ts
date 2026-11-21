@@ -28,6 +28,7 @@ const run: Runner = (args, input) => {
         turns: text,
         draft: !request.value.help && request.value.draft === "-" ? text : undefined,
         settings,
+        now: Date.now(),
       });
 };
 

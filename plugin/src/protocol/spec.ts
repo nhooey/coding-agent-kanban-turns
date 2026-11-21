@@ -139,6 +139,9 @@ export const SPEC = {
       "reply-block"
     ]
   },
+  "skill": {
+    "name": "coding-agent-kanban-turn-responses"
+  },
   "reference": {
     "turn-id": {
       "length": 8,
@@ -165,7 +168,12 @@ export const SPEC = {
       "Still open from earlier"
     ],
     "count-label": "Outstanding",
-    "count-separator": " · "
+    "count-separator": " · ",
+    "interval": {
+      "most-minutes": 30,
+      "times": 5,
+      "turns": 5
+    }
   },
   "tag": {
     "glyph": "🔖",

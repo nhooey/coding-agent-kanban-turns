@@ -1,10 +1,14 @@
 #!/usr/bin/env node
 // The kanban CLI's edge, the one file of it with effects: it reads the
-// arguments, the settings files, the transcript or stdin, and the draft,
-// hands them to cli/run.ts, and writes out what comes back. The flake
-// bundles it with the core into kanban.js, one file that runs under Node 20
-// or later, and into a standalone binary that needs no Node, only its Nix
-// closure.
+// arguments, the Claude Code session CLAUDE_CODE_SESSION_ID names, the
+// clock, the settings files, the transcript or stdin, and the draft, hands
+// them to cli/run.ts, and writes out what comes back. With no --transcript
+// in a session, the session's own transcript is found in Claude Code's
+// projects folder, under CLAUDE_CONFIG_DIR or the home's .claude, where
+// the adapter's sessionTranscriptPath says. The
+// flake bundles it with the core into kanban.js, one file that runs under
+// Node 20 or later, and into a standalone binary that needs no Node, only
+// its Nix closure.
 //
 // The plugin's defaults file is read from beside the plugin's folder when
 // this runs from the repository; the bundle has it inlined, as
@@ -13,14 +17,19 @@
 // plugin reads it; one that's there but can't be read is a warning naming
 // it, and the defaults are used.
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import process from "node:process";
 
 import { DEFAULTS_FILE, loaded, userConfigPath } from "../src/config/config.ts";
 import type { DefaultsFile } from "../src/config/config.ts";
+import {
+  projectsFolder,
+  sessionTranscriptPath,
+  transcriptFile,
+} from "../src/transcript/claude-code.ts";
 import type { Loaded } from "../types/index.d.ts";
-import { answer, refused, requestOf, usageRefusal } from "./run.ts";
-import type { Inputs, Request, Result } from "./run.ts";
+import { SESSION_VARIABLE, answer, refused, requestOf, usageRefusal } from "./run.ts";
+import type { Inputs, Request, Result, Source } from "./run.ts";
 
 // The defaults file's text, which the bundle's build defines; none when
 // this runs from the repository.
@@ -66,16 +75,39 @@ const settings = (): Loaded => {
 /** Stdin's file descriptor, read for the turns without a --transcript, and for a `--draft -`. */
 const STDIN = 0;
 
+/** The project folders in the projects folder that hold a session's transcript; none where the folder can't be read. */
+const holding = (projects: string, session: string): readonly string[] => {
+  try {
+    return readdirSync(projects).filter((project) =>
+      existsSync(`${projects}/${project}/${transcriptFile(session)}`),
+    );
+  } catch {
+    return [];
+  }
+};
+
+/** Where a source's turns are read from: stdin, a transcript's path, or the session's own transcript, found in Claude Code's projects folder. */
+const placeOf = (source: Source): string | number => {
+  const projects = projectsFolder(process.env.HOME ?? "", process.env.CLAUDE_CONFIG_DIR);
+
+  return source.from === "stdin"
+    ? STDIN
+    : source.from === "transcript"
+      ? source.path
+      : sessionTranscriptPath(projects, process.cwd(), source.session, holding(projects, source.session));
+};
+
 /** What the edge reads for a request, or why it can't. */
 const inputsFor = (
   request: Request,
 ): Readonly<{ inputs: Inputs } | { problems: readonly string[] }> => {
+  const now = Date.now();
+
   if (request.help) {
-    return { inputs: { turns: undefined, draft: undefined, settings: settings() } };
+    return { inputs: { turns: undefined, draft: undefined, settings: settings(), now } };
   }
   const source = request.source;
-  const turns =
-    source === undefined ? undefined : textAt(source.from === "stdin" ? STDIN : source.path);
+  const turns = source === undefined ? undefined : textAt(placeOf(source));
   const draft =
     request.draft === undefined || source !== undefined
       ? undefined
@@ -91,13 +123,14 @@ const inputsFor = (
           turns: turns !== undefined && "text" in turns ? turns.text : undefined,
           draft: draft !== undefined && "text" in draft ? draft.text : undefined,
           settings: settings(),
+          now,
         },
       };
 };
 
 /** What the CLI gives for its arguments. */
 const run = (argv: readonly string[]): Result => {
-  const request = requestOf(argv);
+  const request = requestOf(argv, process.env[SESSION_VARIABLE]);
   const read = "value" in request ? inputsFor(request.value) : undefined;
 
   return "problems" in request

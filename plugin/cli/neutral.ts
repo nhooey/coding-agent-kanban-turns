@@ -55,6 +55,8 @@ const TURN_FIELDS: Readonly<Record<keyof Turn, true>> = {
   decide: true,
   messages: true,
   unanswered: true,
+  promptedAt: true,
+  answeredAt: true,
 };
 const MESSAGE_FIELDS: Readonly<Record<keyof Message, true>> = {
   owner: true,
@@ -98,6 +100,24 @@ type Check = Readonly<{ is: (value: unknown) => boolean; what: string }>;
 
 const STRING: Check = { is: (value) => typeof value === "string", what: "a string" };
 const STRINGS: Check = { is: isStrings, what: "a list of strings" };
+// An ISO 8601 date and time with its zone, as a transcript writes one:
+// `2026-11-16T20:06:00.270Z` or `2026-11-16T21:06+01:00`. Matched before
+// it's parsed, since Date.parse also takes forms ISO 8601 doesn't write,
+// and reads a time with no zone as local.
+const ISO_TIME =
+  /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/;
+
+const TIME: Check = {
+  is: (value) =>
+    typeof value === "string" && ISO_TIME.test(value) && !Number.isNaN(Date.parse(value)),
+  what: "an ISO 8601 time",
+};
+
+// A turn's times, each left out where it's unknown.
+const TURN_CHECKS: Readonly<Partial<Record<keyof Turn, Check>>> = {
+  promptedAt: TIME,
+  answeredAt: TIME,
+};
 
 // The fields of an item and an option whose type kanban_options' own
 // reading doesn't check, and what each must be where it's given.
@@ -311,7 +331,10 @@ export const turnAt = (value: unknown, where: string): Got<Turn> => {
         ...(unanswered === undefined || typeof unanswered === "boolean"
           ? []
           : [`${where}.unanswered isn't true or false`]),
+        ...typeProblems(value, TURN_CHECKS, where),
       ];
+  const promptedAt = field(value, "promptedAt");
+  const answeredAt = field(value, "answeredAt");
 
   return problems.length > 0 ||
     !("value" in prompt) ||
@@ -328,6 +351,8 @@ export const turnAt = (value: unknown, where: string): Got<Turn> => {
           decide: decide.value,
           messages: messages.value,
           ...(unanswered === true ? { unanswered } : {}),
+          ...(typeof promptedAt === "string" ? { promptedAt } : {}),
+          ...(typeof answeredAt === "string" ? { answeredAt } : {}),
         },
       };
 };

@@ -25,6 +25,7 @@ const own = {
   tool: "the_tool",
   "outstanding-tool": "the_outstanding",
   "lint-tool": "the_lint",
+  "roll-up-drafter": "The drafter drafts",
 };
 const values = placeholderValues(SPEC, own);
 

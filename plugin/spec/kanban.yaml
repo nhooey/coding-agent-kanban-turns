@@ -151,6 +151,14 @@ commands:
   trailing-punctuation: ".,;:!"
   skill-commands: [coding-agent-kanban-turn-responses, reply-block]
 
+# The skill the plugin carries, derived from it.
+#   name: its folder's name, the name its frontmatter gives, and the slash
+#     command that loads it, bare or after the plugin's name and a colon,
+#     `/coding-agent-kanban-turns:coding-agent-kanban-turn-responses`,
+#     either of which a command may follow, as `skill-commands` may.
+skill:
+  name: coding-agent-kanban-turn-responses
+
 # An item's reference, `<turn>.<List>.<n>[.<letters>][: note]`, the list
 # being a list's header.
 #   turn-id: the turn's id: `length` characters of `alphabet`, the first of
@@ -193,13 +201,20 @@ frees:
 #     turns:**`;
 #   aliases: the headers older replies opened their roll-up with;
 #   count-label: the word the count line names it by, `📌 Outstanding: …`;
-#   count-separator: what parts the count line's lists.
+#   count-separator: what parts the count line's lists;
+#   interval: when the full roll-up is due, once min(`most-minutes` min,
+#     `times` × the average duration of the last `turns` completed turns)
+#     has passed since the last final response that printed it in full.
 roll-up:
   glyph: 📌
   header: Outstanding from previous turns
   aliases: [Still open from earlier]
   count-label: Outstanding
   count-separator: " · "
+  interval:
+    most-minutes: 30
+    times: 5
+    turns: 5
 
 # The 🔖 tag a 📌 item ends on, `🔖 0f311c94₋₃`: the glyph, then the turn id
 # and its index counting back from the latest turn, in subscript.

@@ -6,7 +6,7 @@ title: The kanban turn-response protocol's checkable rules
 type: object
 additionalProperties: false
 required:
-  [lists, options, commands, reference, frees, roll-up, tag, characters]
+  [lists, options, commands, skill, reference, frees, roll-up, tag, characters]
 definitions:
   # One character or emoji, never blank.
   glyph:
@@ -111,6 +111,12 @@ properties:
         type: array
         items: { $ref: "#/definitions/slug" }
         uniqueItems: true
+  skill:
+    type: object
+    additionalProperties: false
+    required: [name]
+    properties:
+      name: { $ref: "#/definitions/slug" }
   reference:
     type: object
     additionalProperties: false
@@ -151,8 +157,16 @@ properties:
   roll-up:
     type: object
     additionalProperties: false
-    required: [glyph, header, aliases, count-label, count-separator]
+    required: [glyph, header, aliases, count-label, count-separator, interval]
     properties:
+      interval:
+        type: object
+        additionalProperties: false
+        required: [most-minutes, times, turns]
+        properties:
+          most-minutes: { type: integer, minimum: 1 }
+          times: { type: integer, minimum: 1 }
+          turns: { type: integer, minimum: 1 }
       glyph: { $ref: "#/definitions/glyph" }
       header: { $ref: "#/definitions/name" }
       aliases:

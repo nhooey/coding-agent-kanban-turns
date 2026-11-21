@@ -1,6 +1,4 @@
-# Kanban turn responses
-
-This block is the `{{commands.skill-commands.0}}` skill's format as the {{plugin}} plugin reads it. Where a loaded copy of that skill differs from it, the skill governs. A project may extend the format with a skill of its own, or with its preferences file for this skill, adding its own backlog path or link rules; the project's wins where the two differ.
+A project may extend the format with a skill of its own, or with its preferences file for this skill, adding its own backlog path or link rules; the project's wins where the two differ.
 
 Every response in a turn shows what is done, what is still open and what the user must do: a one-line progress update between tool calls, and in the final response up to {{count.lists}} lists in a fixed order, then what earlier turns left open, under {{roll-up.glyph}} in full or as one count line. Follow these rules for every response in the turn, each progress update and the final response.
 

@@ -1,0 +1,89 @@
+title: >-
+  The plugin's own skill command, the plugin's name, a colon and the
+  skill's, runs the command after it, typed or as the command record Claude
+  Code leaves: a typed `reassess` replaces every earlier item, and an
+  `open` sent as a command record reprints the open Decide item and
+  replaces nothing
+turns:
+  - id: 3a4b5c6d
+    prompt: Start on the loader.
+    replies:
+      - text: "\
+          The loader reads its cache twice.\n\
+          \n\
+          🚧 **Pending:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔▔\n\
+          1. **Rework the loader**  \n\
+          \   It reads the cache twice.\n\
+          \n\
+          🧠 **Decide:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔\n\
+          1. **Which cache to keep for the loader**  \n\
+          \   🔘 A. **Keep the disk cache**: it survives restarts.\n\
+          \      ➕ Faster cold starts.\n\
+          \      ➖ Disk use.\n\
+          \   🔘 B. **Keep the memory cache**: simpler.\n\
+          \      ➕ Less code.\n\
+          \      ➖ Slow cold starts.\n"
+        lint: []
+    decide:
+      - number: 1
+        summary: Which cache to keep for the loader
+        kind: radio
+        options:
+          - { letter: A, name: Keep the disk cache }
+          - { letter: B, name: Keep the memory cache }
+  - id: 4b5c6d7e
+    prompt: /coding-agent-kanban-turns:coding-agent-kanban-turn-responses reassess
+    runs: reassess
+    replies:
+      - text: "\
+          The loader still reads its cache twice; which cache to keep is still open.\n\
+          \n\
+          🚧 **Pending:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔▔\n\
+          1. **Rework the loader**  \n\
+          \   3 of its 9 tests pass.\n\
+          \n\
+          🧠 **Decide:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔\n\
+          1. **Which cache to keep for the loader**  \n\
+          \   🔘 A. **Keep the disk cache**: it survives restarts.\n\
+          \      ➕ Faster cold starts.\n\
+          \      ➖ Disk use.\n\
+          \   🔘 B. **Keep the memory cache**: simpler.\n\
+          \      ➕ Less code.\n\
+          \      ➖ Slow cold starts.\n"
+        lint: []
+    decide:
+      - number: 1
+        summary: Which cache to keep for the loader
+        kind: radio
+        options:
+          - { letter: A, name: Keep the disk cache }
+          - { letter: B, name: Keep the memory cache }
+  - id: 5c6d7e8f
+    prompt: |-
+      <command-message>coding-agent-kanban-turns:coding-agent-kanban-turn-responses</command-message>
+      <command-name>/coding-agent-kanban-turns:coding-agent-kanban-turn-responses</command-name>
+      <command-args>open</command-args>
+    runs: open
+    replies:
+      - text: "\
+          🧠 **Decide:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔\n\
+          1. **Which cache to keep for the loader**  \n\
+          \   (from 4b5c6d7e 1)\n\
+          \   🔘 A. **Keep the disk cache**: it survives restarts.\n\
+          \      ➕ Faster cold starts.\n\
+          \      ➖ Disk use.\n\
+          \   🔘 B. **Keep the memory cache**: simpler.\n\
+          \      ➕ Less code.\n\
+          \      ➖ Slow cold starts.\n"
+        lint: []
+expect:
+  open: [4b5c6d7e.Decide.1]
+  outstanding:
+    - "Pending: Rework the loader"
+    - "Decide: Which cache to keep for the loader"
+  counts: "📌 Outstanding: 🚧 1 · 🧠 1"

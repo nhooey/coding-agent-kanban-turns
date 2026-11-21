@@ -15,8 +15,8 @@ With the coding-agent-kanban-turns plugin loaded:
 - **An option is marked by a bar.** Each Decide option, its name line and every ➕, ➖ and note line under it, has a one-column bar down its left side for its whole height, which lights while the pointer is anywhere on the option.
 - **A click writes the draft.** A click or a note writes the item's reference, on a line of its own, into the prompt draft, and sends nothing.
 - **Done items stay answerable.** Once the plugin finds a Decide item answered, its box is dimmed, says what made it Done and keeps the sent options' `☑️`, and its options still pick, writing a fresh reference into the draft.
-- **The skill inside the plugin is the fallback** ([derived-skill-package](../../plugin-sole-source/open/derived-skill-package.md)). The plugin ships the derived skill, which teaches the format and reads typed answers when the plugin's hooks fail to load, and the same skill is `packages.skill-standalone` for a harness with no plugins. In either, every answer can still be typed by reference.
+- **The skill inside the plugin is the fallback** ([derived-skill-package](../../plugin-sole-source/closed/derived-skill-package.md)). The plugin ships the derived skill, which teaches the format and reads typed answers when the plugin's hooks fail to load, and the same skill is `packages.skill-standalone` for a harness with no plugins. In either, every answer can still be typed by reference.
 
-All but the last bullet are true on master (#36, #40). The last waits on [derived-skill-package](../../plugin-sole-source/open/derived-skill-package.md), so the node stays open until that lands.
+All but the last bullet are true on master (#36, #40). The last waits on [derived-skill-package](../../plugin-sole-source/closed/derived-skill-package.md), so the node stays open until that lands.
 
 Checks: the plugin's repository's checks pass with a test for each bullet above.

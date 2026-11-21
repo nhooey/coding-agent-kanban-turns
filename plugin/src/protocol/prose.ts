@@ -35,12 +35,18 @@ const NAME = /^[a-z0-9][A-Za-z0-9.-]*$/;
 /** The example turn id the fragments' examples use, cut to the spec's length. */
 const EXAMPLE_TURN = "0f311c94a7d2b5e8";
 
-/** The placeholders the plugin fills itself, not from the spec: its name and its tools' names as the agent calls them, the buttons' `tool` and the other two. */
+/**
+ * The placeholders the plugin fills itself, not from the spec: its name,
+ * its tools' names as the agent calls them, the buttons' `tool` and the
+ * other two, and what drafts the roll-up, as a sentence's subject and verb:
+ * the plugin's tool, or the derived skill's script's commands.
+ */
 export const OWN_PLACEHOLDERS = [
   "plugin",
   "tool",
   "outstanding-tool",
   "lint-tool",
+  "roll-up-drafter",
 ] as const;
 
 /** The plugin's own values, by placeholder. */

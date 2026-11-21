@@ -83,11 +83,17 @@ const values = placeholderValues(SPEC, {
   tool: TOOL_CALLED,
   "outstanding-tool": OUTSTANDING_CALLED,
   "lint-tool": LINT_CALLED,
+  "roll-up-drafter": `The tool \`${OUTSTANDING_CALLED}\` drafts`,
 });
 
 describe("the instructions' fragments", () => {
-  test("are every fragment, each used", () => {
-    expect(unusedFragments(Object.keys(FRAGMENTS), [INSTRUCTION_FRAGMENTS])).toEqual([]);
+  test("are every fragment but the derived skill's own, its description, preferences, scripts and examples", () => {
+    expect(unusedFragments(Object.keys(FRAGMENTS), [INSTRUCTION_FRAGMENTS])).toEqual([
+      "examples",
+      "preferences",
+      "scripts",
+      "skill-description",
+    ]);
   });
 
   test("each find a value in the spec for every placeholder", () => {
