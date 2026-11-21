@@ -40,6 +40,7 @@ import {
   DECIDE,
   LETTER,
   SUBSCRIPT_CHAR,
+  SUBJECT_WORD,
   TURN_ID,
   namesOf,
 } from "../protocol/rules.ts";
@@ -110,34 +111,44 @@ export const summaryOf = (line: string): string => {
   return (BOLD.exec(text)?.[1] ?? text).trim().replace(/:$/, "").trim();
 };
 
-const ENTRY = /\bentr(?:y|ies)\s+(\d{3,4})\b/i;
-const STOP_WORDS: readonly string[] =
-  "a an and at by for from in is its of on the to with".split(" ");
-const KEY_WORDS = 3;
+const SUBJECT = SPEC.subject;
+const ENTRY_DIGITS = SUBJECT.entry.digits;
+// A backlog entry, as the spec words it: `\b(?:entry|entries)\s+(\d{3,4})\b`,
+// ignoring case. No `u` flag: with `i`, it would fold the long s, `ſ`, into
+// `s` and the Kelvin sign, U+212A, into `k`, and count both as word
+// characters at `\b`, so `entrieſ 0550` would name an entry and
+// `ſentry 0550` would not.
+const ENTRY = new RegExp(
+  String.raw`\b(?:${SUBJECT.entry.words.map(escaped).join("|")})\s+(\d{${ENTRY_DIGITS.fewest},${ENTRY_DIGITS.most}})\b`,
+  "i",
+);
+const KEY_WORD = new RegExp(SUBJECT_WORD, "g");
+const STOP_WORDS: readonly string[] = SUBJECT["stop-words"];
 
 /** The text with everything but letters and digits gone, lowercased. */
 const normal = (text: string): string =>
   text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
 
 /**
- * The key that matches an item across rewordings of its summary: `entry 1411`
- * where the summary names a backlog entry, else `branch atomic-reload` for its
- * first code span shaped like a branch name, else its first 3 words that are
- * not articles or prepositions, lowercased.
+ * The key that matches an item across rewordings of its summary, by the
+ * spec's `subject` rule: `entry 1411` where the summary names a backlog
+ * entry, else `branch atomic-reload` for its first code span shaped like a
+ * branch name, else its first `words-kept` words that aren't stop words,
+ * lowercased, `ship release users`.
  */
 export const subjectKey = (summary: string): string => {
   const entry = ENTRY.exec(summary)?.[1];
   const branch = branchSpans(summary)[0];
-  const words = (summary.toLowerCase().match(/[a-z0-9]+/g) ?? []).filter(
+  const words = (summary.toLowerCase().match(KEY_WORD) ?? []).filter(
     (word) => !STOP_WORDS.includes(word),
   );
 
   return entry !== undefined
-    ? `entry ${entry}`
+    ? `${SUBJECT.entry.label} ${entry}`
     : branch !== undefined
-      ? `branch ${branch}`
+      ? `${SUBJECT.branch.label} ${branch}`
       : words.length > 0
-        ? words.slice(0, KEY_WORDS).join(" ")
+        ? words.slice(0, SUBJECT["words-kept"]).join(" ")
         : normal(summary);
 };
 

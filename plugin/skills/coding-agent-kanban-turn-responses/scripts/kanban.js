@@ -6850,6 +6850,43 @@ var SPEC = {
     "label": "Frees",
     "separator": ","
   },
+  "subject": {
+    "alphabet": "0123456789abcdefghijklmnopqrstuvwxyz",
+    "words-kept": 3,
+    "stop-words": [
+      "a",
+      "an",
+      "and",
+      "at",
+      "by",
+      "for",
+      "from",
+      "in",
+      "is",
+      "its",
+      "of",
+      "on",
+      "the",
+      "to",
+      "with"
+    ],
+    "entry": {
+      "label": "entry",
+      "words": [
+        "entry",
+        "entries"
+      ],
+      "digits": {
+        "fewest": 3,
+        "most": 4
+      }
+    },
+    "branch": {
+      "label": "branch",
+      "separator": "-",
+      "fewest-words": 2
+    }
+  },
   "roll-up": {
     "glyph": "\u{1F4CC}",
     "header": "Outstanding from previous turns",
@@ -6913,7 +6950,9 @@ var resolvedRefs = (refs, ids, span, known) => once(
 );
 
 // src/protocol/rules.ts
-var classOf = (chars) => `[${chars.replace(/[\\\]^-]/g, "\\$&")}]`;
+var inClass = (chars) => chars.replace(/[\\\]^-]/g, "\\$&");
+var classOf = (chars) => `[${inClass(chars)}]`;
+var SUBJECT_WORD = `${classOf(SPEC.subject.alphabet)}+`;
 var DECIDE = SPEC.lists.decide;
 var DONE = SPEC.lists.done;
 var REASSESS = "reassess";
@@ -7478,12 +7517,16 @@ var elements = (text) => {
     text: (texts.get(at2) ?? "").trim()
   }));
 };
+var BRANCH_SHAPE = SPEC.subject.branch;
+var WORD_CHAR = String.raw`[\p{L}\p{N}_${inClass(BRANCH_SHAPE.separator)}]`;
 var namesWord = (name, text) => name.trim() !== "" && new RegExp(
-  String.raw`(?<![\p{L}\p{N}_-])${escaped(name)}(?![\p{L}\p{N}_-])`,
+  String.raw`(?<!${WORD_CHAR})${escaped(name)}(?!${WORD_CHAR})`,
   "iu"
 ).test(text);
 var SPAN = /`([^`]+)`/g;
-var BRANCH = /^[a-z0-9]+(?:-[a-z0-9]+)+$/;
+var BRANCH = new RegExp(
+  String.raw`^${SUBJECT_WORD}(?:${escaped(BRANCH_SHAPE.separator)}${SUBJECT_WORD}){${BRANCH_SHAPE["fewest-words"] - 1},}$`
+);
 var branchSpans = (text) => [...text.matchAll(SPAN)].map((m) => m[1] ?? "").filter((span) => BRANCH.test(span));
 var reportNamesItem = (summary, names, report) => names.some((name) => namesWord(name, summary)) || branchSpans(summary).some((branch) => namesWord(branch, report));
 
@@ -7810,17 +7853,22 @@ var summaryOf = (line) => {
   const text = line.replace(PREFIX, "");
   return (BOLD.exec(text)?.[1] ?? text).trim().replace(/:$/, "").trim();
 };
-var ENTRY = /\bentr(?:y|ies)\s+(\d{3,4})\b/i;
-var STOP_WORDS = "a an and at by for from in is its of on the to with".split(" ");
-var KEY_WORDS = 3;
+var SUBJECT = SPEC.subject;
+var ENTRY_DIGITS = SUBJECT.entry.digits;
+var ENTRY = new RegExp(
+  String.raw`\b(?:${SUBJECT.entry.words.map(escaped).join("|")})\s+(\d{${ENTRY_DIGITS.fewest},${ENTRY_DIGITS.most}})\b`,
+  "i"
+);
+var KEY_WORD = new RegExp(SUBJECT_WORD, "g");
+var STOP_WORDS = SUBJECT["stop-words"];
 var normal = (text) => text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
 var subjectKey = (summary) => {
   const entry = ENTRY.exec(summary)?.[1];
   const branch = branchSpans(summary)[0];
-  const words = (summary.toLowerCase().match(/[a-z0-9]+/g) ?? []).filter(
+  const words = (summary.toLowerCase().match(KEY_WORD) ?? []).filter(
     (word) => !STOP_WORDS.includes(word)
   );
-  return entry !== void 0 ? `entry ${entry}` : branch !== void 0 ? `branch ${branch}` : words.length > 0 ? words.slice(0, KEY_WORDS).join(" ") : normal(summary);
+  return entry !== void 0 ? `${SUBJECT.entry.label} ${entry}` : branch !== void 0 ? `${SUBJECT.branch.label} ${branch}` : words.length > 0 ? words.slice(0, SUBJECT["words-kept"]).join(" ") : normal(summary);
 };
 var awaitsBody = (text) => {
   const bold = /^\*\*(.+?)\*\*/.exec(text);

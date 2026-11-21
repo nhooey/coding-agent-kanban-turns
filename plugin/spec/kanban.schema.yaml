@@ -6,7 +6,18 @@ title: The kanban turn-response protocol's checkable rules
 type: object
 additionalProperties: false
 required:
-  [lists, options, commands, skill, reference, frees, roll-up, tag, characters]
+  [
+    lists,
+    options,
+    commands,
+    skill,
+    reference,
+    frees,
+    subject,
+    roll-up,
+    tag,
+    characters,
+  ]
 definitions:
   # One character or emoji, never blank.
   glyph:
@@ -154,6 +165,53 @@ properties:
       separator:
         type: string
         pattern: ^[,;/]$
+  subject:
+    type: object
+    additionalProperties: false
+    required: [alphabet, words-kept, stop-words, entry, branch]
+    properties:
+      # Lowercase letters and digits, since a summary is lowercased before
+      # its words are read.
+      alphabet:
+        type: string
+        pattern: ^[0-9a-z]+$
+      words-kept: { type: integer, minimum: 1 }
+      stop-words:
+        type: array
+        items: { $ref: "#/definitions/word" }
+        uniqueItems: true
+      entry:
+        type: object
+        additionalProperties: false
+        required: [label, words, digits]
+        properties:
+          label: { $ref: "#/definitions/word" }
+          words:
+            type: array
+            items: { $ref: "#/definitions/word" }
+            minItems: 1
+            uniqueItems: true
+          digits:
+            type: object
+            additionalProperties: false
+            required: [fewest, most]
+            properties:
+              fewest: { type: integer, minimum: 1 }
+              most: { type: integer, minimum: 1 }
+      branch:
+        type: object
+        additionalProperties: false
+        required: [label, separator, fewest-words]
+        properties:
+          label: { $ref: "#/definitions/word" }
+          # A hyphen or an underscore, so no word of the alphabet holds it,
+          # and a name a report goes by still reads as a whole word before
+          # a sentence's full stop or beside a path's slash.
+          separator:
+            type: string
+            pattern: ^[-_]$
+          # Two or more, or a single word would be a branch name.
+          fewest-words: { type: integer, minimum: 2 }
   roll-up:
     type: object
     additionalProperties: false
