@@ -14,11 +14,11 @@ touches: [flake.nix, plugin/spec/, nix/]
 - **What the skill folder holds,** all built from the repository at build time:
   - `SKILL.md`, assembled from the prose fragments and the spec's JSON copy ([protocol-prose-fragments](../closed/protocol-prose-fragments.md), [protocol-spec-data](../closed/protocol-spec-data.md)), with frontmatter in the form skills take, its `name` the folder's;
   - worked examples rendered from chosen golden cases ([protocol-golden-cases](../closed/protocol-golden-cases.md));
-  - `scripts/`: the CLI from [kanban-cli-adapter](kanban-cli-adapter.md), `kanban.js` and the standalone binary for the platform the plugin is built for.
+  - `scripts/`: the CLI from [kanban-cli-adapter](../closed/kanban-cli-adapter.md), `kanban.js` and the standalone binary for the platform the plugin is built for.
 - **The fallback runs the plugin's core.** SKILL.md tells the agent to run `scripts/kanban.js` under Node where it can, and the binary otherwise, passing the transcript's path or neutral turns on stdin. Both are the same core functions the hooks call, bundled, so the fallback can't count, roll up or lint differently from the plugin.
 - **One derivation, two places.** The skill folder is built once, as its own derivation, and `packages.plugin` copies it into `skills/`.
 - **A skill-only output for harnesses without plugins.** The same derivation is exposed as `packages.skill-standalone`, a plain skill folder that skillspkgs or a skills-devshell can install for a harness that loads skills but not Claude Code plugins.
-  - It's kept because the harness-neutral core ([neutral-turn-stream](../closed/neutral-turn-stream.md)) and the CLI's stdin input ([kanban-cli-adapter](kanban-cli-adapter.md)) exist for those harnesses, and without an installable skill they'd have nothing to run them.
+  - It's kept because the harness-neutral core ([neutral-turn-stream](../closed/neutral-turn-stream.md)) and the CLI's stdin input ([kanban-cli-adapter](../closed/kanban-cli-adapter.md)) exist for those harnesses, and without an installable skill they'd have nothing to run them.
   - Exposing it costs one attribute, since the plugin builds the same derivation, and the two can't differ.
   - It's secondary: nothing in a Claude Code session installs it beside the plugin, where it would load a second copy of the instructions under an unprefixed name.
 - **Deterministic.** The build reads only the repository, so one commit always gives the same plugin, skill included, byte for byte.

@@ -1,0 +1,8 @@
+{
+  "main": "kanban.js",
+  "mainFormat": "module",
+  "output": "kanban",
+  "disableExperimentalSEAWarning": true,
+  "useCodeCache": false,
+  "useSnapshot": false
+}

@@ -2,8 +2,10 @@
 // to a session's JSONL file, trimmed to the fields that matter and with
 // made-up content.
 
+import { isObject } from "../../src/json/fields.ts";
 import { PLUGIN, TOOL_CALLED } from "../../src/protocol/instructions.ts";
 import type { TranscriptRecord } from "../../src/transcript/claude-code.ts";
+import type { Message, Owner, Turn } from "../../types/index.d.ts";
 
 /** A whole prompt id from the 8 characters a turn id holds; empty stays empty. */
 export const promptId = (id: string): string =>
@@ -217,3 +219,113 @@ export const queued = (text: string, kind = "human"): TranscriptRecord => ({
 /** The records as the file holds them, one JSON object a line. */
 export const jsonl = (records: readonly TranscriptRecord[]): string =>
   records.map((record) => `${JSON.stringify(record)}\n`).join("");
+
+/** The record each writer's prompt opens a turn on. */
+const PROMPTS: Readonly<Record<Owner, (id: string, text: string) => TranscriptRecord>> = {
+  user: human,
+  "this-plugin": submitted,
+  "other-plugin": otherPluginPrompt,
+  peer,
+  notification,
+  scheduled,
+};
+
+/** The origin's kind a message sent while a turn ran carries, by who sent it; the engine queues no other's. */
+const QUEUED_KINDS: Readonly<Partial<Record<Owner, string>>> = {
+  user: "human",
+  peer: "peer",
+  notification: "task-notification",
+};
+
+const queuedBy = (message: Message): TranscriptRecord => {
+  const kind = QUEUED_KINDS[message.owner];
+
+  if (kind === undefined) {
+    throw new Error(`Claude Code queues no message of a ${message.owner}'s`);
+  }
+
+  return queued(message.text, kind);
+};
+
+/** An assistant record whose response stopped for `reason`, as the engine writes each record of a response. */
+export const stoppedFor = (reason: string, record: TranscriptRecord): TranscriptRecord => ({
+  ...record,
+  message: { ...(isObject(record.message) ? record.message : {}), stop_reason: reason },
+});
+
+/**
+ * The record the engine writes when the user interrupts a response, the
+ * Escape key: `[Request interrupted by user]` while it wrote, or `… for tool
+ * use]` while a tool ran. It opens no turn.
+ */
+export const interrupted = (isForTool = false): TranscriptRecord =>
+  user(
+    { promptId: promptId("0000aaaa"), interruptedMessageId: "msg_011ChBhXUXJzGAmnihSJKbea" },
+    [{ type: "text", text: `[Request interrupted by user${isForTool ? " for tool use" : ""}]` }],
+  );
+
+/** A tool's result when the user stopped the tool, which the engine writes before `interrupted(true)`. */
+export const toolRejected = (): TranscriptRecord =>
+  user({ promptId: promptId("0000aaaa") }, [
+    {
+      tool_use_id: "toolu_02",
+      type: "tool_result",
+      content: "The user doesn't want to proceed with this tool use. The tool use was rejected.",
+      is_error: true,
+    },
+  ]);
+
+/** The record the engine writes in the model's place for an API error: its model `<synthetic>`, its stop reason `stop_sequence`. */
+export const apiError = (text: string): TranscriptRecord => ({
+  parentUuid: "29987975-e52f-4287-8fac-ee0dbb349382",
+  isSidechain: false,
+  type: "assistant",
+  message: {
+    role: "assistant",
+    model: "<synthetic>",
+    stop_reason: "stop_sequence",
+    content: [{ type: "text", text }],
+  },
+  isApiErrorMessage: true,
+  uuid: "88bb1d40-af93-4c2e-b2d4-6f2e1d4fa011",
+  timestamp: "2026-11-16T20:06:40.000Z",
+});
+
+/** The boundary a compaction writes before its summary. */
+export const compactBoundary = (): TranscriptRecord => ({
+  parentUuid: null,
+  isSidechain: false,
+  type: "system",
+  subtype: "compact_boundary",
+  content: "Conversation compacted",
+  uuid: "99cc2e51-b0a4-4d3f-83e5-7a3f2e5ab122",
+  timestamp: "2026-11-16T20:07:00.000Z",
+});
+
+/**
+ * The records Claude Code would write for neutral turns, for the adapter
+ * to read back: each turn's prompt, by who wrote it, the messages sent
+ * while it ran, a record whose `kanban_options` call raises its Decide
+ * items, and a record for each reply. Each response stops to call a tool
+ * but the turn's last, which ends the turn, or, for an unanswered turn,
+ * stops for a tool too. A report's names are left for the adapter to read
+ * from its text.
+ */
+export const recordsOfTurns = (turns: readonly Turn[]): readonly TranscriptRecord[] =>
+  turns.flatMap((turn) => {
+    const responses = [
+      ...(turn.decide.length === 0 ? [] : [assistant("", [{ items: turn.decide }])]),
+      ...turn.replies.map((reply) => assistant(reply)),
+    ];
+
+    return [
+      PROMPTS[turn.prompt.owner](turn.id, turn.prompt.text),
+      ...turn.messages.map(queuedBy),
+      ...responses.map((record, n) =>
+        stoppedFor(
+          n === responses.length - 1 && turn.unanswered !== true ? "end_turn" : "tool_use",
+          record,
+        ),
+      ),
+    ];
+  });

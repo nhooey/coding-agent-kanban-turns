@@ -30,8 +30,9 @@ import {
   summaryOf,
   unsettled,
 } from "../../src/items/outstanding.ts";
-import { lintReply } from "../../src/lint/reply.ts";
+import { isKanbanReply, lintReply } from "../../src/lint/reply.ts";
 import type { Rule } from "../../src/lint/reply.ts";
+import { isOptionLetter as isLetter, isTurnId } from "../../src/protocol/rules.ts";
 import { SPEC } from "../../src/protocol/spec.ts";
 import { commandOf, isOwn } from "../../src/transcript/turns.ts";
 import type { Message, Owner, Turn } from "../../types/index.d.ts";
@@ -45,8 +46,12 @@ export const CASE_SCHEMA_FILE = `${CASES_DIR}/case.schema.yaml`;
 /** One finding of the reply lint: the reply's line, from 1, and the rule it breaks. */
 export type Finding = Readonly<{ line: number; rule: Rule }>;
 
-/** One of the agent's responses, and the lint's findings for it. */
-export type CaseReply = Readonly<{ text: string; lint: readonly Finding[] }>;
+/** One of the agent's responses, the lint's findings for it, and whether the turn's end lints it, true where left out. */
+export type CaseReply = Readonly<{
+  text: string;
+  lint: readonly Finding[];
+  "turn-end-lints"?: boolean;
+}>;
 
 /** A message sent while a turn ran. */
 export type CaseMessage = Readonly<{
@@ -103,15 +108,6 @@ export type Read = Readonly<{ case: GoldenCase } | { problems: readonly string[]
 
 const TURN_ID = SPEC.reference["turn-id"];
 const LETTERS = SPEC.reference.letters;
-
-/** Whether the reference grammar writes `id` as a turn's id: its length, in its alphabet. */
-const isTurnId = (id: string): boolean =>
-  id.length === TURN_ID.length &&
-  [...id].every((char) => TURN_ID.alphabet.includes(char));
-
-/** Whether the reference grammar writes `letter` as an option's letter: one character, from its first letter to its last. */
-const isLetter = (letter: string): boolean =>
-  [...letter].length === 1 && letter >= LETTERS.first && letter <= LETTERS.last;
 
 /** A reply's lines, the empty one after its final line break left out. */
 const linesOf = (text: string): readonly string[] => {
@@ -377,18 +373,24 @@ const differs = (where: string, expected: unknown, got: unknown): readonly strin
 
 /**
  * Where the reply lint's findings for each reply of a case differ from what
- * the reply expects, one line each. A case names each finding's line and
- * rule alone; what a finding says it found there is the lint's own.
+ * the reply expects, or whether the turn's end lints it, one line each. A
+ * case names each finding's line and rule alone; what a finding says it
+ * found there is the lint's own.
  */
 export const lintFailures = (golden: GoldenCase): readonly string[] =>
   golden.turns.flatMap((turn, at) =>
-    turn.replies.flatMap((reply, n) =>
-      differs(
+    turn.replies.flatMap((reply, n) => [
+      ...differs(
         `turns[${at}].replies[${n}].lint`,
         reply.lint,
         lintReply(reply.text).map(({ line, rule }) => ({ line, rule })),
       ),
-    ),
+      ...differs(
+        `turns[${at}].replies[${n}].turn-end-lints`,
+        reply["turn-end-lints"] ?? true,
+        isKanbanReply(reply.text),
+      ),
+    ]),
   );
 
 /**

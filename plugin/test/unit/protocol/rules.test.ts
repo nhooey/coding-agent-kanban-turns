@@ -13,6 +13,8 @@ import {
   TURN_ID_PREFIX,
   classOf,
   isLineOf,
+  isOptionLetter,
+  isTurnId,
   itemLabel,
   namesOf,
 } from "../../../src/protocol/rules.ts";
@@ -42,6 +44,26 @@ describe("the protocol's patterns", () => {
   test("match a subscript digit or minus", () => {
     expect(whole(`${SUBSCRIPT_CHAR}+`).test("₋₃")).toBe(true);
     expect(whole(SUBSCRIPT_CHAR).test("3")).toBe(false);
+  });
+});
+
+describe("isTurnId", () => {
+  test("holds for the spec's length in its alphabet, and nothing else", () => {
+    expect(isTurnId("9efb08a1")).toBe(true);
+    expect(isTurnId("9efb08a")).toBe(false);
+    expect(isTurnId("9efb08a12")).toBe(false);
+    expect(isTurnId("9EFB08A1")).toBe(false);
+    expect(isTurnId("")).toBe(false);
+  });
+});
+
+describe("isOptionLetter", () => {
+  test("holds for one letter from the grammar's first to its last", () => {
+    expect(isOptionLetter(SPEC.reference.letters.first)).toBe(true);
+    expect(isOptionLetter(SPEC.reference.letters.last)).toBe(true);
+    expect(isOptionLetter("a")).toBe(false);
+    expect(isOptionLetter("AB")).toBe(false);
+    expect(isOptionLetter("")).toBe(false);
   });
 });
 

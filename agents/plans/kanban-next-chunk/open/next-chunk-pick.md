@@ -15,7 +15,7 @@ touches: [plugin/spec/kanban.yaml, plugin/spec/cases/, plugin/src/items/chunk.ts
 - **Freeing.** An item whose freed items are all settled ranks as freeing nothing; a cycle of `Frees` counts each item once.
 - **Two edges over it,** both thin:
   - a plugin tool, `kanban_next_chunk`, registered beside `kanban_outstanding` and `kanban_lint` ([plugin-tools-replace-skill-scripts](../../plugin-sole-source/closed/plugin-tools-replace-skill-scripts.md)), giving the agent the chunk to print;
-  - a CLI subcommand, `chunk` ([kanban-cli-adapter](../../plugin-sole-source/open/kanban-cli-adapter.md)), which works out `shown` from the earlier `next-chunk` turns among its neutral turns, so the derived skill alone keeps a chunk.
+  - a CLI subcommand, `chunk` ([kanban-cli-adapter](../../plugin-sole-source/closed/kanban-cli-adapter.md)), which works out `shown` from the earlier `next-chunk` turns among its neutral turns, so the derived skill alone keeps a chunk.
 - **Tests.** Properties over random item sets and settle sequences:
   - **Idempotent:** with nothing settled in between, `nextChunk` over its own result's refs gives the same chunk.
   - **Sticky:** every ref of the last chunk whose item is still open is in the next chunk, ahead of every new ref.
