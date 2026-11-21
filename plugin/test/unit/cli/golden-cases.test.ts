@@ -9,8 +9,15 @@ import { readFileSync } from "node:fs";
 
 import { answer, requestOf } from "../../../cli/run.ts";
 import { DEFAULTS_FILE, loaded } from "../../../src/config/config.ts";
+import type { GoldenCase } from "../../../tools/spec/cases.ts";
 import { ROUTES, cliFailures, draftFailures, goldenCases, pluginFile } from "../../fixtures/cli.ts";
 import type { Runner } from "../../fixtures/cli.ts";
+
+/** A case with no turn's `kanban_options` call, as a session where only the derived skill loads writes it. */
+const withoutCalls = (golden: GoldenCase): GoldenCase => ({
+  ...golden,
+  turns: golden.turns.map(({ decide: _decide, ...turn }) => turn),
+});
 
 const settings = loaded(
   { path: DEFAULTS_FILE, text: readFileSync(pluginFile(DEFAULTS_FILE), "utf8") },
@@ -43,6 +50,24 @@ describe("the golden cases through the CLI", () => {
       expect(draftFailures(golden, run)).toEqual([]);
     });
   }
+
+  // The derived skill teaches no call to the plugin's buttons, so where it
+  // stands in for the hooks no turn holds a `kanban_options` call, and
+  // every answer is typed by reference. Each case gives the same count
+  // line and roll-up with its turns' Decide calls left out.
+  for (const { name, golden } of goldenCases()) {
+    for (const route of ROUTES) {
+      test(`${name} gives what it expects through ${route.name} with no Decide call, as the skill's turns have none`, () => {
+        expect(cliFailures(withoutCalls(golden), run, route, false)).toEqual([]);
+      });
+    }
+  }
+
+  test("some case carries a Decide call, so leaving the calls out changes it", () => {
+    expect(
+      goldenCases().filter(({ golden }) => golden.turns.some((turn) => (turn.decide ?? []).length > 0)),
+    ).not.toEqual([]);
+  });
 
   test("a reply whose findings are changed by hand fails as a draft", () => {
     const found = goldenCases().find(({ name }) => name === "lint-layout-findings.yaml");
