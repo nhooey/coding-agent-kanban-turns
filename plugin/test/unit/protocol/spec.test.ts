@@ -219,6 +219,42 @@ describe("specProblems", () => {
       "the glyph 👎 marks more than one option kind",
     ]);
   });
+
+  test("finds a backlog entry's digits that run backwards", () => {
+    const withDigits = (fewest: number, most: number): SpecShape => ({
+      ...spec,
+      subject: { ...spec.subject, entry: { ...spec.subject.entry, digits: { fewest, most } } },
+    });
+
+    expect(specProblems(withDigits(5, 4))).toEqual([
+      "a backlog entry's digits run backwards, 5 to 4",
+    ]);
+    expect(specProblems(withDigits(4, 4))).toEqual([]);
+  });
+
+  test("finds one label for a backlog entry's key and a branch's, which keeps the kinds of key apart no more", () => {
+    const withBranchLabel = (label: string): SpecShape => ({
+      ...spec,
+      subject: { ...spec.subject, branch: { label } },
+    });
+
+    expect(specProblems(withBranchLabel("entry"))).toEqual([
+      `a backlog entry's key and a branch's both open with "entry", so the kinds of key aren't kept apart`,
+    ]);
+    expect(specProblems(withBranchLabel("span"))).toEqual([]);
+  });
+
+  test("finds a stop word with a character outside the subject's alphabet, which stops nothing", () => {
+    expect(
+      specProblems({ ...spec, subject: { ...spec.subject, alphabet: "0123456789abcdefghijklmnopqrsuvwxyz" } }),
+    ).toEqual([
+      'the stop word "at" holds a character outside the subject\'s alphabet, so it stops nothing',
+      'the stop word "its" holds a character outside the subject\'s alphabet, so it stops nothing',
+      'the stop word "the" holds a character outside the subject\'s alphabet, so it stops nothing',
+      'the stop word "to" holds a character outside the subject\'s alphabet, so it stops nothing',
+      'the stop word "with" holds a character outside the subject\'s alphabet, so it stops nothing',
+    ]);
+  });
 });
 
 describe("the build step", () => {
@@ -303,6 +339,19 @@ describe("the build step", () => {
     expect(problemsOf(edited("  minus: ₋\n", "  minus: ₋\n  plus: ₊\n"))).toEqual([
       `${SPEC_FILE}: /tag must NOT have additional properties: plus`,
     ]);
+  });
+
+  test("refuses a branch name of one word, and a separator a sentence or a path holds", () => {
+    expect(problemsOf(edited("    fewest-words: 2\n", "    fewest-words: 1\n"))).toEqual([
+      `${SPEC_FILE}: /subject/branch/fewest-words must be >= 2`,
+    ]);
+    expect(problemsOf(edited('    separator: "-"\n', '    separator: "."\n'))).toEqual([
+      `${SPEC_FILE}: /subject/branch/separator must match pattern "^[-_]$"`,
+    ]);
+    expect(problemsOf(edited('    separator: "-"\n', '    separator: "/"\n'))).toEqual([
+      `${SPEC_FILE}: /subject/branch/separator must match pattern "^[-_]$"`,
+    ]);
+    expect(problemsOf(edited('    separator: "-"\n', '    separator: "_"\n'))).toEqual([]);
   });
 
   test("refuses a spec that isn't consistent", () => {

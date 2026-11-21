@@ -64,6 +64,15 @@ export type SpecShape = Readonly<{
     "turn-id": Readonly<{ length: number; shortest: number }>;
     letters: Readonly<{ first: string; last: string }>;
   }>;
+  subject: Readonly<{
+    alphabet: string;
+    "stop-words": readonly string[];
+    entry: Readonly<{
+      label: string;
+      digits: Readonly<{ fewest: number; most: number }>;
+    }>;
+    branch: Readonly<{ label: string }>;
+  }>;
 }>;
 
 /** The way that settles nothing, the one way a list that doesn't roll up is settled by. */
@@ -171,6 +180,35 @@ const letterProblems = (spec: SpecShape): readonly string[] => {
   ];
 };
 
+/**
+ * A backlog entry's digit count that runs backwards; one label for an
+ * entry's key and a branch's, so an entry's digits and a branch name
+ * alike could match; and each stop word with a character outside the
+ * subject's alphabet, which no word read from a summary holds, so it stops
+ * nothing.
+ */
+const subjectProblems = (spec: SpecShape): readonly string[] => {
+  const { alphabet, entry, branch } = spec.subject;
+  const { fewest, most } = entry.digits;
+
+  return [
+    ...(fewest <= most
+      ? []
+      : [`a backlog entry's digits run backwards, ${fewest} to ${most}`]),
+    ...(entry.label !== branch.label
+      ? []
+      : [
+          `a backlog entry's key and a branch's both open with ${JSON.stringify(entry.label)}, so the kinds of key aren't kept apart`,
+        ]),
+    ...spec.subject["stop-words"]
+      .filter((word) => [...word].some((char) => !alphabet.includes(char)))
+      .map(
+        (word) =>
+          `the stop word ${JSON.stringify(word)} holds a character outside the subject's alphabet, so it stops nothing`,
+      ),
+  ];
+};
+
 /** Each glyph that marks more than one option kind, its glyph or a letter's. */
 const kindGlyphProblems = (spec: SpecShape): readonly string[] =>
   repeated(
@@ -190,7 +228,10 @@ const kindGlyphProblems = (spec: SpecShape): readonly string[] =>
  * - a command name that starts another's;
  * - a turn id's shortest prefix longer than the id;
  * - a letter range that runs backwards, or an option kind's letter outside it;
- * - a glyph two option kinds share.
+ * - a glyph two option kinds share;
+ * - a backlog entry's digit count that runs backwards, one label for an
+ *   entry's key and a branch's, or a stop word with a character outside
+ *   the subject's alphabet.
  */
 export const specProblems = (spec: SpecShape): readonly string[] => {
   const lists = Object.values(spec.lists);
@@ -211,6 +252,7 @@ export const specProblems = (spec: SpecShape): readonly string[] => {
     ...turnIdProblems(spec),
     ...letterProblems(spec),
     ...kindGlyphProblems(spec),
+    ...subjectProblems(spec),
   ];
 };
 
