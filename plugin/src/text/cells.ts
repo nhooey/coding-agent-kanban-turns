@@ -93,3 +93,11 @@ export const cellWidth = (text: string): number =>
     (cells, grapheme) => cells + graphemeWidth(grapheme),
     0,
   );
+
+/** `text` with spaces after it until it takes `cells` cells; as it is where it already takes that many or more. */
+export const padToCells = (text: string, cells: number): string =>
+  `${text}${" ".repeat(Math.max(0, cells - cellWidth(text)))}`;
+
+/** The cells the widest of `texts` takes; 0 for none. */
+export const widestCells = (texts: readonly string[]): number =>
+  Math.max(0, ...texts.map(cellWidth));

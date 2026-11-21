@@ -1,7 +1,9 @@
 // The settings differential test's oracle: src/config/config.ts as it was
 // while it checked both files against a hand-written SETTINGS_SHAPE, copied
 // below this header from commit fc64639, unchanged but for SETTINGS_SHAPE,
-// which gains each section added since (roll-up, lint).
+// which gains each section added since (roll-up, lint) and each setting
+// added to one (marks' chosen to buttons), and the `mark` kind those
+// marks have, checked as src/config/config.ts checks it.
 //
 // Temporary: the oracle and its test are deleted once the derived shape has
 // shipped in a release.
@@ -26,18 +28,23 @@ import type { ParsedDocument } from "../../vendor/yaml/yaml.js";
 import type { Json, Loaded, Settings } from "../../types/index.d.ts";
 
 /**
- * The type each setting must have: a section is a map of its keys, and a
- * `key` is a string the engine takes as a Button's hotkey.
+ * The type each setting must have: a section is a map of its keys, a
+ * `key` is a string the engine takes as a Button's hotkey, and a `mark` a
+ * string the pane draws on one line.
  */
 type Shape =
   | "string"
   | "number"
   | "boolean"
   | "key"
+  | "mark"
   | { readonly [key: string]: Shape };
 
 /** What the engine takes as a Button's hotkey: one lowercase letter or one digit; it refuses the whole drawing over anything else. */
 const HOTKEY = /^[a-z0-9]$/;
+
+/** What no mark may hold: a control character, or a line or paragraph separator. */
+const UNDRAWABLE = /[\p{Cc}\u{2028}\u{2029}]/u;
 
 /** Every setting the plugin reads, by the type its value must have. */
 export const SETTINGS_SHAPE: Shape = {
@@ -52,7 +59,23 @@ export const SETTINGS_SHAPE: Shape = {
   },
   pane: { "close-when-all-submitted": "boolean" },
   notes: { rows: "number" },
-  marks: { sent: "string" },
+  marks: {
+    sent: "mark",
+    chosen: "mark",
+    note: "mark",
+    "settled-bar": "mark",
+    collapsed: "mark",
+    expanded: "mark",
+    buttons: {
+      dismiss: "mark",
+      next: "mark",
+      previous: "mark",
+      submit: "mark",
+      reassess: "mark",
+      help: "mark",
+      kanban: "mark",
+    },
+  },
   colors: {
     border: "string",
     "title-label": "string",
@@ -233,6 +256,20 @@ const scalarProblems = (
       ? [`${named(path)} is ${unfinite(value)}, not a finite number`]
       : [];
 
+/** What's wrong with a mark's value: anything but a string, an empty one, or one holding a control character or a line or paragraph separator. */
+const markProblems = (value: Json, path: readonly string[]): readonly string[] =>
+  typeof value !== "string"
+    ? scalarProblems("string", value, path)
+    : value === ""
+      ? [
+          `${named(path)} is "", not a mark; write a glyph, quoted where YAML would read it otherwise, such as ">"`,
+        ]
+      : UNDRAWABLE.test(value)
+        ? [
+            `${named(path)} is ${JSON.stringify(value)}, which holds a control character or a line break; a mark is drawn on one line`,
+          ]
+        : [];
+
 /** The value with each section the shape names that's null, as a section with every key commented out reads, empty. */
 const nullSectionsEmptied = (shape: Shape, value: Json): Json =>
   typeof shape === "string" || !isMap(value)
@@ -268,6 +305,8 @@ export const problemsIn = (
       : [
           `${named(path)} is ${typeof value === "string" ? JSON.stringify(value) : typeName(value)}, not one lowercase letter or digit, as the pane's keys must be`,
         ]
+    : shape === "mark"
+    ? markProblems(value, path)
     : typeof shape === "string"
     ? scalarProblems(shape, value, path)
     : !isMap(value)

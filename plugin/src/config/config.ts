@@ -19,8 +19,12 @@ import type { ParsedDocument } from "../../vendor/yaml/yaml.js";
 import { isObject } from "../json/fields.ts";
 import type { Json, Loaded, Settings } from "../../types/index.d.ts";
 
-/** The type a setting must have: a scalar's, or a `key`, a string the engine takes as a Button's hotkey. */
-export type Kind = "string" | "number" | "boolean" | "key";
+/**
+ * The type a setting must have: a scalar's; a `key`, a string the engine
+ * takes as a Button's hotkey; or a `mark`, a string the pane draws as it is
+ * on one line.
+ */
+export type Kind = "string" | "number" | "boolean" | "key" | "mark";
 
 /** The type each setting must have: a section is a map of its keys. */
 export type Shape = Kind | { readonly [key: string]: Shape };
@@ -28,11 +32,15 @@ export type Shape = Kind | { readonly [key: string]: Shape };
 /** What the engine takes as a Button's hotkey: one lowercase letter or one digit; it refuses the whole drawing over anything else. */
 const HOTKEY = /^[a-z0-9]$/;
 
+/** What no mark may hold, since it would break the line the mark is drawn on: a control character, or a line or paragraph separator. */
+const UNDRAWABLE = /[\p{Cc}\u{2028}\u{2029}]/u;
+
 /**
  * The type of every setting in a section, by the section's dotted key,
- * where the defaults' types don't say it: every pane key is a hotkey.
+ * where the defaults' types don't say it: every pane key is a hotkey, and
+ * every setting under `marks`, its buttons' among them, a mark.
  */
-const KINDS: Readonly<Record<string, Kind>> = { keys: "key" };
+const KINDS: Readonly<Record<string, Kind>> = { keys: "key", marks: "mark" };
 
 /** The types a default gives its setting by being one. */
 const SCALARS = ["string", "number", "boolean"] as const;
@@ -279,6 +287,25 @@ const scalarProblems = (
       ? [`${named(path)} is ${unfinite(value)}, not a finite number`]
       : [];
 
+/**
+ * What's wrong with a mark's value: anything but a string, as a string
+ * setting's; an empty string, as YAML reads a bare `>` or `|`, which the
+ * pane would draw as nothing; or one holding a control character or a line
+ * or paragraph separator.
+ */
+const markProblems = (value: Json, path: readonly string[]): readonly string[] =>
+  typeof value !== "string"
+    ? scalarProblems("string", value, path)
+    : value === ""
+      ? [
+          `${named(path)} is "", not a mark; write a glyph, quoted where YAML would read it otherwise, such as ">"`,
+        ]
+      : UNDRAWABLE.test(value)
+        ? [
+            `${named(path)} is ${JSON.stringify(value)}, which holds a control character or a line break; a mark is drawn on one line`,
+          ]
+        : [];
+
 /** The value with each section the shape names that's null, as a section with every key commented out reads, empty. */
 export const nullSectionsEmptied = (shape: Shape, value: Json): Json =>
   typeof shape === "string" || !isMap(value)
@@ -314,6 +341,8 @@ export const problemsIn = (
       : [
           `${named(path)} is ${typeof value === "string" ? JSON.stringify(value) : typeName(value)}, not one lowercase letter or digit, as the pane's keys must be`,
         ]
+    : shape === "mark"
+    ? markProblems(value, path)
     : typeof shape === "string"
     ? scalarProblems(shape, value, path)
     : !isMap(value)

@@ -398,13 +398,13 @@ describe("the user's file over the defaults", () => {
   });
 
   test("a broken defaults file leaves no settings at all", () => {
-    const got = loaded({ path: "d", text: '{"keys": {}}' }, undefined);
+    const got = loaded({ path: "d", text: '{"keys": {}, "marks": {"m": "x"}}' }, undefined);
     expect(got.settings).toBeNull();
     expect(got.problems).toEqual(["d: keys holds no settings"]);
   });
 
   test("a defaults file with a null default leaves no settings, and the user's file unchecked", () => {
-    const got = loaded({ path: "d", text: '{"keys": {"dismiss": "q"}, "counts": {"turns": null}}' }, user('{"keys": {"x": "y"}}'));
+    const got = loaded({ path: "d", text: '{"keys": {"dismiss": "q"}, "marks": {"m": "x"}, "counts": {"turns": null}}' }, user('{"keys": {"x": "y"}}'));
     expect(got.settings).toBeNull();
     expect(got.problems).toEqual([
       "d: counts.turns is null, so its default gives it no type; write a string, a number, or true or false, or name its section's type in KINDS in src/config/config.ts",
@@ -425,7 +425,7 @@ describe("a config.yaml written as JSON", () => {
 
   test("reads minified onto one line past YAML's 1024 characters for an implicit key", () => {
     const everything = loaded(defaults, undefined).settings;
-    const long = { ...everything, marks: { sent: "☑".repeat(2000) } };
+    const long = { ...everything, marks: { ...everything?.marks, sent: "☑".repeat(2000) } };
     const minified = JSON.stringify(long);
     expect(minified.length).toBeGreaterThan(2000);
     expect(minified).not.toContain("\n");

@@ -269,7 +269,23 @@ export type Settings = Readonly<{
   }>;
   pane: Readonly<{ "close-when-all-submitted": boolean }>;
   notes: Readonly<{ rows: number }>;
-  marks: Readonly<{ sent: string }>;
+  marks: Readonly<{
+    sent: string;
+    chosen: string;
+    note: string;
+    "settled-bar": string;
+    collapsed: string;
+    expanded: string;
+    buttons: Readonly<{
+      dismiss: string;
+      next: string;
+      previous: string;
+      submit: string;
+      reassess: string;
+      help: string;
+      kanban: string;
+    }>;
+  }>;
   colors: Readonly<{
     border: string;
     "title-label": string;

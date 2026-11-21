@@ -124,7 +124,23 @@ const DEFAULTS = JSON.stringify({
   keys: { dismiss: "q", next: "j", previous: "k", submit: "s", reassess: "r", help: "h" },
   pane: { "close-when-all-submitted": true },
   notes: { rows: 3 },
-  marks: { sent: "☑️" },
+  marks: {
+    sent: "☑️",
+    chosen: "✅",
+    note: "✏️",
+    "settled-bar": "▌",
+    collapsed: "▸",
+    expanded: "▾",
+    buttons: {
+      dismiss: "✖",
+      next: "↓",
+      previous: "↑",
+      submit: "📤",
+      reassess: "🔄",
+      help: "?",
+      kanban: "🖥️",
+    },
+  },
   colors: {
     border: "promptBorder",
     "title-label": "inverseText",
@@ -2195,6 +2211,86 @@ test("with pane.close-when-all-submitted off, a Submit answering every open item
   expect(state.sent).toHaveLength(1);
   expect(state.isPaneOpen).toBe(true);
   await ui.unmount();
+});
+
+// A user's file setting every mark to a character of its own, each one cell
+// wide where the kind glyphs take two.
+const OWN_MARKS = [
+  "marks:",
+  "  sent: S",
+  "  chosen: C",
+  "  note: N",
+  "  settled-bar: '|'",
+  "  collapsed: '+'",
+  "  expanded: '-'",
+  "  buttons:",
+  "    dismiss: X",
+  "    next: v",
+  "    previous: '^'",
+  "    submit: '>'",
+  "    reassess: R",
+  "    help: H",
+  "    kanban: K",
+  "",
+].join("\n");
+
+test("a user's marks draw every surface in their own glyphs, an option's lead padded to the widest of its item's", async ($, on) => {
+  const later: TranscriptRecord[] = [];
+  const state = engine(on, () => ITEMS, listsText, () => later);
+  state.userFiles = { "config.yaml": OWN_MARKS };
+  await $.turn.complete(replyDone("t1"));
+  later.push(human("b2c3d4e5", "9efb08a1.Decide.1.A"), replyRecord([LATER], listsText([LATER])));
+  await $.turn.complete(replyDone("t2"));
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  const line = await $.ui.mount({ ...ABOVE_PROMPT, surface: "terminal" });
+  const button = async (
+    drawing: { find: (q: { type: "Button"; key: string }) => Promise<{ text: string } | undefined> },
+    key: string,
+  ) => (await drawing.find({ type: "Button", key }))?.text;
+
+  // Each button, atop the pane, in the keys panel and above the prompt.
+  expect(await button(ui, "previous")).toBe("^ Previous");
+  expect(await button(ui, "next")).toBe("v Next");
+  expect(await button(ui, "keys")).toBe("H Keys");
+  expect(await button(ui, "dismiss")).toBe("X Close");
+  expect(await button(ui, "submit")).toBe("> Submit");
+  expect(await button(ui, "reassess")).toBe("R Reassess");
+  expect(await button(line, "kanban")).toBe("K Kanban");
+  await ui.press({ key: "keys" });
+  expect(await ui.find({ type: "Text", text: /^v Next: the next item/ })).toBeDefined();
+  expect(await ui.find({ type: "Text", text: /^X Close: close the pane$/ })).toBeDefined();
+
+  // A turn's Done header, closed and open, and the bar opening a Done line.
+  expect(await button(ui, "9efb08a1.done")).toBe("+ Done (1)");
+  await ui.press({ key: "9efb08a1.done" });
+  expect(await button(ui, "9efb08a1.done")).toBe("- Done (1)");
+  expect((await ui.find({ type: "Text", text: /^\|$/ }))?.props).toMatchObject({ color: "ide" });
+
+  // The Done item's sent option and the option the draft picks, each lead
+  // padded to the radio glyph's two cells, so its text stays put.
+  await ui.press({ key: "9efb08a1.Decide.1.line" });
+  expect(await leadOf(ui, "9efb08a1.Decide.1.A")).toBe("S  A. ");
+  expect(await leadOf(ui, "9efb08a1.Decide.1.B")).toBe("🔘 B. ");
+  await ui.press({ key: "9efb08a1.Decide.1.B" });
+  expect(await leadOf(ui, "9efb08a1.Decide.1.B")).toBe("C  B. ");
+  await ui.press({ key: "9efb08a1.Decide.1.B" });
+
+  // The note: the notes field's label, and the count of picks above the prompt.
+  expect((await ui.find({ type: "Input", key: "b2c3d4e5.Decide.1.notes" }))?.props).toMatchObject({ label: "N " });
+  await ui.press({ key: "b2c3d4e5.Decide.1.A" });
+  expect(await button(line, "picked")).toBe("N 1 picked");
+
+  // Reassess's glyph turns to the chosen mark while the draft ends on its line.
+  await ui.press({ key: "reassess" });
+  expect(state.box.endsWith("reassess\n")).toBe(true);
+  expect(await button(ui, "reassess")).toBe("C Reassess");
+  await line.unmount();
+  await ui.unmount();
+
+  // Under a reply, the note opens ✏️ Add a note's place.
+  const reply = await $.ui.mount(REPLY);
+  expect(await button(reply, "9efb08a1.Decide.3.add-note")).toBe("N Add a note");
+  await reply.unmount();
 });
 
 test("a Submit the engine refuses, or that throws, keeps the pane open though it answers every item", async ($, on) => {
