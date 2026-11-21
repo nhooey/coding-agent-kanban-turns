@@ -257,6 +257,18 @@ export const decideOf = (record: TranscriptRecord): readonly DecideItem[] => {
  */
 type Opened = Readonly<{ promptId: string; turn: Turn; answered: boolean | undefined }>;
 
+/** A record's time as a turn's field `key` holds it: its `timestamp`, where that is text; none where it's unknown. */
+const timed = <K extends "promptedAt" | "answeredAt">(
+  key: K,
+  record: TranscriptRecord,
+): Partial<Record<K, string>> =>
+  typeof record.timestamp === "string" && record.timestamp !== ""
+    ? ({ [key]: record.timestamp } as Record<K, string>)
+    : {};
+
+/** A turn without its answer's time, for one later to give it, or leave it unknown. */
+const unanswered = ({ answeredAt: _answeredAt, ...turn }: Turn): Turn => turn;
+
 const opened = (record: TranscriptRecord, owner: Owner): Opened => {
   const promptId = typeof record.promptId === "string" ? record.promptId : "";
 
@@ -269,6 +281,7 @@ const opened = (record: TranscriptRecord, owner: Owner): Opened => {
       replies: [],
       decide: [],
       messages: [],
+      ...timed("promptedAt", record),
     },
   };
 };
@@ -298,9 +311,10 @@ const step = (
           promptId,
           answered: answers(record),
           turn: {
-            ...turn,
+            ...unanswered(turn),
             replies: text.trim() === "" ? turn.replies : [...turn.replies, text],
             decide: [...turn.decide, ...decideOf(record)],
+            ...timed("answeredAt", record),
           },
         }))
       : queued === undefined
@@ -314,9 +328,10 @@ const step = (
 /**
  * One turn per prompt id: a prompt record the file repeats, as a
  * continuation does, folds its replies, Decide items and messages into the
- * first's, and is answered as the last repeat with an assistant record is,
- * so a repeat with none yet, such as one after a compaction, leaves it as
- * it was.
+ * first's, keeps the first's prompt time, and is answered, and given its
+ * answer's time, as the last repeat with an assistant record is, so a
+ * repeat with none yet, such as one after a compaction, leaves it as it
+ * was.
  */
 const mergeRepeats = (turns: readonly Opened[]): readonly Turn[] => {
   // Built from the last turn back, so each id keeps its first place.
@@ -328,10 +343,12 @@ const mergeRepeats = (turns: readonly Opened[]): readonly Turn[] => {
     .filter((opened, n) => first.get(opened.promptId) === n)
     .map(({ promptId, turn }): Turn => {
       const repeats = turns.filter((other) => other.promptId === promptId);
-      const answered = repeats.findLast((other) => other.answered !== undefined)?.answered;
+      const last = repeats.findLast((other) => other.answered !== undefined);
+      const answered = last?.answered;
 
       return {
-        ...turn,
+        ...unanswered(turn),
+        ...(last?.turn.answeredAt === undefined ? {} : { answeredAt: last.turn.answeredAt }),
         replies: repeats.flatMap((other) => other.turn.replies),
         decide: repeats.flatMap((other) => other.turn.decide),
         messages: repeats.flatMap((other) => other.turn.messages),
@@ -358,9 +375,42 @@ export const projectSlug = (cwd: string): string =>
     .replace(/\/(?:\.worktrees|\.claude\/worktrees)\/.*$/, "")
     .replace(/[/.]/g, "-");
 
+/**
+ * The folder that holds a project folder for each project's sessions:
+ * `projects` in Claude Code's own folder, which `CLAUDE_CONFIG_DIR`
+ * names, `configDir` here, where it's set, and the home's `.claude`
+ * otherwise.
+ */
+export const projectsFolder = (home: string, configDir?: string): string =>
+  `${configDir === undefined || configDir === "" ? `${home}/.claude` : configDir}/projects`;
+
+/** The file a session's transcript is, in a project folder. */
+export const transcriptFile = (session: string): string => `${session}.jsonl`;
+
 /** Where a session's transcript lies, when the engine doesn't say: under the home's `.claude/projects`. */
 export const transcriptPathFor = (
   home: string,
   cwd: string,
   session: string,
-): string => `${home}/.claude/projects/${projectSlug(cwd)}/${session}.jsonl`;
+): string => `${projectsFolder(home)}/${projectSlug(cwd)}/${transcriptFile(session)}`;
+
+/**
+ * Where a session's transcript lies, given the projects folder and the
+ * project folders in it that hold it: the working directory's where it's
+ * among them, else the one that holds it, else the working directory's,
+ * for the read to find missing. A session id names one transcript, so run
+ * from another directory, such as a skill's own, it's found in whichever
+ * project holds it, as the kanban skill's reply_turns.py found it.
+ */
+export const sessionTranscriptPath = (
+  projects: string,
+  cwd: string,
+  session: string,
+  holding: readonly string[],
+): string => {
+  const own = projectSlug(cwd);
+  const [only, ...others] = holding;
+  const folder = only !== undefined && others.length === 0 && only !== own ? only : own;
+
+  return `${projects}/${folder}/${transcriptFile(session)}`;
+};

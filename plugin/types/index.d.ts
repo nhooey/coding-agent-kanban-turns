@@ -109,6 +109,17 @@ export type Turn = Readonly<{
    * doesn't say leaves it.
    */
   unanswered?: true;
+  /**
+   * When the prompt that opened the turn came, an ISO 8601 time. Left out
+   * where it's unknown, as a harness that doesn't say leaves it.
+   */
+  promptedAt?: string;
+  /**
+   * When the turn's last response came, an ISO 8601 time: its final
+   * response's, where it has one. Left out where it's unknown, as a
+   * harness that doesn't say leaves it.
+   */
+  answeredAt?: string;
 }>;
 
 /**

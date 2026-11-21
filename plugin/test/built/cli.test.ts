@@ -1,18 +1,16 @@
-// What the flake builds of the kanban CLI, run on a golden case through
-// both ways it reads the turns, and on another's replies as drafts:
-// kanban.js under Node, at $KANBAN_JS, and the standalone binary, at
-// $KANBAN_BIN. checks.cli builds both and runs this with each path set;
-// `npm run test:built` with either unset skips it.
+// What the flake builds of the kanban CLI, run on every golden case
+// through both ways it reads the turns, and on each case's replies as
+// drafts: kanban.js under Node, at $KANBAN_JS, and the standalone binary,
+// at $KANBAN_BIN. checks.cli-js runs this with the first set, and
+// checks.cli-bin with the second, side by side, and checks.plugin holds
+// the derived skill's kanban.js to the first; `npm run test:built` skips
+// the build whose path is unset.
 
 import { describe, test } from "node:test";
 import { expect } from "expect";
 
 import { ROUTES, cliFailures, draftFailures, goldenCases, processRunner } from "../fixtures/cli.ts";
 import type { Runner } from "../fixtures/cli.ts";
-
-/** The case each build runs on, and the case whose replies it lints as drafts. */
-const CASE = "every-list.yaml";
-const DRAFTS = "lint-layout-findings.yaml";
 
 const BUILDS: readonly Readonly<{ name: string; path: string | undefined; runner: (path: string) => Runner }>[] = [
   {
@@ -24,19 +22,22 @@ const BUILDS: readonly Readonly<{ name: string; path: string | undefined; runner
 ];
 
 describe("the built CLI", () => {
-  const found = goldenCases().find(({ name }) => name === CASE);
-  const drafts = goldenCases().find(({ name }) => name === DRAFTS);
+  const cases = goldenCases();
+
+  test("has golden cases to run", () => {
+    expect(cases.length).toBeGreaterThan(0);
+  });
 
   for (const { name, path, runner } of BUILDS) {
-    for (const route of ROUTES) {
-      test(`${name} gives ${CASE} what it expects, through ${route.name}`, { skip: path === undefined }, () => {
-        expect(found).toBeDefined();
-        expect(found === undefined || path === undefined ? [] : cliFailures(found.golden, runner(path), route)).toEqual([]);
+    for (const { name: file, golden } of cases) {
+      for (const route of ROUTES) {
+        test(`${name} gives ${file} what it expects, through ${route.name}`, { skip: path === undefined }, () => {
+          expect(path === undefined ? [] : cliFailures(golden, runner(path), route)).toEqual([]);
+        });
+      }
+      test(`${name} gives each reply of ${file}, as a draft, the findings it expects`, { skip: path === undefined }, () => {
+        expect(path === undefined ? [] : draftFailures(golden, runner(path))).toEqual([]);
       });
     }
-    test(`${name} gives each reply of ${DRAFTS}, as a draft, the findings it expects`, { skip: path === undefined }, () => {
-      expect(drafts).toBeDefined();
-      expect(drafts === undefined || path === undefined ? [] : draftFailures(drafts.golden, runner(path))).toEqual([]);
-    });
   }
 });

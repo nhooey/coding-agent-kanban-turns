@@ -8,6 +8,7 @@ import {
   USAGE,
   answer,
   finalResponse,
+  leftText,
   refused,
   requestOf,
   turnsOf,
@@ -52,6 +53,7 @@ const inputs = (turns: string | undefined, draft?: string): Inputs => ({
   turns,
   draft,
   settings: SETTINGS,
+  now: Date.UTC(2026, 10, 16, 21),
 });
 
 const turn = (id: string, replies: readonly string[]): Turn => ({
@@ -150,13 +152,13 @@ describe("requestOf", () => {
 
   test("names every problem with the arguments", () => {
     expect(requestOf([])).toEqual({
-      problems: ["no command: give one of count, rollup, lint, turn-id"],
+      problems: ["no command: give one of count, rollup, due, lint, turn-id"],
     });
     expect(
       requestOf(["bogus", "extra", "--window", "x", "--harness", "codex", "--draft", "d", "--json"]),
     ).toEqual({
       problems: [
-        'no command "bogus": give one of count, rollup, lint, turn-id',
+        'no command "bogus": give one of count, rollup, due, lint, turn-id',
         '"extra" is an argument no command takes',
         '--window takes a whole number, 0 or more, not "x"',
         "--harness names no harness with an adapter here: codex; give one of claude-code",
@@ -167,6 +169,37 @@ describe("requestOf", () => {
     });
     expect(requestOf(["lint", "--draft", "d", "--transcript", "t"])).toEqual({
       problems: ["lint reads a --draft or a --transcript's last final response, not both"],
+    });
+  });
+
+  test("reads the session's own transcript, where a session is named and no --transcript or --stdin is given", () => {
+    expect(requestOf(["count"], "s-1")).toMatchObject({
+      value: { source: { from: "session", session: "s-1", harness: "claude-code" } },
+    });
+    expect(requestOf(["count", "--stdin"], "s-1")).toMatchObject({ value: { source: { from: "stdin" } } });
+    expect(requestOf(["count", "--transcript", "t.jsonl"], "s-1")).toMatchObject({
+      value: { source: { from: "transcript", path: "t.jsonl" } },
+    });
+    expect(requestOf(["lint", "--draft", "-"], "s-1")).toMatchObject({ value: { source: undefined } });
+    expect(requestOf(["count"], "")).toMatchObject({ value: { source: { from: "stdin" } } });
+  });
+
+  test("refuses due's options it doesn't read: the window, the width and the merged pull requests", () => {
+    expect(requestOf(["due", "--window", "3", "--width", "0", "--merged", "o/r#1"])).toEqual({
+      problems: [
+        "--window isn't due's: due times every turn",
+        "--width isn't due's: due prints no summary",
+        "--merged isn't due's: due settles no item",
+      ],
+    });
+  });
+
+  test("refuses --stdin beside a --transcript or a --draft", () => {
+    expect(requestOf(["count", "--stdin", "--transcript", "t"])).toEqual({
+      problems: ["--stdin and --transcript each name where the turns come from: give one"],
+    });
+    expect(requestOf(["lint", "--stdin", "--draft", "d"])).toEqual({
+      problems: ["lint reads a --draft or the turns' last final response, not both"],
     });
   });
 
@@ -206,17 +239,60 @@ describe("turnsOf", () => {
     });
   });
 
-  test("reads a transcript through its harness's adapter", () => {
+  test("reads a transcript through its harness's adapter, and the session's own as Claude Code's", () => {
     const text = jsonl([
       human("0f311c94", "Go on."),
       stoppedFor("end_turn", assistant("Done.")),
       human("1a2b3c4d", "Go on."),
       assistant("Half"),
     ]);
+    const times = { promptedAt: "2026-11-16T20:06:00.270Z", answeredAt: "2026-11-16T20:06:30.000Z" };
+    const expected = {
+      value: [
+        { ...turn("0f311c94", ["Done."]), ...times },
+        { ...turn("1a2b3c4d", ["Half"]), unanswered: true, ...times },
+      ],
+    };
 
-    expect(turnsOf({ from: "transcript", path: "s.jsonl", harness: "claude-code" }, text)).toEqual({
-      value: [turn("0f311c94", ["Done."]), { ...turn("1a2b3c4d", ["Half"]), unanswered: true }],
+    expect(turnsOf({ from: "transcript", path: "s.jsonl", harness: "claude-code" }, text)).toEqual(expected);
+    expect(turnsOf({ from: "session", session: "s-1", harness: "claude-code" }, text)).toEqual(expected);
+  });
+});
+
+describe("leftText", () => {
+  test("gives minutes and seconds, the seconds rounded up and in two digits", () => {
+    expect(leftText(150_000)).toBe("2m30s");
+    expect(leftText(59_001)).toBe("1m00s");
+    expect(leftText(5_000)).toBe("0m05s");
+    expect(leftText(31 * 60_000)).toBe("31m00s");
+  });
+});
+
+describe("due", () => {
+  const FULL = `🚧 **Pending:**  \n▔▔▔▔▔▔▔▔▔▔▔\n1. **A**\n\n📌 **Outstanding from previous turns:**  \n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n🚧 **Pending:**  \n- **B** 🔖 0f311c94₋₁\n`;
+  const timed = (id: string, minute: number, reply: string): Turn => ({
+    ...turn(id, [reply]),
+    promptedAt: new Date(Date.UTC(2026, 10, 16, 20, minute)).toISOString(),
+    answeredAt: new Date(Date.UTC(2026, 10, 16, 20, minute, 30)).toISOString(),
+  });
+  const turns = JSON.stringify([timed("aaaaaaa1", 0, FULL), timed("aaaaaaa2", 1, "Done."), timed("aaaaaaa3", 2, "Done.")]);
+  const now = (minute: number): number => Date.UTC(2026, 10, 16, 20, minute);
+
+  test("says counts and the time left, until the interval has passed since the last full roll-up", () => {
+    // Turns a minute apart: the interval is 5 minutes from 20:00:30.
+    expect(answer(requested(["due"]), { ...inputs(turns), now: now(3) })).toEqual({
+      out: "counts 2m30s\n",
+      err: "",
+      code: EXIT.ok,
     });
+  });
+
+  test("says full once it has", () => {
+    expect(answer(requested(["due"]), { ...inputs(turns), now: now(6) }).out).toBe("full\n");
+  });
+
+  test("says full in a session with no full roll-up yet", () => {
+    expect(answer(requested(["due"]), inputs(JSON.stringify([turn("aaaaaaa1", ["Done."])]))).out).toBe("full\n");
   });
 });
 
@@ -393,7 +469,7 @@ describe("answer", () => {
       { path: DEFAULTS_FILE, text: DEFAULTS },
       { path: "user.yaml", text: "counts:\n  nonsense: 1\n" },
     );
-    const result = answer(requested(["count"]), { turns: "[]", draft: undefined, settings });
+    const result = answer(requested(["count"]), { ...inputs("[]"), settings });
 
     expect(result.code).toBe(EXIT.ok);
     expect(result.err).toContain("kanban: user.yaml: ");
@@ -401,7 +477,7 @@ describe("answer", () => {
 
   test("refuses to run with no defaults to read", () => {
     const settings = loaded({ path: DEFAULTS_FILE, text: undefined }, undefined);
-    const result = answer(requested(["count"]), { turns: "[]", draft: undefined, settings });
+    const result = answer(requested(["count"]), { ...inputs("[]"), settings });
 
     expect(result.code).toBe(EXIT.usage);
     expect(result.err).toContain("the plugin's defaults can't be read");

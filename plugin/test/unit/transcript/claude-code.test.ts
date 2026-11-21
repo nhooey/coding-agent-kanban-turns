@@ -16,10 +16,13 @@ import {
   queuedOf,
   recordsOf,
   reportNames,
+  projectsFolder,
+  sessionTranscriptPath,
   transcriptPathFor,
   turnsOf,
   turnsOfText,
 } from "../../../src/transcript/claude-code.ts";
+import type { TranscriptRecord } from "../../../src/transcript/claude-code.ts";
 import { PLUGIN } from "../../../src/protocol/instructions.ts";
 import { itemsOf } from "../../../src/items/items.ts";
 import { openDecideItems, settlementsOf } from "../../../src/items/outstanding.ts";
@@ -578,5 +581,72 @@ describe("the transcript file", () => {
     expect(transcriptPathFor("/home/a", "/Users/a/repo", "s-1")).toBe(
       "/home/a/.claude/projects/-Users-a-repo/s-1.jsonl",
     );
+  });
+
+  test("lies in the projects folder under the home's .claude, or under CLAUDE_CONFIG_DIR where it's set", () => {
+    expect(projectsFolder("/home/a")).toBe("/home/a/.claude/projects");
+    expect(projectsFolder("/home/a", "")).toBe("/home/a/.claude/projects");
+    expect(projectsFolder("/home/a", "/config/claude")).toBe("/config/claude/projects");
+  });
+
+  test("of a session lies in the working directory's project where it holds it, else in the one project that does", () => {
+    const projects = "/config/claude/projects";
+
+    expect(sessionTranscriptPath(projects, "/Users/a/repo", "s-1", ["-Users-a-repo", "-Users-a-other"])).toBe(
+      "/config/claude/projects/-Users-a-repo/s-1.jsonl",
+    );
+    expect(sessionTranscriptPath(projects, "/Users/a/repo/.worktrees/b", "s-1", ["-Users-a-other"])).toBe(
+      "/config/claude/projects/-Users-a-other/s-1.jsonl",
+    );
+  });
+
+  test("of a session no project holds, or more than one but the working directory's, is the working directory's, to be found missing", () => {
+    const projects = "/home/a/.claude/projects";
+    const own = "/home/a/.claude/projects/-Users-a-repo/s-1.jsonl";
+
+    expect(sessionTranscriptPath(projects, "/Users/a/repo", "s-1", [])).toBe(own);
+    expect(sessionTranscriptPath(projects, "/Users/a/repo", "s-1", ["-x", "-y"])).toBe(own);
+  });
+});
+
+describe("each turn's times", () => {
+  const at = (time: string, record: TranscriptRecord): TranscriptRecord => ({ ...record, timestamp: time });
+
+  test("are its prompt's and its last response's, as the records give them", () => {
+    const turns = turnsOf([
+      at("2026-11-16T20:00:00.000Z", human(FIRST, "go")),
+      at("2026-11-16T20:00:10.000Z", stoppedFor("tool_use", assistant("on the way"))),
+      at("2026-11-16T20:00:20.000Z", stoppedFor("end_turn", assistant("done"))),
+      at("2026-11-16T20:01:00.000Z", human(SECOND, "more")),
+    ]);
+
+    expect(turns.map((t) => [t.id, t.promptedAt, t.answeredAt])).toEqual([
+      [FIRST, "2026-11-16T20:00:00.000Z", "2026-11-16T20:00:20.000Z"],
+      [SECOND, "2026-11-16T20:01:00.000Z", undefined],
+    ]);
+  });
+
+  test("are unknown, and left out, where a record gives no time or one that isn't text", () => {
+    const { timestamp: _prompt, ...untimed } = human(FIRST, "go");
+    const turns = turnsOf([
+      untimed,
+      at("", stoppedFor("end_turn", assistant("done"))),
+      { ...human(SECOND, "more"), timestamp: 7 },
+    ]);
+
+    expect(turns.map((t) => Object.hasOwn(t, "promptedAt") || Object.hasOwn(t, "answeredAt"))).toEqual([false, false]);
+  });
+
+  test("of a repeated prompt are the first's prompt time and the last answer's", () => {
+    const turns = turnsOf([
+      at("2026-11-16T20:00:00.000Z", human(FIRST, "go")),
+      at("2026-11-16T20:00:20.000Z", stoppedFor("end_turn", assistant("done"))),
+      at("2026-11-16T20:05:00.000Z", human(FIRST, "go")),
+      at("2026-11-16T20:05:20.000Z", stoppedFor("end_turn", assistant("again"))),
+    ]);
+
+    expect(turns.map((t) => [t.promptedAt, t.answeredAt])).toEqual([
+      ["2026-11-16T20:00:00.000Z", "2026-11-16T20:05:20.000Z"],
+    ]);
   });
 });

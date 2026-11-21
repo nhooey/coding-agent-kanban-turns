@@ -14,7 +14,9 @@ import { answersOfLine } from "../../../src/items/answer-lines.ts";
 import type { LineAnswer } from "../../../src/items/answer-lines.ts";
 import { DECIDE, namesOf } from "../../../src/protocol/rules.ts";
 import { SPEC } from "../../../src/protocol/spec.ts";
+import { PLUGIN } from "../../../src/protocol/instructions.ts";
 import {
+  SKILL_COMMANDS,
   isOwn,
   sectionsOf,
   withoutDraftHeader,
@@ -254,9 +256,10 @@ describe("the golden cases cover", () => {
     }
   }
 
-  test("every skill command a command runs after", () => {
+  test("every skill command a command runs after, the plugin's own skill by its prefixed name among them", () => {
+    expect(SKILL_COMMANDS).toContain(`${PLUGIN}:${SPEC.skill.name}`);
     expect(
-      SPEC.commands["skill-commands"].filter(
+      SKILL_COMMANDS.filter(
         (skill) =>
           !TURNS.some(
             (turn) => turn.runs !== undefined && turn.prompt.includes(`/${skill}`),

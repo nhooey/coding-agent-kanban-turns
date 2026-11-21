@@ -192,8 +192,18 @@ export const COMMANDS: Readonly<Record<string, readonly string[]>> =
       [command, ...synonyms],
     ]),
   );
-// The slash commands that run the skill, whose argument is the command.
-const SKILL_COMMANDS: readonly string[] = SPEC.commands["skill-commands"];
+/**
+ * The slash commands whose argument is the command: the spec's skill
+ * commands, and the plugin's own skill, bare and after the plugin's name and
+ * a colon, as Claude Code names a plugin's skill.
+ */
+export const SKILL_COMMANDS: readonly string[] = [
+  ...new Set([
+    ...SPEC.commands["skill-commands"],
+    SPEC.skill.name,
+    `${PLUGIN}:${SPEC.skill.name}`,
+  ]),
+];
 // Whether a prefix of one command's names alone runs it, or only a whole name.
 const PREFIX_RUNS: boolean = SPEC.commands["unique-prefix-runs"];
 // The characters a command's word may end on.

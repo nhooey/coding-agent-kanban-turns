@@ -157,18 +157,37 @@ The `kanban` CLI runs the same core functions outside Claude Code's engine, for 
 | --------- | ------------------------------------------------------------------------------------------------------ |
 | `count`   | the 📌 count line                                                                                      |
 | `rollup`  | the full 📌 roll-up, each item ending in its 🔖 tag                                                    |
+| `due`     | `full` where the full 📌 roll-up is due by the roll-up interval, else `counts` and the time until it is |
 | `lint`    | the reply lint's findings for a `--draft` or the last final response; `--json` as JSON                 |
 | `turn-id` | the current turn's id                                                                                  |
 
-- **The turns** come from `--transcript <path>`, read through the adapter `--harness` names (`claude-code`, the only one so far), or from stdin, as a JSON list of neutral turns (`Turn` in [`plugin/types/index.d.ts`](plugin/types/index.d.ts)).
-  - A turn needs its `id`, 8 characters of `0-9a-f`, unique, and its `prompt`, `{"owner", "text"}`. Its `replies`, `decide` and `messages` may be left out, as may its `unanswered`, a message's `reportNames`, and a Decide item's `turn` and `kind`. A Decide item's `ref` and `list` are dropped and worked out afresh.
+- **The turns** come from `--transcript <path>`, read through the adapter `--harness` names (`claude-code`, the only one so far); else, in a Claude Code session, from the transcript `CLAUDE_CODE_SESSION_ID` names, in the working directory's project folder under `projects/` in `CLAUDE_CONFIG_DIR`, or `~/.claude/` where it's unset, or the one that holds it; else, or with `--stdin`, from stdin, as a JSON list of neutral turns (`Turn` in [`plugin/types/index.d.ts`](plugin/types/index.d.ts)). A process started from a Claude Code session inherits its `CLAUDE_CODE_SESSION_ID`, so any other harness passes `--stdin` or `--transcript` always.
+  - A turn needs its `id`, 8 characters of `0-9a-f`, unique, and its `prompt`, `{"owner", "text"}`. Its `replies`, `decide` and `messages` may be left out, as may its `unanswered`, its `promptedAt` and `answeredAt`, ISO 8601 times that `due` reads and takes as unknown where left out, a message's `reportNames`, and a Decide item's `turn` and `kind`. A Decide item's `ref` and `list` are dropped and worked out afresh.
   - Any other field, a field of the wrong type, an unknown option kind or an option letter outside A to Z, or outside the kind's own, is refused, by its place.
 - **`lint` reads the final response the turn's end lints.** It passes over an unanswered turn, `unanswered: true`, so text written on the way is no final response. The Claude Code adapter sets it on a turn whose last response didn't end it with an answer: one still running, interrupted, cut off by an API error or refused. It also passes over a response with no list's header, roll-up or count line.
 - **The settings** are the plugin's: `counts.turns` and `roll-up.summary-width`, from the defaults with the user's `config.yaml` merged over them, which `--window` and `--width` override. The CLI asks GitHub nothing: `--merged owner/repo#N`, or the pull request's URL, names each pull request known merged.
 - **Exit codes:** 0 when done, 1 when `lint` finds something, and 2 when the arguments, the input or the settings can't be used, as stderr says.
 - **Built by the flake,** each with the YAML parser's licence in `share/licenses/yaml/`:
-  - `nix build .#kanban-js` gives `bin/kanban.js`, one file that runs under Node 20 or later and names no store path;
-  - `nix build .#kanban` gives `bin/kanban`, a Node single executable application for the system building it. It needs no Node installed, but it runs only where its Nix closure is, the libraries Node links to, as the plugin's own package carries it.
+  - `nix build .#kanban-js` gives `bin/kanban.js`, one file that runs under Node 20 or later and names no store path. The plugin's package carries it in its skill's `scripts/`, beside `kanban`, a wrapper that runs it with the Nix store's `node`;
+  - `nix build .#kanban` gives `bin/kanban`, a Node single executable application for the system building it. It needs no Node installed, but it runs only where its Nix closure is, the libraries Node links to. The plugin doesn't carry it.
+
+### The skill it carries
+
+The plugin carries a skill derived from it, `coding-agent-kanban-turns:coding-agent-kanban-turn-responses`, the fallback that teaches the format and runs the protocol where the plugin's hooks don't load. Its slash command runs a command after it, as the skill's own does: `/coding-agent-kanban-turns:coding-agent-kanban-turn-responses reassess`. Nothing in it is written by hand:
+
+- **`SKILL.md`** is the instructions' fragments, filled in from the spec as the instructions are, with the CLI in place of the plugin's tools, and its usage as `--help` prints it ([`plugin/tools/skill/render.ts`](plugin/tools/skill/render.ts)).
+- **`examples/`** holds a worked example for each golden case not marked `example: false`: its turns, each prompt and response as written, and what the core gives for them that a reply alone settles. A worked example draws only the option kinds the instructions teach, 🔘 and 🔲, and the build refuses one that draws 👍 or 👎, which the lint's `untaught-option` rule finds.
+- **`scripts/`** holds the CLI, `kanban.js` and, in a Nix build alone, `kanban`, a wrapper that runs it with the Nix store's `node`, so the skill counts, rolls up, times the roll-up (`due`) and lints with the same core functions as the hooks. In a Claude Code session it reads the session's own transcript unless told otherwise.
+
+Where each install gets it:
+
+| Install | The skill's folder | Its scripts |
+| --- | --- | --- |
+| Nix, `packages.plugin` | built by the flake and copied into `skills/` | `kanban.js`, which needs Node 20 or newer, and the `kanban` wrapper, which brings its own |
+| git, the marketplace's `./plugin` | the copy committed in [`plugin/skills/`](plugin/skills/), which `nix flake check` holds to the flake's build file for file and mode for mode | `kanban.js` alone, which needs Node 20 or newer |
+| a harness without plugins, `packages.skill-standalone` | the same build as the plugin's, a plain skill folder | as the Nix install's |
+
+A change to the fragments, the spec, the golden cases, the CLI or the core it bundles changes the skill, and `refresh-skill` in the dev shell lays the flake's build in `plugin/skills/` for the commit.
 
 ### Questions in a reply
 
@@ -219,11 +238,12 @@ claude --plugin-dir result-plugin
 | [`plugin/defaults/config.yaml`](plugin/defaults/config.yaml)   | every setting, with its default and what it does                                                                                                                       |
 | [`plugin/spec/kanban.yaml`](plugin/spec/kanban.yaml)           | the protocol's checkable rules: the lists, the option kinds, the commands, the reference grammar, the 📌 roll-up, the 🔖 tag and the rule characters, which `spec-build` compiles into `plugin/src/protocol/spec.ts` and `plugin/spec/kanban.json` |
 | [`plugin/spec/fragments/`](plugin/spec/fragments/)             | the protocol's prose rules, a Markdown file per topic, each list, glyph or command named by a placeholder the spec fills, which `spec-build` compiles into `plugin/src/protocol/fragments.ts` |
-| [`plugin/tools/`](plugin/tools/)                               | the spec's build step, and the script `plugin-test` runs                                                                                                               |
+| [`plugin/tools/`](plugin/tools/)                               | the spec's build step, the derived skill's, and the script `plugin-test` runs                                                                                          |
+| [`plugin/skills/`](plugin/skills/)                             | the derived skill as the flake builds it, its wrapper aside, committed for a git install; `refresh-skill` lays it there                                                |
 | [`plugin/vendor/`](plugin/vendor/)                             | the YAML parser, in a folder of its own, bundled by the flake into one committed ES module with its licence, and its types; `refresh-vendor` lays the flake's bundles there |
 | [`plugin/types/index.d.ts`](plugin/types/index.d.ts)           | the item, raised items, neutral turn and settings shapes, and the `$.state` contract                                                                                   |
 | [`plugin/test/unit/`](plugin/test/unit/)                       | the core's tests, run by `node --test`, in folders mirroring `src/`, and differential tests of the adapter and the core, of the pane's step function, and of the helpers that replaced the core's copies, against the oracles in `test/oracle/` |
 | [`plugin/test/engine/`](plugin/test/engine/)                   | the pane, the count line, a reply's buttons and the tool row driven through the engine, run by `claude plugin test`                                                    |
-| [`plugin/test/built/`](plugin/test/built/)                     | the flake's `kanban.js` and binary run on a golden case, which `checks.cli` runs                                                                                       |
+| [`plugin/test/built/`](plugin/test/built/)                     | the flake's `kanban.js` and binary run on every golden case, which `checks.cli-js` and `checks.cli-bin` run                                                            |
 | [`plugin/test/fixtures/`](plugin/test/fixtures/)               | the transcript records, neutral turns and Submit's random events the tests build on                                                                                    |
 | [`plugin/test/types/`](plugin/test/types/)                     | the declarations Node's type-check needs in place of the engine's, and the check that the bundled YAML parser's types match its package's                              |

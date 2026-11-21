@@ -3,7 +3,7 @@ title: >-
   prefix names the latest of them, at or before the item's own turn, that
   holds the item, so it names the later turn's Todo item and the earlier
   turn's Review item; and a Decide item whose reply writes no `Frees:` line
-  frees what its `kanban_options` call gave
+  frees what the plugin's buttons were given for it
 turns:
   - id: abcdef01
     prompt: Where does the loader stand?

@@ -33,6 +33,7 @@ import {
   settlingOf,
   subjectKey,
   summaryOf,
+  unfencedLines,
   unsettled,
   windowStart,
   withRepliedFrees,
@@ -791,6 +792,17 @@ describe("an item's summary", () => {
     expect(summaryOf("**[#14 Fix the loader](https://github.com/o/r/pull/14)**: check the cache")).toBe(
       "[#14 Fix the loader](https://github.com/o/r/pull/14)",
     );
+  });
+});
+
+describe("unfencedLines", () => {
+  test("keeps the lines outside code blocks, dropping each block and its fences", () => {
+    expect(unfencedLines("a\n```text\nb\n```\nc\n  ~~~\nd\n  ~~~\ne")).toEqual(["a", "c", "e"]);
+  });
+
+  test("closes a block only on its own fence, and drops the rest of a block left open", () => {
+    expect(unfencedLines("a\n```\n~~~\nb\n```\nc")).toEqual(["a", "c"]);
+    expect(unfencedLines("a\n```\nb")).toEqual(["a"]);
   });
 });
 

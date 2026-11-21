@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 
 import { APP, USER_FILE } from "../../../src/config/config.ts";
 import {
+  CLI_ENV,
   ROUTES,
   cliFailures,
   draftFailures,
@@ -19,6 +20,7 @@ import {
   processRunner,
   scratch,
 } from "../../fixtures/cli.ts";
+import { jsonl, recordsOfTurns } from "../../fixtures/records.ts";
 import type { Turn } from "../../../types/index.d.ts";
 
 const CLI = fileURLToPath(pluginFile("cli/kanban.ts"));
@@ -69,6 +71,7 @@ describe("cli/kanban.ts", () => {
   test("refuses a transcript it can't read, and exits 2", () => {
     const ran = spawnSync(process.execPath, [CLI, "count", "--transcript", join(scratch(), "none.jsonl")], {
       encoding: "utf8",
+      env: CLI_ENV,
     });
 
     expect(ran.status).toBe(2);
@@ -93,7 +96,7 @@ describe("cli/kanban.ts", () => {
     const ran = spawnSync(process.execPath, [CLI, "count"], {
       input: turns,
       encoding: "utf8",
-      env: { ...process.env, XDG_CONFIG_HOME: home },
+      env: { ...CLI_ENV, XDG_CONFIG_HOME: home },
     });
 
     expect(ran.stdout).toBe("📌 Outstanding: 🚧 2\n");
@@ -108,11 +111,59 @@ describe("cli/kanban.ts", () => {
     const ran = spawnSync(process.execPath, [CLI, "count"], {
       input: "[]",
       encoding: "utf8",
-      env: { ...process.env, XDG_CONFIG_HOME: home },
+      env: { ...CLI_ENV, XDG_CONFIG_HOME: home },
     });
 
     expect(ran.status).toBe(0);
     expect(ran.stderr).toContain(`kanban: ${path}: `);
     expect(ran.stderr).toContain("EISDIR");
+  });
+
+  describe("in a Claude Code session, named by CLAUDE_CODE_SESSION_ID", () => {
+    const home = scratch();
+    const project = join(home, ".claude", "projects", "-elsewhere");
+    const session = (args: readonly string[], input = "") =>
+      spawnSync(process.execPath, [CLI, ...args], {
+        input,
+        encoding: "utf8",
+        cwd: scratch(),
+        env: { ...CLI_ENV, HOME: home, XDG_CONFIG_HOME: scratch(), CLAUDE_CODE_SESSION_ID: "s-1" },
+      });
+
+    mkdirSync(project, { recursive: true });
+    writeFileSync(join(project, "s-1.jsonl"), jsonl(recordsOfTurns([turn("aaaaaaa1", [PENDING(1)])])));
+
+    test("reads the session's transcript with no --transcript, from the one project folder that holds it", () => {
+      expect(session(["count"]).stdout).toBe("📌 Outstanding: 🚧 1\n");
+    });
+
+    test("reads stdin's turns for --stdin", () => {
+      expect(session(["count", "--stdin"], "[]")).toMatchObject({ stdout: "", status: 0 });
+    });
+
+    test("tells when the full roll-up is due", () => {
+      expect(session(["due"])).toMatchObject({ stdout: "full\n", status: 0 });
+    });
+
+    test("finds the transcript under CLAUDE_CONFIG_DIR where it's set, in place of the home's .claude", () => {
+      const config = scratch();
+      const elsewhere = join(config, "projects", "-other");
+      const ran = (env: NodeJS.ProcessEnv) =>
+        spawnSync(process.execPath, [CLI, "count"], {
+          input: "",
+          encoding: "utf8",
+          cwd: scratch(),
+          env: { ...CLI_ENV, HOME: home, XDG_CONFIG_HOME: scratch(), CLAUDE_CODE_SESSION_ID: "s-2", ...env },
+        });
+
+      mkdirSync(elsewhere, { recursive: true });
+      writeFileSync(
+        join(elsewhere, "s-2.jsonl"),
+        jsonl(recordsOfTurns([turn("aaaaaaa1", [PENDING(1)]), turn("aaaaaaa2", [PENDING(2)])])),
+      );
+
+      expect(ran({ CLAUDE_CONFIG_DIR: config }).stdout).toBe("📌 Outstanding: 🚧 2\n");
+      expect(ran({}).status).toBe(2);
+    });
   });
 });
