@@ -7,11 +7,13 @@ import {
   DONE,
   LETTER,
   REASSESS,
+  SUBJECT_WORD,
   SUBSCRIPT_CHAR,
   TURN_ID,
   TURN_ID_CHAR,
   TURN_ID_PREFIX,
   classOf,
+  inClass,
   isLineOf,
   isOptionLetter,
   isTurnId,
@@ -75,6 +77,24 @@ describe("classOf", () => {
     expect(pattern.test(chars)).toBe(true);
     expect(pattern.test("b")).toBe(false);
     expect(new RegExp(`^${classOf("₀-")}$`).test("-")).toBe(true);
+  });
+});
+
+describe("inClass", () => {
+  test("escapes what a class gives a meaning, so a class beside a property escape holds each character", () => {
+    const pattern = new RegExp(String.raw`^[\p{N}${inClass("a-c^]\\")}]+$`, "u");
+
+    expect(pattern.test("7a-c^]\\")).toBe(true);
+    expect(pattern.test("b")).toBe(false);
+  });
+});
+
+describe("SUBJECT_WORD", () => {
+  test("matches a run of lowercase letters and digits, and nothing else", () => {
+    const word = new RegExp(`^${SUBJECT_WORD}$`);
+
+    expect(word.test("abcdefghijklmnopqrstuvwxyz0123456789")).toBe(true);
+    expect(["", "A", "a-b", "a_b", "é"].filter((text) => word.test(text))).toEqual([]);
   });
 });
 

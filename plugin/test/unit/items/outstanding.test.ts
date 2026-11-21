@@ -811,8 +811,20 @@ describe("subjectKey", () => {
     expect(subjectKey("Entries 0550 and 0455, dead code")).toBe("entry 0550");
   });
 
+  test("a backlog entry's words are matched ignoring case by ASCII alone, as the long s and the Kelvin sign are no letter of them", () => {
+    expect(subjectKey("entrieſ 0550")).toBe("entrie 0550");
+    expect(subjectKey("Fix ſentry 0550 now")).toBe("entry 0550");
+    expect(subjectKey("Fix Kentry 0550 now")).toBe("entry 0550");
+  });
+
   test("else a branch-shaped code span", () => {
     expect(subjectKey("Merge `README.md` and `atomic-reload` today")).toBe("branch atomic-reload");
+  });
+
+  test("a branch name may hold every lowercase letter and digit", () => {
+    expect(subjectKey("Merge `abcdefghijklm-nopqrstuvwxyz-0123456789`")).toBe(
+      "branch abcdefghijklm-nopqrstuvwxyz-0123456789",
+    );
   });
 
   test("else the first three words that are not articles or prepositions", () => {

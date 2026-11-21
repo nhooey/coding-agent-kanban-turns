@@ -74,6 +74,20 @@ describe("reportNamesItem", () => {
   });
 });
 
+describe("namesWord", () => {
+  test("a word holds the separator a branch name joins its words with, so no part of a branch name is named", () => {
+    expect(namesWord("atomic", "merged atomic-reload")).toBe(false);
+    expect(namesWord("reload", "merged atomic-reload")).toBe(false);
+    expect(namesWord("atomic-reload", "merged atomic-reload-two")).toBe(false);
+    expect(namesWord("atomic-reload", "merged ATOMIC-RELOAD")).toBe(true);
+  });
+
+  test("a name before a sentence's full stop, or beside a path's slash, is named", () => {
+    expect(namesWord("atomic-reload", "Merged atomic-reload.")).toBe(true);
+    expect(namesWord("atomic-reload", "see origin/atomic-reload/notes")).toBe(true);
+  });
+});
+
 describe("branchSpans", () => {
   test("the code spans shaped like a branch name, in order", () => {
     expect(

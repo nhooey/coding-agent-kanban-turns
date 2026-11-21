@@ -161,6 +161,43 @@ export const SPEC = {
     "label": "Frees",
     "separator": ","
   },
+  "subject": {
+    "alphabet": "0123456789abcdefghijklmnopqrstuvwxyz",
+    "words-kept": 3,
+    "stop-words": [
+      "a",
+      "an",
+      "and",
+      "at",
+      "by",
+      "for",
+      "from",
+      "in",
+      "is",
+      "its",
+      "of",
+      "on",
+      "the",
+      "to",
+      "with"
+    ],
+    "entry": {
+      "label": "entry",
+      "words": [
+        "entry",
+        "entries"
+      ],
+      "digits": {
+        "fewest": 3,
+        "most": 4
+      }
+    },
+    "branch": {
+      "label": "branch",
+      "separator": "-",
+      "fewest-words": 2
+    }
+  },
   "roll-up": {
     "glyph": "📌",
     "header": "Outstanding from previous turns",

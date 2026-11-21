@@ -5,9 +5,15 @@
 
 import { SPEC } from "./spec.ts";
 
+/** Characters as the inside of a character class, `u` flag or not, each escaped where a class gives it a meaning. */
+export const inClass = (chars: string): string =>
+  chars.replace(/[\\\]^-]/g, "\\$&");
+
 /** Characters as a character class, `[…]`, `u` flag or not, holds each of them and nothing more. */
-export const classOf = (chars: string): string =>
-  `[${chars.replace(/[\\\]^-]/g, "\\$&")}]`;
+export const classOf = (chars: string): string => `[${inClass(chars)}]`;
+
+/** A pattern for one word of a summary, read lowercased, or of a branch name: a run of the subject's alphabet, `[0-9a-z]+`. */
+export const SUBJECT_WORD = `${classOf(SPEC.subject.alphabet)}+`;
 
 /** The Decide list, whose items the plugin draws. */
 export const DECIDE = SPEC.lists.decide;
