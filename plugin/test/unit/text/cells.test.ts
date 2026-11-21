@@ -4,7 +4,31 @@
 import { describe, test } from "node:test";
 import { expect } from "expect";
 
-import { cellWidth } from "../../../src/text/cells.ts";
+import { cellWidth, padToCells, widestCells } from "../../../src/text/cells.ts";
+
+describe("text padded to a number of cells", () => {
+  test("takes spaces after it until it takes that many cells", () => {
+    expect(padToCells("C", 2)).toBe("C ");
+    expect(padToCells("[x]", 5)).toBe("[x]  ");
+    expect(padToCells("", 2)).toBe("  ");
+  });
+
+  test("is as it is where it already takes that many or more", () => {
+    expect(padToCells("✅", 2)).toBe("✅");
+    expect(padToCells("[x]", 2)).toBe("[x]");
+  });
+});
+
+describe("the widest of several texts", () => {
+  test("is the most cells any takes, an emoji counting 2", () => {
+    expect(widestCells(["C", "✅", "[x]"])).toBe(3);
+    expect(widestCells(["C", "🔘"])).toBe(2);
+  });
+
+  test("is 0 for none", () => {
+    expect(widestCells([])).toBe(0);
+  });
+});
 
 describe("the cells text takes", () => {
   test("a letter, a digit or a space is 1", () => {

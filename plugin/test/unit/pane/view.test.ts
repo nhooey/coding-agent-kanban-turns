@@ -19,8 +19,10 @@ import {
   itemTitle,
   noItemsText,
   needsEnter,
+  markCells,
   noteRows,
   notPutBackText,
+  optionLead,
   failedText,
   notSentText,
   notesKey,
@@ -32,6 +34,7 @@ import {
   submitStep,
 } from "../../../src/pane/view.ts";
 import type { DecideItem, Raised } from "../../../types/index.d.ts";
+import { SHIPPED_SETTINGS } from "../../fixtures/shipped-settings.ts";
 
 const radio: DecideItem = {
   turn: "9efb08a1",
@@ -341,8 +344,57 @@ describe("how much of what's open the draft answers", () => {
   });
 
   test("above the prompt: how many it picks, none while it picks nothing", () => {
-    expect(pickedText(2)).toBe("✏️ 2 picked");
-    expect(pickedText(0)).toBe("");
+    expect(pickedText(2, SHIPPED_SETTINGS.marks.note)).toBe("✏️ 2 picked");
+    expect(pickedText(0, SHIPPED_SETTINGS.marks.note)).toBe("");
+  });
+
+  test("above the prompt: opened by the note mark it's given", () => {
+    expect(pickedText(2, "N")).toBe("N 2 picked");
+    expect(pickedText(0, "N")).toBe("");
+  });
+});
+
+describe("an option's lead", () => {
+  const item: DecideItem = {
+    turn: "9efb08a1",
+    list: "Decide",
+    number: 1,
+    summary: "Which cache to keep",
+    kind: "radio",
+    ref: "9efb08a1.Decide.1",
+    options: [
+      { letter: "A", name: "Disk" },
+      { letter: "B", name: "Memory" },
+    ],
+  };
+  const not = { chosen: false, sent: false };
+
+  test("is its mark and its letter, the marks as wide as the kind glyph needing no padding", () => {
+    expect(optionLead(item, "A", not, SHIPPED_SETTINGS.marks)).toBe("🔘 A. ");
+    expect(optionLead(item, "A", { chosen: true, sent: false }, SHIPPED_SETTINGS.marks)).toBe("✅ A. ");
+    expect(optionLead(item, "A", { chosen: false, sent: true }, SHIPPED_SETTINGS.marks)).toBe("☑️ A. ");
+  });
+
+  test("pads a narrower mark to the item's widest, so a pick moves no text", () => {
+    const marks = { chosen: "C", sent: "S" };
+    expect(markCells(item, marks)).toBe(2);
+    expect(optionLead(item, "A", { chosen: true, sent: false }, marks)).toBe("C  A. ");
+    expect(optionLead(item, "A", { chosen: false, sent: true }, marks)).toBe("S  A. ");
+    expect(optionLead(item, "A", not, marks)).toBe("🔘 A. ");
+  });
+
+  test("pads every option to a wider mark, so the options line up", () => {
+    const marks = { chosen: "[x]", sent: "S" };
+    expect(markCells(item, marks)).toBe(3);
+    expect(optionLead(item, "A", { chosen: true, sent: false }, marks)).toBe("[x] A. ");
+    expect(optionLead(item, "B", not, marks)).toBe("🔘  B. ");
+    expect(optionLead(item, "A", { chosen: false, sent: true }, marks)).toBe("S   A. ");
+  });
+
+  test("counts an option's own glyph among the item's", () => {
+    const wide = { ...item, options: [{ letter: "A", name: "Disk", glyph: "[ ]" }, { letter: "B", name: "Memory" }] };
+    expect(markCells(wide, SHIPPED_SETTINGS.marks)).toBe(3);
+    expect(optionLead(wide, "B", not, SHIPPED_SETTINGS.marks)).toBe("🔘  B. ");
   });
 });
 
@@ -350,7 +402,7 @@ describe("the keys panel", () => {
   const keys = { dismiss: "q", next: "j", previous: "k", submit: "s", reassess: "r", help: "?" };
 
   test("lists each key the pane takes and what it does, then the engine's", () => {
-    expect(keyRows(keys)).toEqual([
+    expect(keyRows(keys, SHIPPED_SETTINGS.marks.buttons)).toEqual([
       { key: "j", does: "↓ Next: the next item, or Done header" },
       { key: "k", does: "↑ Previous: the item before" },
       { key: "s", does: "📤 Submit: send the draft" },
@@ -364,6 +416,18 @@ describe("the keys panel", () => {
   });
 
   test("shows a rebound key as rebound", () => {
-    expect(keyRows({ ...keys, submit: "x" })[2]).toEqual({ key: "x", does: "📤 Submit: send the draft" });
+    expect(keyRows({ ...keys, submit: "x" }, SHIPPED_SETTINGS.marks.buttons)[2]).toEqual({ key: "x", does: "📤 Submit: send the draft" });
+  });
+
+  test("draws each button's glyph as it's given", () => {
+    const glyphs = { dismiss: "X", next: "v", previous: "^", submit: ">", reassess: "R", help: "H", kanban: "K" };
+    expect(keyRows(keys, glyphs).slice(0, 6)).toEqual([
+      { key: "j", does: "v Next: the next item, or Done header" },
+      { key: "k", does: "^ Previous: the item before" },
+      { key: "s", does: "> Submit: send the draft" },
+      { key: "r", does: "R Reassess: add or take out the reassess line" },
+      { key: "?", does: "H Keys: open or close this panel" },
+      { key: "q", does: "X Close: close the pane" },
+    ]);
   });
 });
