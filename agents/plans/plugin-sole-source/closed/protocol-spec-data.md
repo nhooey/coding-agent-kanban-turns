@@ -25,7 +25,7 @@ touches: [plugin/spec/, plugin/tools/, plugin/src/spec.ts, plugin/src/protocol.t
   - no glyph shared by two option kinds.
 - **Generated, typed and readonly.** The build step writes two files, committed, each with a header naming its source and the command that writes it, `spec-build`:
   - `plugin/src/spec.ts`, exporting the spec as one `as const`, deeply readonly value, `SPEC`, and its type, `Spec`;
-  - `plugin/spec/kanban.json`, beside the spec, its header in `$comment`, for readers that aren't TypeScript, such as the derived skill's build ([derived-skill-package](../open/derived-skill-package.md)).
+  - `plugin/spec/kanban.json`, beside the spec, its header in `$comment`, for readers that aren't TypeScript, such as the derived skill's build ([derived-skill-package](derived-skill-package.md)).
 - **The core imports only the generated module.** Each function in `plugin/src/` that named a glyph, word or character takes it from that module's value instead, directly or through `plugin/src/protocol.ts`, which derives the patterns and labels several core files share. The plugin and its tests import nothing else of the spec. The core stays pure: no file is read at run time, and no YAML library is loaded at run time for the spec.
 - **Prose comes later.** Prose that names a list or a kind in words, such as the instructions, the tool's description and the pane's messages, keeps its words until [protocol-prose-fragments](protocol-prose-fragments.md) assembles it from the spec. Where prose states a value a rule rests on, such as the turn id's length, it reads that value from the spec now.
 - **Out of date fails.** `checks.spec` runs the build step with `--check` and fails when the committed TypeScript module or JSON copy differs from what it writes.

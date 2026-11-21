@@ -10,3 +10,9 @@
 /plugin/src/protocol/spec.ts -text linguist-generated
 /plugin/spec/kanban.json -text linguist-generated
 /plugin/src/protocol/fragments.ts -text linguist-generated
+# The skill derived from the plugin is committed as `refresh-skill` lays
+# the flake's build of it, which `checks.skill` compares the same way. Its
+# script is the bundled CLI, one long generated file, so git shows no diff
+# of it, only that it changed.
+/plugin/skills/** -text linguist-generated
+/plugin/skills/*/scripts/kanban.js -diff

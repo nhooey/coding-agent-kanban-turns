@@ -21,7 +21,7 @@ implemented-by: kanban-cli-adapter
 - **Built by Nix.** Flake packages build:
   - `kanban.js`: the CLI and the core bundled into one JS file that runs under Node 20 or later, with no `node_modules`;
   - standalone binaries, one per platform the flake builds for, that need no Node installed but do need their Nix closure, the libraries Node links to.
-- **The derived skill runs it.** The skill's scripts are this CLI ([derived-skill-package](../open/derived-skill-package.md)): `kanban.js` where Node is on the path, a standalone binary where it isn't.
+- **The derived skill runs it.** The skill's scripts are this CLI ([derived-skill-package](derived-skill-package.md)): `kanban.js` where Node is on the path, a standalone binary where it isn't.
 
 Checks:
 

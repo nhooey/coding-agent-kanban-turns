@@ -27,6 +27,6 @@ implemented-by: protocol-golden-cases
 - **A case is a worked example unless it says otherwise.** A case whose replies break a rule on purpose, such as a lint case, says `example: false`; every other case's replies keep the protocol, so the derived skill can show them.
 - **Cases cover the spec.** Between them, the cases hold every list and every older name of a list or the roll-up, every option kind, every command and synonym, by a prefix and from a prompt's last line, every skill command, every settling word, the reference grammar's forms and a reply with each lint finding. A test checks each, and each older name is pinned by a case that fails without it.
 - **The tests run them.** One test in `plugin/test/unit/protocol/golden-cases.test.ts` runs every case through the core and compares each output with the case's expectation, so a new case needs no new test code. A lint expectation runs through the reply lint ([plugin-tools-replace-skill-scripts](plugin-tools-replace-skill-scripts.md)).
-- **The derived skill's examples render from them.** The skill's build ([derived-skill-package](../open/derived-skill-package.md)) turns chosen cases into its worked examples, so an example can't drift from what the plugin does.
+- **The derived skill's examples render from them.** The skill's build ([derived-skill-package](derived-skill-package.md)) turns chosen cases into its worked examples, so an example can't drift from what the plugin does.
 
 Checks: the case runner passes; a case whose expectation is changed by hand fails it.

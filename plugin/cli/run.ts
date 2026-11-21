@@ -1,21 +1,27 @@
 // The kanban CLI's commands, each a thin edge over the function of the core
 // the plugin's own tools and hooks call: `count`, the count line
-// (countLine); `rollup`, the full 📌 roll-up (rollUpDraft); `lint`, a
+// (countLine); `rollup`, the full 📌 roll-up (rollUpDraft); `due`, whether
+// the full roll-up is due by the roll-up interval (rollUpDue); `lint`, a
 // reply's findings (lintReply, with kanban_lint's text for a draft and the
 // turn's end's for the last final response); and `turn-id`, the current
 // turn's id, the latest turn's. No I/O: cli/kanban.ts reads the arguments,
-// the files and stdin, hands them here, and writes out what comes back.
+// the session, the clock, the files and stdin, hands them here, and writes
+// out what comes back.
 //
 // The turns come from a transcript, read through the adapter of the harness
-// that wrote it, Claude Code's unless `--harness` names another, or from
-// stdin, as a JSON list of neutral turns (cli/neutral.ts), for a harness
-// with no adapter here. The window, the summary width and the merged pull
-// requests come from the plugin's settings, which `--window`, `--width` and
-// `--merged` override; the CLI asks GitHub nothing.
+// that wrote it, Claude Code's unless `--harness` names another; else, in a
+// Claude Code session, from the session's own transcript, which the edge
+// finds; else, or for `--stdin`, from stdin, as a JSON list of neutral turns
+// (cli/neutral.ts), for a harness with no adapter here. The window, the
+// summary width and the merged pull requests come from the plugin's
+// settings, which `--window`, `--width` and `--merged` override; the CLI
+// asks GitHub nothing.
 
 import { parseArgs } from "node:util";
 
 import { countLine, pullRequestsOf } from "../src/items/outstanding.ts";
+import { rollUpDue } from "../src/items/roll-up-due.ts";
+import type { Due } from "../src/items/roll-up-due.ts";
 import { rollUpDraft } from "../src/items/roll-up.ts";
 import {
   CLEAN_REPLY_TEXT,
@@ -48,15 +54,22 @@ const ROLL_UP = SPEC["roll-up"];
 export const COMMANDS = {
   count: `the ${ROLL_UP.glyph} count line, empty when nothing is outstanding`,
   rollup: `the full ${ROLL_UP.glyph} roll-up, each item ending in its ${SPEC.tag.glyph} tag, empty when nothing is outstanding`,
+  due: `whether the full ${ROLL_UP.glyph} roll-up is due by the roll-up interval: full, or counts and the time until it is`,
   lint: "the reply lint's findings for a draft (--draft) or the last final response, exiting 1 when there are any",
   "turn-id": "the current turn's id, the latest turn's",
 } as const;
 
 export type Command = keyof typeof COMMANDS;
 
-/** Where the turns come from: stdin, as neutral turns, or a transcript's path and the harness that wrote it. */
+/**
+ * Where the turns come from: stdin, as neutral turns; a transcript's path
+ * and the harness that wrote it; or a Claude Code session's own
+ * transcript, by the session's id, which the edge finds.
+ */
 export type Source = Readonly<
-  { from: "stdin" } | { from: "transcript"; path: string; harness: string }
+  | { from: "stdin" }
+  | { from: "transcript"; path: string; harness: string }
+  | { from: "session"; session: string; harness: string }
 >;
 
 /** What the arguments ask for. A `lint` with a draft reads no turns, so its `source` is none. */
@@ -82,6 +95,9 @@ export const EXIT = { ok: 0, findings: 1, usage: 2 } as const;
 
 const HARNESSES = Object.keys(ADAPTERS).join(", ");
 
+/** The variable Claude Code names its session by, whose transcript the turns are read from by default. */
+export const SESSION_VARIABLE = "CLAUDE_CODE_SESSION_ID";
+
 /** The CLI's usage, as `--help` prints it and a bad argument follows. */
 export const USAGE = [
   `Usage: ${NAME} <command> [--transcript <path> [--harness <name>]] [options]`,
@@ -90,13 +106,18 @@ export const USAGE = [
   ...Object.entries(COMMANDS).map(([command, gives]) => `  ${command.padEnd(9)} ${gives}`),
   "",
   "The turns are read from the transcript at --transcript, as the harness --harness names",
-  `writes it (${HARNESSES}; ${DEFAULT_HARNESS} unless named), or else from stdin, as a JSON`,
-  "list of neutral turns. A turn's unanswered, true where it has no final response, keeps",
-  "lint off its replies.",
+  `writes it (${HARNESSES}; ${DEFAULT_HARNESS} unless named); else, where ${SESSION_VARIABLE}`,
+  "names a Claude Code session, from its transcript in the projects/ folder of CLAUDE_CONFIG_DIR",
+  "or ~/.claude/, in the working directory's project folder or the one that holds it; else, or",
+  "for --stdin, from stdin, as a JSON list of neutral turns. A child process inherits the",
+  `session's ${SESSION_VARIABLE}, so another harness passes --stdin or --transcript always.`,
+  "A turn's unanswered, true where it has no final response, keeps lint off its replies; its",
+  "promptedAt and answeredAt, ISO 8601 times, time due.",
   "",
   "Options:",
-  "  --transcript <path>  the session's transcript",
+  "  --transcript <path>  a session's transcript",
   `  --harness <name>     the harness that wrote it: ${HARNESSES}`,
+  "  --stdin              read the turns from stdin, even in a Claude Code session",
   "  --window <n>         how many of the latest turns to read; 0 reads every turn since the latest reassess",
   "  --width <n>          how long a roll-up item's summary may be; 0 keeps summaries whole",
   "  --merged <pr>        a pull request known merged, owner/repo#N or its URL; once per pull request",
@@ -116,6 +137,7 @@ export const USAGE = [
 const OPTIONS = {
   transcript: { type: "string" },
   harness: { type: "string" },
+  stdin: { type: "boolean" },
   window: { type: "string" },
   width: { type: "string" },
   merged: { type: "string", multiple: true },
@@ -156,8 +178,21 @@ const parsed = (argv: readonly string[]) => {
   }
 };
 
-/** What the arguments ask for, or every problem with them. */
-export const requestOf = (argv: readonly string[]): Got<Request> => {
+/** Where the turns come from: a --transcript, else --stdin, else the Claude Code session named, else stdin. */
+const sourceOf = (
+  transcript: string | undefined,
+  stdin: boolean,
+  session: string | undefined,
+  harness: string,
+): Source =>
+  transcript !== undefined
+    ? { from: "transcript", path: transcript, harness }
+    : !stdin && session !== undefined && session !== ""
+      ? { from: "session", session, harness: DEFAULT_HARNESS }
+      : { from: "stdin" };
+
+/** What the arguments ask for, in the Claude Code session `session` names, where one does, or every problem with them. */
+export const requestOf = (argv: readonly string[], session?: string): Got<Request> => {
   const args = parsed(argv);
 
   if (typeof args === "string") {
@@ -190,8 +225,23 @@ export const requestOf = (argv: readonly string[]): Got<Request> => {
       : []),
     ...(values.draft !== undefined && command !== "lint" ? ["--draft is lint's alone"] : []),
     ...(values.json === true && command !== "lint" ? ["--json is lint's alone"] : []),
+    ...(command === "due" && values.window !== undefined
+      ? ["--window isn't due's: due times every turn"]
+      : []),
+    ...(command === "due" && values.width !== undefined
+      ? ["--width isn't due's: due prints no summary"]
+      : []),
+    ...(command === "due" && values.merged !== undefined
+      ? ["--merged isn't due's: due settles no item"]
+      : []),
     ...(isDrafted && values.transcript !== undefined
       ? ["lint reads a --draft or a --transcript's last final response, not both"]
+      : []),
+    ...(values.stdin === true && values.transcript !== undefined
+      ? ["--stdin and --transcript each name where the turns come from: give one"]
+      : []),
+    ...(isDrafted && values.stdin === true
+      ? ["lint reads a --draft or the turns' last final response, not both"]
       : []),
   ];
 
@@ -209,9 +259,7 @@ export const requestOf = (argv: readonly string[]): Got<Request> => {
             command,
             source: isDrafted
               ? undefined
-              : values.transcript === undefined
-                ? { from: "stdin" }
-                : { from: "transcript", path: values.transcript, harness },
+              : sourceOf(values.transcript, values.stdin === true, session, harness),
             draft: values.draft,
             window: window.value,
             width: width.value,
@@ -232,11 +280,12 @@ export const usageRefusal = (problems: readonly string[]): Result => ({
   code: EXIT.usage,
 });
 
-/** What the edge read for a request: the turns' text, from its source; the draft's, for a `lint --draft`; and the settings in effect. */
+/** What the edge read for a request: the turns' text, from its source; the draft's, for a `lint --draft`; the settings in effect; and the time, in milliseconds, that `due` reckons from. */
 export type Inputs = Readonly<{
   turns: string | undefined;
   draft: string | undefined;
   settings: Loaded;
+  now: number;
 }>;
 
 /** A result with nothing on stdout, the problems on stderr and the usage exit code. */
@@ -253,11 +302,23 @@ const said = (text: string, code: number = EXIT.ok): Result => ({
   code,
 });
 
-/** The turns of a source's text: a transcript's through its harness's adapter, stdin's as neutral turns. */
+/** The turns of a source's text: a transcript's, the session's own among them, through its harness's adapter, stdin's as neutral turns. */
 export const turnsOf = (source: Source, text: string): Got<readonly Turn[]> =>
   source.from === "stdin"
     ? turnsOfJson(text)
     : { value: (ADAPTERS[source.harness] ?? turnsOfText)(text) };
+
+const SECOND = 1000;
+
+/** A time left, in milliseconds, as minutes and seconds, the seconds rounded up and in two digits: `2m30s`. */
+export const leftText = (left: number): string => {
+  const seconds = Math.ceil(left / SECOND);
+
+  return `${Math.floor(seconds / 60)}m${String(seconds % 60).padStart(2, "0")}s`;
+};
+
+/** `due`'s answer: `full`, or `counts` and the time until the full roll-up is due. */
+const dueText = (due: Due): string => (due.full ? "full" : `counts ${leftText(due.left)}`);
 
 /** `lint`'s result for a draft, as kanban_lint gives it. */
 const draftResult = (text: string, json: boolean): Result => {
@@ -302,7 +363,7 @@ export const finalResponse = (turns: readonly Turn[]): string | undefined =>
 const commandResult = (
   command: Command,
   turns: readonly Turn[],
-  over: Readonly<{ window: number; width: number; merged: ReadonlySet<string>; json: boolean }>,
+  over: Readonly<{ window: number; width: number; merged: ReadonlySet<string>; json: boolean; now: number }>,
 ): Result => {
   const reply = command === "lint" ? finalResponse(turns) : undefined;
   const id = turns.at(-1)?.id;
@@ -311,6 +372,8 @@ const commandResult = (
     ? said(countLine(turns, over.window, over.merged))
     : command === "rollup"
       ? said(rollUpDraft(turns, over.window, over.merged, over.width))
+      : command === "due"
+        ? said(dueText(rollUpDue(turns, over.now)))
       : command === "turn-id"
         ? id === undefined || id === ""
           ? refused([
@@ -343,6 +406,7 @@ export const answer = (request: Request, inputs: Inputs): Result => {
     width: request.width ?? settings["roll-up"]["summary-width"],
     merged: new Set(request.merged),
     json: request.json,
+    now: inputs.now,
   };
 
   if (request.source === undefined) {

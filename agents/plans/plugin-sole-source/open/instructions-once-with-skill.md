@@ -9,7 +9,7 @@ touches: [plugin/src/transcript/instructed.ts, plugin/src/protocol/instructions.
 
 # With the plugin's hooks and its skill both loaded, the agent gets the protocol's instructions once
 
-The plugin carries the skill as a fallback ([derived-skill-package](derived-skill-package.md)), and both hold the same instructions, so a conversation could get them twice: from the hooks, and from the agent loading the skill. Each side checks for the other.
+The plugin carries the skill as a fallback ([derived-skill-package](../closed/derived-skill-package.md)), and both hold the same instructions, so a conversation could get them twice: from the hooks, and from the agent loading the skill. Each side checks for the other.
 
 - **The hooks learn the skill is loaded from the transcript.** `instructing`, in `plugin/src/transcript/instructed.ts`, counts a load of the plugin's skill since the last boundary as carrying the instructions, as it counts a `context_sections` or `hook_additional_context` attachment now. A load is either:
   - an assistant record's `Skill` tool use naming `coding-agent-kanban-turns:coding-agent-kanban-turn-responses`, whose tool result isn't an error;

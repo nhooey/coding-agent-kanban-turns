@@ -23,7 +23,7 @@ kind: end-state
 - **Data and settings are YAML** throughout the repository, the user's settings in `config.yaml` among them, read by a well-known YAML library ([yaml-data-and-settings](../closed/yaml-data-and-settings.md)).
 - **The plugin teaches the format.** With the plugin's hooks loaded, the agent learns the format from the instructions the plugin sends once per conversation ([prompt-context-hook-runs](../closed/prompt-context-hook-runs.md)), and the plugin's own tools and `turn.complete` hook do what the skill's scripts did ([plugin-tools-replace-skill-scripts](../closed/plugin-tools-replace-skill-scripts.md)).
 - **Harness-neutral core.** The core works on neutral turns ([neutral-turn-stream](../closed/neutral-turn-stream.md)); Claude Code's JSONL transcript is one adapter, and a CLI over the core ([kanban-cli-adapter](../closed/kanban-cli-adapter.md)) serves any harness that can run a command.
-- **The plugin carries a derived skill that follows every change** ([derived-skill-package](derived-skill-package.md)):
+- **The plugin carries a derived skill that follows every change** ([derived-skill-package](../closed/derived-skill-package.md)):
   - `packages.plugin` holds a SKILL.md, its examples and its scripts under `skills/`, built from the spec, the fragments, the golden cases and the CLI, and Claude Code loads it as `coding-agent-kanban-turns:coding-agent-kanban-turn-responses`;
   - installing the plugin installs the skill, the fallback when the plugin's hooks fail to load;
   - its scripts are the CLI, `kanban.js` under Node or a standalone binary, so the fallback runs the same core functions as the hooks;

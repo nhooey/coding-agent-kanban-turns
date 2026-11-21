@@ -71,6 +71,35 @@ describe("turnAt", () => {
     expect(turnAt({ ...TURN, unanswered: false }, "t")).toEqual({ value: TURN });
   });
 
+  test("keeps a turn's times, and leaves out one not given, as unknown", () => {
+    const timed = { ...TURN, promptedAt: "2026-11-16T20:00:00.000Z", answeredAt: "2026-11-16T20:01:00Z" };
+
+    expect(turnAt(timed, "t")).toEqual({ value: timed });
+    expect(turnAt({ ...TURN, promptedAt: "2026-11-16T20:00:00.000Z" }, "t")).toEqual({
+      value: { ...TURN, promptedAt: "2026-11-16T20:00:00.000Z" },
+    });
+  });
+
+  test("refuses a time that isn't one, naming it", () => {
+    expect(turnAt({ ...TURN, promptedAt: "yesterday", answeredAt: 7 }, "t")).toEqual({
+      problems: [
+        "t.promptedAt isn't an ISO 8601 time: \"yesterday\"",
+        "t.answeredAt isn't an ISO 8601 time: 7",
+      ],
+    });
+  });
+
+  test("refuses a time Date.parse would take but ISO 8601 doesn't write, or one with no zone", () => {
+    const refused = (time: string) => "problems" in turnAt({ ...TURN, promptedAt: time }, "t");
+
+    expect(refused("Mon, 16 Nov 2026 20:00:00 GMT")).toBe(true);
+    expect(refused("2026-11-16")).toBe(true);
+    expect(refused("2026-11-16T20:00:00")).toBe(true);
+    expect(refused("2026-13-16T20:00:00Z")).toBe(true);
+    expect(refused("2026-11-16T20:00:00+01:00")).toBe(false);
+    expect(refused("2026-11-16T20:00Z")).toBe(false);
+  });
+
   test("gives a Decide item with no turn the turn's own id, as kanban_options reads it", () => {
     const read = turnAt({ ...TURN, decide: [ITEM] }, "t");
 

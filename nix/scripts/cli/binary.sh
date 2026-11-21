@@ -12,7 +12,7 @@
 # of the closure, as the derivation's disallowedReferences holds it. Cutting
 # it changes bytes inside the snapshot, which works because V8's release
 # builds don't verify the snapshot's checksum; should a later Node verify
-# it, the binary fails at start, and checks.cli, which runs it, fails too.
+# it, the binary fails at start, and checks.cli-bin, which runs it, fails too.
 #
 # On macOS, changing the binary breaks its signature, and the kernel kills
 # a binary whose signature doesn't hold, so it is signed again, ad hoc,

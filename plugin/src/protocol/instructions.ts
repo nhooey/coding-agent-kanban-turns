@@ -125,8 +125,15 @@ export const TOOL_DESCRIPTION = [
   "A click writes the item's reference into the user's prompt draft; nothing is sent.",
 ].join(" ");
 
-/** The fragments the instructions hold, in their order: the format, then the plugin's buttons' tool and its other two. */
+/**
+ * The fragments the instructions hold, in their order: the title, the line
+ * saying whose format the block is, the format, then the plugin's buttons'
+ * tool and its other two. The derived skill holds the title and the format
+ * too, with its scripts in place of the tools.
+ */
 export const INSTRUCTION_FRAGMENTS: readonly FragmentName[] = [
+  "title",
+  "block",
   "overview",
   "progress-updates",
   "lists",
@@ -159,6 +166,7 @@ export const instructionsFor = (
       tool,
       "outstanding-tool": outstanding,
       "lint-tool": lint,
+      "roll-up-drafter": `The tool \`${outstanding}\` drafts`,
     }),
   );
 

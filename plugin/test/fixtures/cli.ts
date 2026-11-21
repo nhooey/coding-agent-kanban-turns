@@ -14,6 +14,7 @@ import { LIST_KEYS, summaryOf, itemsOfText } from "../../src/items/outstanding.t
 import { SPEC } from "../../src/protocol/spec.ts";
 import { CASES_DIR, CASE_SCHEMA_FILE, caseOf, turnsOfCase } from "../../tools/spec/cases.ts";
 import type { CaseReply, GoldenCase } from "../../tools/spec/cases.ts";
+import { SESSION_VARIABLE } from "../../cli/run.ts";
 import type { Result } from "../../cli/run.ts";
 import type { Turn } from "../../types/index.d.ts";
 import { jsonl, recordsOfTurns } from "./records.ts";
@@ -48,6 +49,17 @@ export type Runner = (args: readonly string[], input: Input) => Result;
 export const scratch = (): string => mkdtempSync(join(tmpdir(), "kanban-cli-"));
 
 /**
+ * The environment the CLI runs in under test: the tests' own, without the
+ * Claude Code session they may run in or its config folder, so the CLI
+ * reads the turns the test gives it and not that session's transcript.
+ */
+export const CLI_ENV: NodeJS.ProcessEnv = Object.fromEntries(
+  Object.entries(process.env).filter(
+    ([name]) => name !== SESSION_VARIABLE && name !== "CLAUDE_CONFIG_DIR",
+  ),
+);
+
+/**
  * The CLI run as a process, `command` its program and the arguments before
  * the CLI's own, such as `node cli/kanban.ts`: a transcript is written to a
  * file of its own and named by `--transcript`, and stdin's text is piped in.
@@ -56,7 +68,7 @@ export const scratch = (): string => mkdtempSync(join(tmpdir(), "kanban-cli-"));
  */
 export const processRunner = (command: readonly [string, ...string[]]): Runner => {
   const folder = scratch();
-  const env = { ...process.env, XDG_CONFIG_HOME: folder };
+  const env = { ...CLI_ENV, XDG_CONFIG_HOME: folder };
   const [program, ...before] = command;
 
   return (args, input) => {
