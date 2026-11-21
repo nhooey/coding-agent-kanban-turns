@@ -102,6 +102,13 @@ export type Turn = Readonly<{
   decide: readonly DecideItem[];
   /** The messages sent while the turn ran, the user's and others', in order. */
   messages: readonly Message[];
+  /**
+   * True where the turn has no final response: it still runs, or it ended
+   * without one, interrupted or cut off by an error, so its last reply is
+   * text written on the way. Left out where it has one, as a harness that
+   * doesn't say leaves it.
+   */
+  unanswered?: true;
 }>;
 
 /**

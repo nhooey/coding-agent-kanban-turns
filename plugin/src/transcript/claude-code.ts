@@ -30,6 +30,23 @@
 // inputs among their tool uses. A message sent while it ran is a `queued_command`
 // attachment: the user's, a peer's or a task's. A prompt record the file
 // repeats, as a continuation does, folds its replies into the first.
+//
+// A turn has a final response where its last assistant record ended it
+// with an answer, as the engine's turn end calls one: every record of a
+// response carries the response's `stop_reason`, and an answer's is
+// `end_turn`, `stop_sequence` or `max_tokens`. Any other turn is
+// unanswered:
+//
+// - one still running, or interrupted while a tool ran: its last record
+//   stopped to call a tool, `tool_use`;
+// - one interrupted while it wrote: its last record, cut off mid-stream,
+//   says no stop reason, and a `[Request interrupted by user]` record
+//   follows, which opens no turn;
+// - one an API error ended: its last record is the engine's own, its model
+//   `<synthetic>`, whatever stop reason it gives;
+// - one the model refused, `refusal`, which the engine's turn end tells
+//   from an answer;
+// - one with no assistant record yet.
 
 import { itemsOf } from "../items/items.ts";
 import { PLUGIN, TOOL_CALLED } from "../protocol/instructions.ts";
@@ -208,6 +225,17 @@ export const queuedOf = (record: TranscriptRecord): Message | undefined => {
 const isReply = (record: TranscriptRecord): boolean =>
   record.type === "assistant" && record.isSidechain !== true;
 
+// The stop reasons of a response that answers, ending its turn with a
+// final response, and the model the engine names on a record it writes
+// itself, such as an API error's.
+const ANSWER_STOPS: readonly unknown[] = ["end_turn", "stop_sequence", "max_tokens"];
+const SYNTHETIC_MODEL = "<synthetic>";
+
+/** Whether an assistant record's response answers, ending its turn with a final response. */
+const answers = (record: TranscriptRecord): boolean =>
+  ANSWER_STOPS.includes(field(record.message, "stop_reason")) &&
+  field(record.message, "model") !== SYNTHETIC_MODEL;
+
 /** The Decide items of the `kanban_options` inputs among an assistant record's tool uses. */
 export const decideOf = (record: TranscriptRecord): readonly DecideItem[] => {
   const content = contentOf(record);
@@ -223,14 +251,18 @@ export const decideOf = (record: TranscriptRecord): readonly DecideItem[] => {
     : [];
 };
 
-/** A turn as it's read, with the whole `promptId` a repeat is matched by. */
-type Opened = Readonly<{ promptId: string; turn: Turn }>;
+/**
+ * A turn as it's read, with the whole `promptId` a repeat is matched by,
+ * and whether its last assistant record answers; undefined before any.
+ */
+type Opened = Readonly<{ promptId: string; turn: Turn; answered: boolean | undefined }>;
 
 const opened = (record: TranscriptRecord, owner: Owner): Opened => {
   const promptId = typeof record.promptId === "string" ? record.promptId : "";
 
   return {
     promptId,
+    answered: undefined,
     turn: {
       id: promptId.slice(0, ID_LENGTH),
       prompt: messageOf(owner, promptOf(record)),
@@ -241,16 +273,14 @@ const opened = (record: TranscriptRecord, owner: Owner): Opened => {
   };
 };
 
-/** The turns read so far with the last one's turn changed by `change`. */
+/** The turns read so far with the last one changed by `change`. */
 const withLast = (
   turns: readonly Opened[],
-  change: (turn: Turn) => Turn,
+  change: (last: Opened) => Opened,
 ): readonly Opened[] => {
   const last = turns.at(-1);
 
-  return last === undefined
-    ? turns
-    : [...turns.slice(0, -1), { ...last, turn: change(last.turn) }];
+  return last === undefined ? turns : [...turns.slice(0, -1), change(last)];
 };
 
 const step = (
@@ -264,23 +294,29 @@ const step = (
   return owner !== undefined
     ? [...turns, opened(record, owner)]
     : isReply(record)
-      ? withLast(turns, (turn) => ({
-          ...turn,
-          replies: text.trim() === "" ? turn.replies : [...turn.replies, text],
-          decide: [...turn.decide, ...decideOf(record)],
+      ? withLast(turns, ({ promptId, turn }) => ({
+          promptId,
+          answered: answers(record),
+          turn: {
+            ...turn,
+            replies: text.trim() === "" ? turn.replies : [...turn.replies, text],
+            decide: [...turn.decide, ...decideOf(record)],
+          },
         }))
       : queued === undefined
         ? turns
-        : withLast(turns, (turn) => ({
-            ...turn,
-            messages: [...turn.messages, queued],
+        : withLast(turns, (last) => ({
+            ...last,
+            turn: { ...last.turn, messages: [...last.turn.messages, queued] },
           }));
 };
 
 /**
  * One turn per prompt id: a prompt record the file repeats, as a
  * continuation does, folds its replies, Decide items and messages into the
- * first's.
+ * first's, and is answered as the last repeat with an assistant record is,
+ * so a repeat with none yet, such as one after a compaction, leaves it as
+ * it was.
  */
 const mergeRepeats = (turns: readonly Opened[]): readonly Turn[] => {
   // Built from the last turn back, so each id keeps its first place.
@@ -290,14 +326,16 @@ const mergeRepeats = (turns: readonly Opened[]): readonly Turn[] => {
 
   return turns
     .filter((opened, n) => first.get(opened.promptId) === n)
-    .map(({ promptId, turn }) => {
+    .map(({ promptId, turn }): Turn => {
       const repeats = turns.filter((other) => other.promptId === promptId);
+      const answered = repeats.findLast((other) => other.answered !== undefined)?.answered;
 
       return {
         ...turn,
         replies: repeats.flatMap((other) => other.turn.replies),
         decide: repeats.flatMap((other) => other.turn.decide),
         messages: repeats.flatMap((other) => other.turn.messages),
+        ...(answered === true ? {} : { unanswered: true }),
       };
     });
 };

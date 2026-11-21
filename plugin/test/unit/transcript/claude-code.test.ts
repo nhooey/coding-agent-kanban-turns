@@ -25,11 +25,14 @@ import { itemsOf } from "../../../src/items/items.ts";
 import { openDecideItems, settlementsOf } from "../../../src/items/outstanding.ts";
 import { reassessStart } from "../../../src/transcript/turns.ts";
 import {
+  apiError,
   assistant,
   commandOutput,
+  compactBoundary,
   compactSummary,
   engineRow,
   human,
+  interrupted,
   jsonl,
   notification,
   otherPluginPrompt,
@@ -40,7 +43,9 @@ import {
   scheduled,
   sdkPrompt,
   skillBody,
+  stoppedFor,
   submitted,
+  toolRejected,
   toolResult,
 } from "../../fixtures/records.ts";
 
@@ -227,6 +232,115 @@ describe("turnsOf", () => {
 
   test("a prompt's report names are read from its text", () => {
     expect(turnsOf(RECORDS)[1]?.prompt.reportNames).toEqual(["a48bb"]);
+  });
+
+  test("a turn whose last response answers has a final response: end_turn, stop_sequence or max_tokens", () => {
+    const turns = turnsOf(
+      ["end_turn", "stop_sequence", "max_tokens"].flatMap((reason) => [
+        human(FIRST, "go"),
+        stoppedFor("tool_use", assistant("on the way")),
+        stoppedFor(reason, assistant("done")),
+      ]),
+    );
+
+    expect(turns.map((t) => "unanswered" in t)).toEqual([false]);
+    expect(
+      ["end_turn", "stop_sequence", "max_tokens"].map(
+        (reason) => turnsOf([human(FIRST, "go"), stoppedFor(reason, assistant("done"))])[0]?.unanswered,
+      ),
+    ).toEqual([undefined, undefined, undefined]);
+  });
+
+  test("a turn whose last response stopped to call a tool is unanswered, text written on the way included", () => {
+    const turns = turnsOf([
+      human(FIRST, "go"),
+      stoppedFor("end_turn", assistant("done")),
+      human(SECOND, "again"),
+      stoppedFor("tool_use", assistant("on the way")),
+    ]);
+
+    expect(turns.map((t) => t.unanswered)).toEqual([undefined, true]);
+    expect(turns[1]?.replies).toEqual(["on the way"]);
+  });
+
+  test("a response cut off mid-stream, its record saying no stop reason, then interrupted by the user, leaves its turn unanswered", () => {
+    const turns = turnsOf([
+      human(FIRST, "go"),
+      stoppedFor("tool_use", assistant("on the way")),
+      toolResult(),
+      assistant("half a sent"),
+      interrupted(),
+      human(SECOND, "again"),
+      stoppedFor("end_turn", assistant("done")),
+    ]);
+
+    expect(turns.map((t) => [t.id, t.unanswered])).toEqual([
+      [FIRST, true],
+      [SECOND, undefined],
+    ]);
+  });
+
+  test("an Escape while a tool ran leaves its turn unanswered, its last record the tool call", () => {
+    const turns = turnsOf([
+      human(FIRST, "go"),
+      stoppedFor("tool_use", assistant("running it")),
+      toolRejected(),
+      interrupted(true),
+    ]);
+
+    expect(turns.map((t) => [t.replies, t.unanswered])).toEqual([[["running it"], true]]);
+  });
+
+  test("an API error, the engine's own synthetic record, leaves its turn unanswered, though its stop reason is stop_sequence", () => {
+    const turns = turnsOf([
+      human(FIRST, "go"),
+      stoppedFor("tool_use", assistant("on the way")),
+      toolResult(),
+      apiError("API Error: Connection lost mid-response."),
+    ]);
+
+    expect(turns.map((t) => t.unanswered)).toEqual([true]);
+  });
+
+  test("a refusal, or no assistant record yet, leaves a turn unanswered", () => {
+    expect(
+      turnsOf([
+        human(FIRST, "go"),
+        stoppedFor("refusal", assistant("no")),
+        human(SECOND, "again"),
+      ]).map((t) => t.unanswered),
+    ).toEqual([true, true]);
+  });
+
+  test("a repeated prompt is answered as its last repeat with an assistant record is", () => {
+    expect(
+      turnsOf([
+        human(FIRST, "go"),
+        stoppedFor("tool_use", assistant("on the way")),
+        human(FIRST, "go"),
+        stoppedFor("end_turn", assistant("done")),
+      ]).map((t) => [t.replies, t.unanswered]),
+    ).toEqual([[["on the way", "done"], undefined]]);
+    expect(
+      turnsOf([
+        human(FIRST, "go"),
+        stoppedFor("end_turn", assistant("done")),
+        human(FIRST, "go"),
+        stoppedFor("tool_use", assistant("on the way")),
+      ]).map((t) => t.unanswered),
+    ).toEqual([true]);
+  });
+
+  test("a prompt id repeated after a compaction, with no assistant record yet, leaves the turn answered as it was", () => {
+    const turns = turnsOf([
+      human(FIRST, "go"),
+      stoppedFor("end_turn", assistant("done")),
+      compactBoundary(),
+      compactSummary(FIRST),
+      human(FIRST, "go"),
+    ]);
+
+    expect(turns.map((t) => [t.id, t.replies, t.unanswered])).toEqual([[FIRST, ["done"], undefined]]);
   });
 
   test("the messages sent while a turn ran are its messages, in order, whoever sent them", () => {

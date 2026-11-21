@@ -51,6 +51,7 @@ turns:
         lint:
           - { line: 2, rule: table-not-parted }
           - { line: 5, rule: table-not-parted }
+        turn-end-lints: false
   - id: 2c3d4e5f
     prompt: What's done, by topic?
     replies:
