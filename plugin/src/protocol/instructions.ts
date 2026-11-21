@@ -30,6 +30,12 @@ export const OUTSTANDING_CALLED = calledAs(PLUGIN, OUTSTANDING_TOOL);
 export const LINT_CALLED = calledAs(PLUGIN, LINT_TOOL);
 /** The context block the instructions go in, keyed by the plugin's own name. */
 export const BLOCK = "kanbanTurns";
+/**
+ * The skill the plugin carries, as Claude Code names a plugin's skill: the
+ * plugin's name, a colon and the spec's skill name. Its Skill tool use or
+ * slash command loads the same format the instructions hold.
+ */
+export const PLUGIN_SKILL = `${PLUGIN}:${SPEC.skill.name}`;
 
 /**
  * The item kinds the tool takes, in the spec's order: every kind it reads,
@@ -126,14 +132,15 @@ export const TOOL_DESCRIPTION = [
 ].join(" ");
 
 /**
- * The fragments the instructions hold, in their order: the title, the line
- * saying whose format the block is, the format, then the plugin's buttons'
- * tool and its other two. The derived skill holds the title and the format
- * too, with its scripts in place of the tools.
+ * The fragments the instructions hold, in their order: the line naming the
+ * plugin's skill as the block's content, so the agent needn't load it, then
+ * the title, the format, then the plugin's buttons' tool and its other two.
+ * The derived skill holds the title and the format too, with its scripts in
+ * place of the tools, and its description names the block's line.
  */
 export const INSTRUCTION_FRAGMENTS: readonly FragmentName[] = [
-  "title",
   "block",
+  "title",
   "overview",
   "progress-updates",
   "lists",

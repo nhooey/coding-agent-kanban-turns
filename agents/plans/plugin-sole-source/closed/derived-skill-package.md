@@ -11,7 +11,7 @@ implemented-by: derived-skill-package
 # packages.plugin carries a skill derived from the plugin, its SKILL.md, examples and scripts, under skills/, and a flake check confirms it
 
 - **Ships inside the plugin.** `packages.plugin` holds the skill at `skills/coding-agent-kanban-turn-responses/`, the spec's `skill.name`, beside the manifest and the hooks, so installing the plugin installs the skill. Claude Code loads it as `coding-agent-kanban-turns:coding-agent-kanban-turn-responses`, and a command after that slash command runs as it does after the skill's own.
-- **A fallback for the hooks.** When the plugin's hooks fail to load, the skill still teaches the format and runs the protocol. When both load, the agent gets the instructions once ([instructions-once-with-skill](../open/instructions-once-with-skill.md)).
+- **A fallback for the hooks.** When the plugin's hooks fail to load, the skill still teaches the format and runs the protocol. When both load, the agent gets the instructions once ([instructions-once-with-skill](instructions-once-with-skill.md)).
 - **What the skill folder holds,** all built from the repository at build time:
   - `SKILL.md`, assembled from the prose fragments and filled in from the spec ([protocol-prose-fragments](protocol-prose-fragments.md), [protocol-spec-data](protocol-spec-data.md)), with frontmatter in the form skills take, its `name` the folder's;
   - worked examples rendered from the golden cases not marked `example: false` ([protocol-golden-cases](protocol-golden-cases.md)), each drawing only the option kinds the instructions teach, and giving only what a reply alone settles, since the skill teaches no call to the plugin's buttons;

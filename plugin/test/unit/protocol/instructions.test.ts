@@ -11,6 +11,7 @@ import {
   LINT_CALLED,
   OUTSTANDING_CALLED,
   PLUGIN,
+  PLUGIN_SKILL,
   TOOL,
   TOOL_CALLED,
   TOOL_DESCRIPTION,
@@ -59,6 +60,21 @@ describe("the instructions", () => {
       "sends nothing",
       "exactly as you would without the tool",
     ].forEach((phrase) => expect(INSTRUCTIONS).toContain(phrase));
+  });
+
+  test("open with a line naming the plugin's skill, saying the block is its format and what it leaves out, so it needn't be loaded", () => {
+    const [opening] = INSTRUCTIONS.split("\n");
+
+    expect(opening?.startsWith(`This block is the \`${PLUGIN_SKILL}\` skill's format,`)).toBe(true);
+    expect(opening).toContain("without its worked examples or its preferences files");
+    expect(opening).toContain("needn't be loaded");
+    expect(INSTRUCTION_FRAGMENTS[0]).toBe("block");
+  });
+});
+
+describe("PLUGIN_SKILL", () => {
+  test("is the plugin's name and the spec's skill name, as Claude Code names a plugin's skill", () => {
+    expect(PLUGIN_SKILL).toBe(`${PLUGIN}:${SPEC.skill.name}`);
   });
 });
 
