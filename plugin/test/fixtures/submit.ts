@@ -12,7 +12,12 @@ import type {
   Outside,
   Stepped,
 } from "../../src/pane/pane-state.ts";
-import type { DecideItem, PaneState, Raised } from "../../types/index.d.ts";
+import type {
+  DecideItem,
+  Held,
+  PaneState,
+  Raised,
+} from "../../types/index.d.ts";
 
 export const HEADER = "coding-agent-kanban-turns:\n";
 
@@ -146,13 +151,14 @@ const EVENT_WEIGHT = 1;
 const ANSWER_WEIGHT = 1;
 
 /**
- * One step of a random run: any event, or the answer to one of the prompt
- * calls still waiting, picked by `pick`, so runs reach a press's later
- * stages as often as they throw stray answers at it.
+ * One step of a random run: any event, or the answer to one of the calls
+ * still waiting, picked by `pick`, so runs reach a press's later stages as
+ * often as they throw stray answers at it.
  */
-export type Command = Readonly<
-  { do: "event"; event: Event } | { do: "answer"; pick: number; reply: Reply }
+export type CommandOf<R> = Readonly<
+  { do: "event"; event: Event } | { do: "answer"; pick: number; reply: R }
 >;
+export type Command = CommandOf<Reply>;
 
 export const commandArb: fc.Arbitrary<Command> = fc.oneof(
   {
@@ -183,51 +189,71 @@ export const ENGINE: readonly Effect["kind"][] = [
 /** One step of a walk: the state before it, the event, and what `step` made of it. */
 export type Walked = Readonly<{ before: PaneState; event: Event; stepped: Stepped }>;
 
-/** The events `commands` make, each stepped from the start, with the state before it: an answer command answers a prompt call still waiting, as the hooks would. */
-export const walk = (
-  commands: readonly Command[],
-  outside: Outside,
-): readonly Walked[] =>
-  commands.reduce<
-    Readonly<{
-      state: PaneState;
-      waiting: readonly Effect[];
-      walked: readonly Walked[];
-    }>
-  >(
-    ({ state, waiting, walked }, c) => {
-      const at =
-        c.do === "answer" && waiting.length > 0 ? c.pick % waiting.length : -1;
-      const asked = waiting[at];
-      const event =
-        c.do === "event"
-          ? c.event
-          : asked === undefined
-            ? undefined
-            : answerTo(asked, c.reply);
-      const stepped =
-        event === undefined ? undefined : step(state, event, outside);
+/**
+ * A walk through `commands`: the events they make, each stepped from
+ * `from`, with the state before it. An answer command answers a call
+ * still waiting, one of the effects whose kind is in `asks`, with the
+ * event `answerOf` makes of it, as the hooks would.
+ */
+export const walkWith =
+  <R>(answerOf: (effect: Effect, reply: R) => Event | undefined, asks: readonly Effect["kind"][]) =>
+  (
+    commands: readonly CommandOf<R>[],
+    outside: Outside,
+    from: PaneState = INITIAL_PANE,
+  ): readonly Walked[] =>
+    commands.reduce<
+      Readonly<{
+        state: PaneState;
+        waiting: readonly Effect[];
+        walked: readonly Walked[];
+      }>
+    >(
+      ({ state, waiting, walked }, c) => {
+        const at =
+          c.do === "answer" && waiting.length > 0 ? c.pick % waiting.length : -1;
+        const asked = waiting[at];
+        const event =
+          c.do === "event"
+            ? c.event
+            : asked === undefined
+              ? undefined
+              : answerOf(asked, c.reply);
+        const stepped =
+          event === undefined ? undefined : step(state, event, outside);
 
-      return event === undefined || stepped === undefined
-        ? { state, waiting, walked }
-        : {
-            state: stepped.state,
-            waiting: [
-              ...waiting.filter((_, n) => n !== at),
-              ...stepped.effects.filter((e) => ENGINE.includes(e.kind)),
-            ],
-            walked: [...walked, { before: state, event, stepped }],
-          };
-    },
-    { state: INITIAL_PANE, waiting: [], walked: [] },
-  ).walked;
+        return event === undefined || stepped === undefined
+          ? { state, waiting, walked }
+          : {
+              state: stepped.state,
+              waiting: [
+                ...waiting.filter((_, n) => n !== at),
+                ...stepped.effects.filter((e) => asks.includes(e.kind)),
+              ],
+              walked: [...walked, { before: state, event, stepped }],
+            };
+      },
+      { state: from, waiting: [], walked: [] },
+    ).walked;
 
-/** The outside areas as a step may find them: some answers already sent, the close setting either way. */
+/** The events `commands` make, each stepped from `from`, with the state before it: an answer command answers a prompt call still waiting, as the hooks would. */
+export const walk = walkWith(answerTo, ENGINE);
+
+/** The pane's state before a run: both items raised. */
+export const START: PaneState = { ...INITIAL_PANE, raised: RAISED };
+
+/** The answers an earlier press, press 0, still holds Done when a run starts. */
+export const EARLIER: readonly Held[] = [
+  { press: 0, settled: { ref: radio.ref, how: "sent", letters: ["A"], note: "" } },
+  { press: 0, settled: { ref: checkbox.ref, how: "sent", letters: ["C"], note: "" } },
+];
+
+/** The pane's state as a run may find it: both items raised, an earlier press's answers to some held Done. */
+export const startArb: fc.Arbitrary<PaneState> = fc
+  .subarray([...EARLIER])
+  .map((sent) => ({ ...START, sent }));
+
+/** The outside areas as a step may find them: the close setting either way. */
 export const outsideArb: fc.Arbitrary<Outside> = fc.record({
-  raised: fc.constant(RAISED),
-  sent: fc.subarray([
-    { ref: radio.ref, how: "sent" as const, letters: ["A"], note: "" },
-    { ref: checkbox.ref, how: "sent" as const, letters: ["C"], note: "" },
-  ]),
   isClosedWhenAllSubmitted: fc.boolean(),
 });

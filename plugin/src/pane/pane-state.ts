@@ -3,23 +3,46 @@
 // effects to run, as data. The hooks run the effects and dispatch what each
 // answers as another event, so data flows one way. No `$`, no I/O.
 //
-// The pane's areas move here one at a time, and Submit has. The others keep
-// their own atoms until they move: the hooks read what `step` needs of them
-// into `Outside`, and write them when an effect says to.
+// The pane's areas move here one at a time, and Submit and the refresh
+// have. The others keep their own atoms until they move: the hooks read
+// what `step` needs of them into `Outside`, and write them when an effect
+// says to.
 
 import type {
+  Aside,
+  DecideItem,
+  Held,
   PaneState,
   Press,
   Raised,
+  Reading,
+  Refresh,
+  Settings,
   Settlement,
   Submit,
   SubmitStage,
+  Turn,
 } from "../../types/index.d.ts";
+import {
+  countLine,
+  openOf,
+  pullRequestsToAsk,
+} from "../items/outstanding.ts";
 import {
   closesOnSubmit,
   emptyRaised,
+  forSession,
+  heldNow,
+  refreshed,
+  released,
+  seen,
   sentOf,
+  unread,
+  unseen,
+  withHeld,
+  withItems,
   withSent,
+  withoutRead,
 } from "../items/raised.ts";
 import {
   NOT_EMPTIED_TEXT,
@@ -52,24 +75,52 @@ export type Answer = Readonly<
   | { type: "press-failed"; press: number; why: string }
 >;
 
+/** What a refresh's transcript read found: the session's turns, with the count line's settings; or why it couldn't read them, empty while the settings can't be used. */
+export type Found = Readonly<
+  { turns: readonly Turn[]; counts: Settings["counts"] } | { problem: string }
+>;
+
+/** The refresh a `gh` answer is for, with the turns and the window its count line was drawn from. */
+export type MergeAsked = Readonly<{
+  refresh: number;
+  turns: readonly Turn[];
+  window: number;
+}>;
+
 /**
  * Every change to the pane's state: the person's presses, the engine's
- * events, and what an effect answered.
+ * events, and what an effect answered. `read-dropped` is a transcript read
+ * whose answer couldn't be stepped, so nothing waits on it.
  */
 export type Event =
   | Readonly<
       | { type: "session-started" }
+      | { type: "session-joined"; session: string }
       | { type: "turn-started"; turn: string }
       | { type: "turn-completed"; turn: string }
       | { type: "submit-pressed" }
+      | { type: "items-drawn"; items: readonly DecideItem[] }
+      | { type: "refresh-asked"; releases: boolean }
+      | {
+          type: "transcript-read";
+          refresh: number;
+          found: Found;
+          warnings: readonly string[];
+        }
+      | { type: "read-dropped"; refresh: number }
+      | { type: "merged-found"; found: readonly string[]; asked?: MergeAsked }
+      | { type: "announced" }
+      | { type: "seen" }
     >
   | Answer;
 
 /**
  * What `step` asks the hooks to do. Reading, filling and submitting the
  * prompt answer with an event, under the number of the press that asked;
- * the rest answer nothing. `set-draft`, `hold-sent` and `release-sent`
- * write the atoms of areas not moved yet.
+ * reading the transcript and asking `gh` answer under the refresh's
+ * number; the rest answer nothing. `set-draft` writes the atom of an area
+ * not moved yet, and `read-transcript` reads the settings files again
+ * first, for the count line's window, until the settings move.
  */
 export type Effect = Readonly<
   | { kind: "read-prompt"; press: number; purpose: ReadPurpose }
@@ -83,37 +134,48 @@ export type Effect = Readonly<
   | { kind: "submit-prompt"; press: number; text: string }
   | { kind: "close-pane" }
   | { kind: "set-draft"; text: string }
-  | { kind: "hold-sent"; moved: readonly Settlement[] }
-  | { kind: "release-sent"; moved: readonly Settlement[] }
+  | { kind: "read-transcript"; refresh: number }
+  | {
+      kind: "ask-merged";
+      refs: readonly string[];
+      timeoutMs: number;
+      asked: MergeAsked;
+    }
+  | { kind: "open-pane" }
+  | { kind: "reveal"; to: "start" }
 >;
 
 /** What `step` reads of the areas whose state is still in atoms of their own. */
 export type Outside = Readonly<{
-  raised: Raised;
-  /** The answers Submit sent that the turn's end hasn't read yet. */
-  sent: readonly Settlement[];
   /** The `pane.close-when-all-submitted` setting; false while the settings can't be used. */
   isClosedWhenAllSubmitted: boolean;
 }>;
 
 /** The outside areas as nothing: what a failed press is stepped with, as ending it reads none of them. */
-export const NO_OUTSIDE: Outside = {
-  raised: emptyRaised,
-  sent: [],
-  isClosedWhenAllSubmitted: false,
-};
+export const NO_OUTSIDE: Outside = { isClosedWhenAllSubmitted: false };
 
 /** The next state, and the effects to run, in order. */
 export type Stepped = Readonly<{ state: PaneState; effects: readonly Effect[] }>;
 
 const IDLE: Submit = { tag: "idle" };
+const NO_ASIDE: Aside = { said: "", presses: 0 };
 
 /** The pane's state before anything has happened. */
 export const INITIAL_PANE: PaneState = {
   presses: 0,
   submit: IDLE,
   overtaken: [],
+  aside: NO_ASIDE,
+  refresh: { asked: 0, shown: 0, reads: [] },
+  raised: emptyRaised,
+  sent: [],
+  merged: [],
+  counts: "",
 };
+
+/** The raised items as the pane and a reply draw them: the answers Submit holds Done until the turn's end reads them. */
+export const shownOf = (state: PaneState): Raised =>
+  withSent(state.raised, heldNow(state.sent));
 
 type Pressed = Extract<Submit, { tag: "pressed" }>;
 type Sending = Extract<Press, { at: "sending" }>;
@@ -134,10 +196,6 @@ const ended = (why: string, turn: string | undefined): Submit =>
     : turn === undefined
       ? IDLE
       : { tag: "running", turn };
-
-/** Submit once an overtaken press ends saying `why`: what the pane says is the last press's to end, as when they shared one line. */
-const saying = (submit: Submit, why: string): Submit =>
-  submit.tag === "pressed" ? { ...submit, said: why } : ended(why, turnOf(submit));
 
 /** A main-loop turn starting: Submit waits it out, and what the last press said no longer applies. A press under way keeps going, the turn noted. */
 const turnStarted = (submit: Submit, turn: string): Submit =>
@@ -180,17 +238,28 @@ const pressed = (state: PaneState): Stepped => {
 };
 
 /**
- * Where a press goes on an answer: on to its next step; to its end, saying
- * why, or nothing once its draft went through; or to an end that says
- * nothing new, its box of blanks or a turn running when the box was read.
+ * Where a press goes on an answer: on to its next step, holding the
+ * answers its draft sends Done; to its end, saying why, or nothing once
+ * its draft went through; or to an end that says nothing new, its box of
+ * blanks or a turn running when the box was read. A press that puts its
+ * answers back releases its own holds, and no other press's.
  */
-type Moved = Readonly<
-  | { to: "next"; press: Press; effects: readonly Effect[] }
-  | { to: "end"; why: string; effects: readonly Effect[] }
-  | { to: "skip" }
->;
+type Next = Readonly<{
+  to: "next";
+  press: Press;
+  effects: readonly Effect[];
+  holds?: readonly Settlement[];
+  releases?: true;
+}>;
+type End = Readonly<{
+  to: "end";
+  why: string;
+  effects: readonly Effect[];
+  releases?: true;
+}>;
+type Moved = Next | End | Readonly<{ to: "skip" }>;
 
-const ends = (why: string, effects: readonly Effect[] = []): Moved => ({
+const ends = (why: string, effects: readonly Effect[] = []): End => ({
   to: "end",
   why,
   effects,
@@ -200,7 +269,7 @@ const next = (
   press: Sending,
   stage: SubmitStage,
   effects: readonly Effect[],
-): Moved => ({ to: "next", press: { ...press, stage }, effects });
+): Next => ({ to: "next", press: { ...press, stage }, effects });
 
 /** The box read for a press: a box of blanks, or one read while a turn ran, sends nothing; one the engine would mangle stays with why; the rest is emptied to send. */
 const readForSubmit = (
@@ -235,46 +304,47 @@ const readForSubmit = (
 };
 
 /** The box emptied, or not: an emptied box sends the draft, its answers Done until the turn's end reads them; one that kept the draft sends nothing. */
-const emptied = (press: Sending, isFilled: boolean, outside: Outside): Moved =>
-  isFilled
-    ? sending(press, sentOf(press.draft, withSent(outside.raised, outside.sent)))
-    : ends(NOT_EMPTIED_TEXT);
+const emptied = (press: Sending, isFilled: boolean, state: PaneState): Moved =>
+  isFilled ? sending(press, sentOf(press.draft, shownOf(state))) : ends(NOT_EMPTIED_TEXT);
 
-/** The draft sent, the box emptied: the answers it moves are Done until the turn's end reads them. */
-const sending = (press: Sending, moved: readonly Settlement[]): Moved =>
-  next(press, { at: "submitting", moved }, [
+/** The draft sent, the box emptied: the answers it moves are Done, held under the press, until the turn's end reads them. */
+const sending = (press: Sending, moved: readonly Settlement[]): Moved => ({
+  ...next(press, { at: "submitting", moved }, [
     { kind: "set-draft", text: "" },
-    { kind: "hold-sent", moved },
     { kind: "submit-prompt", press: press.press, text: press.draft },
-  ]);
+  ]),
+  holds: moved,
+});
 
 /**
  * The engine's answer to the draft sent: one it took ends the press, and
  * closes the pane when it leaves nothing open and the setting says to; one
- * it refused puts its answers back among the open items and reads the box
- * to put the draft back.
+ * it refused puts the press's own answers back among the open items and
+ * reads the box to put the draft back.
  */
 const submitted = (
   press: Sending,
-  moved: readonly Settlement[],
   refusal: string | undefined,
+  state: PaneState,
   outside: Outside,
 ): Moved =>
   refusal === undefined
     ? ends(
         "",
         closesOnSubmit(
-          outside.raised,
-          outside.sent,
+          state.raised,
+          heldNow(state.sent),
           outside.isClosedWhenAllSubmitted,
         )
           ? [{ kind: "close-pane" }]
           : [],
       )
-    : next(press, { at: "reading-back", refusal }, [
-        { kind: "release-sent", moved },
-        { kind: "read-prompt", press: press.press, purpose: "put-back" },
-      ]);
+    : {
+        ...next(press, { at: "reading-back", refusal }, [
+          { kind: "read-prompt", press: press.press, purpose: "put-back" },
+        ]),
+        releases: true,
+      };
 
 /** The box read to put a refused draft back: the draft goes after what it holds. */
 const readForPutBack = (press: Sending, refusal: string, box: string): Moved =>
@@ -304,21 +374,16 @@ const putBack = (
     : ends(notPutBackText(stage.refusal, press.draft));
 
 /** A step of the press failed: it ends, naming its draft once it has one, and puts back any answers it held Done. */
-const failed = (press: Press, why: string): Moved =>
-  press.at === "reading"
-    ? ends(failedText(why))
-    : ends(
-        failedText(why, press.draft),
-        press.stage.at === "submitting"
-          ? [{ kind: "release-sent", moved: press.stage.moved }]
-          : [],
-      );
+const failed = (press: Press, why: string): Moved => ({
+  ...ends(press.at === "reading" ? failedText(why) : failedText(why, press.draft)),
+  releases: true,
+});
 
 /** Where `press` goes on `answer`; undefined for an answer its stage didn't ask for, which is dropped. */
 const advanced = (
   press: Press,
   answer: Answer,
-  isTurnRunning: boolean,
+  state: PaneState,
   outside: Outside,
 ): Moved | undefined => {
   if (answer.type === "press-failed") {
@@ -326,7 +391,7 @@ const advanced = (
   }
   if (press.at === "reading") {
     return answer.type === "prompt-read" && answer.purpose === "submit"
-      ? readForSubmit(press.press, answer.text, isTurnRunning)
+      ? readForSubmit(press.press, answer.text, turnOf(state.submit) !== undefined)
       : undefined;
   }
   const { stage } = press;
@@ -334,11 +399,11 @@ const advanced = (
   switch (stage.at) {
     case "emptying":
       return answer.type === "prompt-filled" && answer.purpose === "empty"
-        ? emptied(press, answer.isFilled, outside)
+        ? emptied(press, answer.isFilled, state)
         : undefined;
     case "submitting":
       return answer.type === "prompt-submitted"
-        ? submitted(press, stage.moved, answer.refusal, outside)
+        ? submitted(press, answer.refusal, state, outside)
         : undefined;
     case "reading-back":
       return answer.type === "prompt-read" && answer.purpose === "put-back"
@@ -351,20 +416,56 @@ const advanced = (
   }
 };
 
-/** The press under way moved: on, or ended with what it says, or ended keeping what the pane said before it. */
-const foregroundMoved = (submit: Pressed, moved: Moved): SubmitStepped =>
-  moved.to === "next"
-    ? { submit: { ...submit, press: moved.press }, effects: moved.effects }
-    : moved.to === "end"
-      ? { submit: ended(moved.why, submit.turn), effects: moved.effects }
-      : stays(ended(submit.said, submit.turn));
+/** The answers held once press `press` has moved: its own put back, or its draft's held, every other press's left as they were. */
+const heldAfter = (sent: readonly Held[], press: number, moved: Moved): readonly Held[] => {
+  const kept = moved.to !== "skip" && moved.releases === true ? released(sent, press) : sent;
 
-/** An overtaken press moved: on, or gone, what it ended saying now what the pane says. */
-const overtakenMoved = (state: PaneState, at: number, moved: Moved): Stepped =>
-  moved.to === "next"
+  return moved.to === "next" && moved.holds !== undefined
+    ? withHeld(kept, press, moved.holds)
+    : kept;
+};
+
+/**
+ * The press under way moved: on, or ended with what it says, or ended
+ * keeping what the pane said before it. An end, sent or not, clears what an
+ * overtaken press said before this press was pressed, as this press's own
+ * message now stands in its place. A press that sends nothing and says
+ * nothing new, for a box of blanks or one read while a turn ran, keeps all
+ * the pane said before it, what an overtaken press said among it.
+ */
+const foregroundMoved = (state: PaneState, submit: Pressed, moved: Moved): Stepped => {
+  const press = submit.press.press;
+  const s: SubmitStepped =
+    moved.to === "next"
+      ? { submit: { ...submit, press: moved.press }, effects: moved.effects }
+      : moved.to === "end"
+        ? { submit: ended(moved.why, submit.turn), effects: moved.effects }
+        : stays(ended(submit.said, submit.turn));
+
+  return {
+    state: {
+      ...state,
+      submit: s.submit,
+      sent: heldAfter(state.sent, press, moved),
+      aside: moved.to === "end" && state.aside.presses < press ? NO_ASIDE : state.aside,
+    },
+    effects: s.effects,
+  };
+};
+
+/**
+ * An overtaken press moved: on, or gone, what it ended saying kept apart
+ * from what the pane says of the press under way, which it leaves as it
+ * is.
+ */
+const overtakenMoved = (state: PaneState, at: number, press: Press, moved: Moved): Stepped => {
+  const sent = heldAfter(state.sent, press.press, moved);
+
+  return moved.to === "next"
     ? {
         state: {
           ...state,
+          sent,
           overtaken: state.overtaken.map((p, n) => (n === at ? moved.press : p)),
         },
         effects: moved.effects,
@@ -372,12 +473,16 @@ const overtakenMoved = (state: PaneState, at: number, moved: Moved): Stepped =>
     : {
         state: {
           ...state,
-          submit:
-            moved.to === "end" ? saying(state.submit, moved.why) : state.submit,
+          sent,
+          aside:
+            moved.to === "end"
+              ? { said: moved.why, presses: state.presses }
+              : state.aside,
           overtaken: state.overtaken.filter((_, n) => n !== at),
         },
         effects: moved.to === "end" ? moved.effects : [],
       };
+};
 
 /**
  * An answer to a press's prompt call: it moves only the press whose number
@@ -387,30 +492,189 @@ const overtakenMoved = (state: PaneState, at: number, moved: Moved): Stepped =>
  */
 const answered = (state: PaneState, answer: Answer, outside: Outside): Stepped => {
   const { submit } = state;
-  const isTurnRunning = turnOf(submit) !== undefined;
 
   if (submit.tag === "pressed" && submit.press.press === answer.press) {
-    const moved = advanced(submit.press, answer, isTurnRunning, outside);
+    const moved = advanced(submit.press, answer, state, outside);
 
     return moved === undefined
       ? { state, effects: [] }
-      : withSubmit(state, foregroundMoved(submit, moved));
+      : foregroundMoved(state, submit, moved);
   }
   const at = state.overtaken.findIndex((p) => p.press === answer.press);
   const press = state.overtaken[at];
   const moved =
-    press === undefined
-      ? undefined
-      : advanced(press, answer, isTurnRunning, outside);
+    press === undefined ? undefined : advanced(press, answer, state, outside);
 
-  return moved === undefined
+  return moved === undefined || press === undefined
     ? { state, effects: [] }
-    : overtakenMoved(state, at, moved);
+    : overtakenMoved(state, at, press, moved);
 };
 
-const withSubmit = (state: PaneState, s: SubmitStepped): Stepped => ({
-  state: { ...state, submit: s.submit },
-  effects: s.effects,
+const withSubmit = (state: PaneState, submit: Submit): Stepped => ({
+  state: { ...state, submit },
+  effects: [],
+});
+
+/** A refresh asked for: the next number reads the transcript, beside any read still out, holding the answers Submit holds now to take out once it has read them when it `releases`, as a turn's end does. */
+const refreshAsked = (state: PaneState, releases: boolean): Stepped => {
+  const refresh = state.refresh.asked + 1;
+
+  return {
+    state: {
+      ...state,
+      refresh: {
+        ...state.refresh,
+        asked: refresh,
+        reads: [
+          ...state.refresh.reads,
+          { refresh, releases: releases ? state.sent : [] },
+        ],
+      },
+    },
+    effects: [{ kind: "read-transcript", refresh }],
+  };
+};
+
+/** The refresh once read `reading` has answered, or been dropped: nothing waits on it. */
+const withoutReading = (refresh: Refresh, reading: Reading): Refresh => ({
+  ...refresh,
+  reads: refresh.reads.filter((r) => r !== reading),
+});
+
+/**
+ * The count line and the raised items from what the turns leave open,
+ * given the pull requests known merged: open items join the raised ones,
+ * raised ones no longer open settle, and `gh` is asked which of the Review
+ * items' pull requests not yet known merged have, the pane and the count
+ * line drawn without waiting for it.
+ */
+const settled = (
+  state: PaneState,
+  refresh: number,
+  found: Extract<Found, { turns: readonly Turn[] }>,
+  warnings: readonly string[],
+): Stepped => {
+  const { turns, counts } = found;
+  const known = new Set(state.merged);
+  const open = openOf(turns, counts.turns, known);
+  const refs = pullRequestsToAsk(turns, counts.turns, known);
+
+  return {
+    state: {
+      ...state,
+      counts: open.counts,
+      raised: refreshed(
+        state.raised,
+        open.items,
+        open.settlements,
+        warnings,
+        turns.map((turn) => turn.id),
+      ),
+    },
+    effects:
+      refs.length === 0
+        ? []
+        : [
+            {
+              kind: "ask-merged",
+              refs,
+              timeoutMs: counts["gh-timeout-ms"],
+              asked: { refresh, turns, window: counts.turns },
+            },
+          ],
+  };
+};
+
+/**
+ * A refresh's transcript read answered. A read that read the transcript
+ * takes out the answers Submit held when it was asked, whatever else
+ * happens to it, and its result replaces what the items and the count line
+ * show when it's newer than the read they show; an older one's is dropped.
+ * A read that couldn't read the transcript settles nothing and shows no
+ * read, so an older read that did still lands after it; it says why only
+ * when it's newer than the read shown. An answer to no read waiting is
+ * dropped whole.
+ */
+const transcriptRead = (
+  state: PaneState,
+  event: Extract<Event, { type: "transcript-read" }>,
+): Stepped => {
+  const reading = state.refresh.reads.find((r) => r.refresh === event.refresh);
+
+  if (reading === undefined) {
+    return { state, effects: [] };
+  }
+  const after: PaneState = {
+    ...state,
+    sent:
+      "turns" in event.found
+        ? withoutRead(state.sent, reading.releases)
+        : state.sent,
+    refresh: withoutReading(state.refresh, reading),
+  };
+
+  return event.refresh <= state.refresh.shown
+    ? { state: after, effects: [] }
+    : "turns" in event.found
+      ? settled(
+          { ...after, refresh: { ...after.refresh, shown: event.refresh } },
+          event.refresh,
+          event.found,
+          event.warnings,
+        )
+      : {
+          state: {
+            ...after,
+            raised: unread(after.raised, event.found.problem, event.warnings),
+          },
+          effects: [],
+        };
+};
+
+/** A transcript read whose answer couldn't be stepped: nothing waits on it, and nothing else changes. */
+const readDropped = (state: PaneState, refresh: number): PaneState => {
+  const reading = state.refresh.reads.find((r) => r.refresh === refresh);
+
+  return reading === undefined
+    ? state
+    : { ...state, refresh: withoutReading(state.refresh, reading) };
+};
+
+/**
+ * `gh` named pull requests merged: they join the known ones, and, for a
+ * refresh's ask, redraw the count line from that refresh's turns while no
+ * later refresh has been asked for; one that has reads the merges itself.
+ * The raised items don't hang on merges, so they stay.
+ */
+const mergedFound = (
+  state: PaneState,
+  found: readonly string[],
+  asked: MergeAsked | undefined,
+): Stepped => {
+  const merged = [...new Set([...state.merged, ...found])].sort();
+
+  return found.length === 0
+    ? { state, effects: [] }
+    : {
+        state: {
+          ...state,
+          merged,
+          counts:
+            asked !== undefined && asked.refresh === state.refresh.asked
+              ? countLine(asked.turns, asked.window, new Set(merged))
+              : state.counts,
+        },
+        effects: [],
+      };
+};
+
+/** A session's start or a turn's end looked at the items: the pane opens at its top, the newest turn, when an item is open that it hasn't been opened over. */
+const announced = (state: PaneState): Stepped => ({
+  state: { ...state, raised: seen(state.raised) },
+  effects:
+    unseen(state.raised).length > 0
+      ? [{ kind: "open-pane" }, { kind: "reveal", to: "start" }]
+      : [],
 });
 
 /** The pane's state after `event`, and the effects to run for it, in order. */
@@ -421,12 +685,15 @@ export const step = (
 ): Stepped => {
   switch (event.type) {
     case "session-started":
-      // No turn runs and nothing is said as a session starts; a press under
-      // way finishes, overtaken.
+      // No turn runs, nothing is said and no sent answer waits for a turn's
+      // end as a session starts: the refresh reads what a sent answer did.
+      // A press under way finishes, overtaken.
       return {
         state: {
           ...state,
           submit: IDLE,
+          aside: NO_ASIDE,
+          sent: [],
           overtaken:
             state.submit.tag === "pressed"
               ? [...state.overtaken, state.submit.press]
@@ -434,20 +701,58 @@ export const step = (
         },
         effects: [],
       };
+    case "session-joined":
+      // Another session's items, and the answers held for them, are gone,
+      // and a read still out read that session's transcript: the reads
+      // asked so far count as shown, so each is dropped as it answers.
+      return {
+        state:
+          state.raised.session === event.session
+            ? state
+            : {
+                ...state,
+                raised: forSession(state.raised, event.session),
+                sent: [],
+                refresh: { ...state.refresh, shown: state.refresh.asked },
+              },
+        effects: [],
+      };
     case "turn-started":
-      return withSubmit(state, stays(turnStarted(state.submit, event.turn)));
+      return {
+        state: {
+          ...withSubmit(state, turnStarted(state.submit, event.turn)).state,
+          aside: NO_ASIDE,
+        },
+        effects: [],
+      };
     case "turn-completed":
-      return withSubmit(state, stays(turnCompleted(state.submit, event.turn)));
+      return withSubmit(state, turnCompleted(state.submit, event.turn));
     case "submit-pressed":
       return pressed(state);
+    case "items-drawn":
+      return {
+        state: { ...state, raised: withItems(state.raised, event.items) },
+        effects: [],
+      };
+    case "refresh-asked":
+      return refreshAsked(state, event.releases);
+    case "transcript-read":
+      return transcriptRead(state, event);
+    case "read-dropped":
+      return { state: readDropped(state, event.refresh), effects: [] };
+    case "merged-found":
+      return mergedFound(state, event.found, event.asked);
+    case "announced":
+      return announced(state);
+    case "seen":
+      return { state: { ...state, raised: seen(state.raised) }, effects: [] };
     default:
       return answered(state, event, outside);
   }
 };
 
-/** Whether `step` reads `Outside` for `event`: only the box emptied, for the answers it holds Done, and the engine's answer to the draft, for whether the pane closes. */
+/** Whether `step` reads `Outside` for `event`: only the engine's answer to the draft, for whether the pane closes. */
 export const readsOutside = (event: Event): boolean =>
-  (event.type === "prompt-filled" && event.purpose === "empty") ||
   event.type === "prompt-submitted";
 
 /** Whether press `press` is under way in `state`, or overtaken and finishing. */

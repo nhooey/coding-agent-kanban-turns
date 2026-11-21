@@ -166,15 +166,62 @@ export type Submit = Readonly<
 >;
 
 /**
+ * An answer Submit sent, Done until a turn's end reads the transcript it
+ * went into, by the press that sent it: a press that ends without sending
+ * puts back only its own, and two presses may hold an answer to one item.
+ */
+export type Held = Readonly<{ press: number; settled: Settlement }>;
+
+/**
+ * A transcript read a refresh asked for that hasn't answered, by the
+ * refresh's number, with the answers Submit held when it was asked, which
+ * the read takes out once it has read the transcript they went into: a
+ * turn's end's holds; none for any other refresh.
+ */
+export type Reading = Readonly<{ refresh: number; releases: readonly Held[] }>;
+
+/**
+ * The refresh: how many refreshes have been asked for, which numbers them;
+ * the refresh whose transcript read the items and the count line show, 0
+ * before any; and the reads not answered yet, oldest first. A read no newer
+ * than the one shown is dropped when it answers, so an older refresh never
+ * replaces a newer one.
+ */
+export type Refresh = Readonly<{
+  asked: number;
+  shown: number;
+  reads: readonly Reading[];
+}>;
+
+/**
+ * What the last overtaken press to end said, apart from what the pane says
+ * of the press under way, and how many presses there had been when it did:
+ * a press pressed since that ends clears it, unless it ends sending nothing
+ * and saying nothing new, as a box of blanks does, which leaves what the
+ * pane said before it.
+ */
+export type Aside = Readonly<{ said: string; presses: number }>;
+
+/**
  * The pane's state, one value that `step` moves: how many presses there
- * have been, which numbers them; Submit; and the presses a session's start
+ * have been, which numbers them; Submit; the presses a session's start
  * overtook, which finish as they would have, since a hook already running
- * when the plugin reloads still settles.
+ * when the plugin reloads still settles, and what the last of them to end
+ * said; the refresh; the raised items; the answers Submit holds Done; the
+ * pull requests `gh` said merged, as `owner/repo#N`, a merge staying so
+ * none is asked about again; and the skill's count line, empty when
+ * nothing is open.
  */
 export type PaneState = Readonly<{
   presses: number;
   submit: Submit;
   overtaken: readonly Press[];
+  aside: Aside;
+  refresh: Refresh;
+  raised: Raised;
+  sent: readonly Held[];
+  merged: readonly string[];
+  counts: string;
 }>;
 
 /** A value a settings file holds, as YAML reads it. */
@@ -239,17 +286,12 @@ export type Loaded = Readonly<{
 declare module "claude-code" {
   interface PluginState {
     "coding-agent-kanban-turns": {
-      raised: Shaped<Raised>;
-      sent: Shaped<readonly Settlement[]>;
       expanded: readonly string[];
       focused: string;
       isKeysOpen: boolean;
       draft: string;
       noting: string;
       pane: Shaped<PaneState>;
-      counts: string;
-      merged: readonly string[];
-      refreshes: number;
       settings: Shaped<Loaded>;
       instructed: string;
       lintNote: Shaped<LintNote>;

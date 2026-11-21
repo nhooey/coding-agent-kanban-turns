@@ -1,26 +1,26 @@
 // The pane's state and the step function that moves it: Submit driven
 // through named sequences of events, the state and effects checked after
 // each, then through random sequences, answers for any press, repeated and
-// out of turn among them, its invariants checked after every step.
+// out of turn among them, its invariants checked after every step. The
+// refresh has its own, in pane-state-refresh.test.ts.
 
 import { describe, test } from "node:test";
 import { isDeepStrictEqual } from "node:util";
 import { expect } from "expect";
 import fc from "fast-check";
 
-import { closesOnSubmit, withHeld, withoutRead } from "../../../src/items/raised.ts";
+import { closesOnSubmit, heldNow, refreshed } from "../../../src/items/raised.ts";
 import {
-  INITIAL_PANE,
   NO_OUTSIDE,
   failingPress,
   readsOutside,
+  shownOf,
   step,
   submitShown,
   turnOf,
 } from "../../../src/pane/pane-state.ts";
 import type {
   Answer,
-  Effect,
   Event,
   Outside,
   Stepped,
@@ -32,28 +32,27 @@ import {
   notPutBackText,
   notSentText,
 } from "../../../src/pane/view.ts";
-import type { PaneState, Press, Settlement } from "../../../types/index.d.ts";
+import type { Held, PaneState, Press } from "../../../types/index.d.ts";
 import {
   BOXES,
+  EARLIER,
   ITEMS,
   RAISED,
   ENGINE,
+  START,
   commandsArb,
   outsideArb,
+  startArb,
   walk,
 } from "../../fixtures/submit.ts";
 
-const OUTSIDE: Outside = {
-  raised: RAISED,
-  sent: [],
-  isClosedWhenAllSubmitted: true,
-};
+const OUTSIDE: Outside = { isClosedWhenAllSubmitted: true };
 
 /** Each step's state and effects, from `from`, as `events` move it. */
 const steps = (
   events: readonly Event[],
   outside: Outside = OUTSIDE,
-  from: PaneState = INITIAL_PANE,
+  from: PaneState = START,
 ): readonly Stepped[] =>
   events.reduce<readonly Stepped[]>(
     (sofar, event) => [
@@ -64,8 +63,11 @@ const steps = (
   );
 
 /** The state after `events`. */
-const after = (events: readonly Event[], outside: Outside = OUTSIDE): PaneState =>
-  steps(events, outside).at(-1)?.state ?? INITIAL_PANE;
+const after = (
+  events: readonly Event[],
+  outside: Outside = OUTSIDE,
+  from: PaneState = START,
+): PaneState => steps(events, outside, from).at(-1)?.state ?? from;
 
 const PRESS: Event = { type: "submit-pressed" };
 const SESSION: Event = { type: "session-started" };
@@ -116,14 +118,19 @@ const FIRST_SENT = {
   letters: ["B"],
   note: "",
 } as const;
-
-const BOTH_SENT = {
-  ...OUTSIDE,
-  sent: [FIRST_SENT, { ref: "9efb08a1.Decide.2", how: "sent", letters: ["A"], note: "" }],
+const BOTH_FIRST = { ...FIRST_SENT, letters: ["A"] } as const;
+const BOTH_SECOND = {
+  ref: "9efb08a1.Decide.2",
+  how: "sent",
+  letters: ["A", "C"],
+  note: "",
 } as const;
 
+/** Every item settled already: a draft the engine takes leaves nothing open. */
+const ALL_DONE: PaneState = { ...START, raised: refreshed(RAISED, [], [], []) };
+
 describe("a Submit sent", () => {
-  test("reads the box, empties it, holds its answers Done and sends it, each call under the press's number", () => {
+  test("reads the box, empties it, holds its answers Done under the press and sends it, each call under the press's number", () => {
     const [press, box, emptiedBox, enteredDraft] = steps([
       ...sending(BOXES.first),
       entered(),
@@ -137,26 +144,26 @@ describe("a Submit sent", () => {
     ]);
     expect(emptiedBox?.effects).toEqual([
       { kind: "set-draft", text: "" },
-      { kind: "hold-sent", moved: [FIRST_SENT] },
       { kind: "submit-prompt", press: 1, text: BOXES.first },
     ]);
-    expect(enteredDraft?.state).toEqual({
+    expect(emptiedBox?.state.sent).toEqual([{ press: 1, settled: FIRST_SENT }]);
+    expect(enteredDraft?.state).toMatchObject({
       presses: 1,
       submit: { tag: "idle" },
       overtaken: [],
+      sent: [{ press: 1, settled: FIRST_SENT }],
     });
     expect(enteredDraft?.effects).toEqual([]);
   });
 
   test("closes the pane when it leaves nothing open and the setting says to", () => {
-    expect(steps([...sending(BOXES.both), entered()], BOTH_SENT).at(-1)?.effects).toEqual([
+    expect(steps([...sending(BOXES.both), entered()]).at(-1)?.effects).toEqual([
       { kind: "close-pane" },
     ]);
     expect(
-      steps([...sending(BOXES.both), entered()], {
-        ...BOTH_SENT,
-        isClosedWhenAllSubmitted: false,
-      }).at(-1)?.effects,
+      steps([...sending(BOXES.both), entered()], { isClosedWhenAllSubmitted: false }).at(
+        -1,
+      )?.effects,
     ).toEqual([]);
   });
 
@@ -165,16 +172,19 @@ describe("a Submit sent", () => {
   });
 
   test("holds Done only the raised items a box answers, not a ref never raised", () => {
-    expect(steps(sending(BOXES.stray)).at(-1)?.effects[1]).toEqual({
-      kind: "hold-sent",
-      moved: [{ ref: "9efb08a1.Decide.2", how: "sent", letters: ["C"], note: "" }],
-    });
+    expect(after(sending(BOXES.stray)).sent).toEqual([
+      {
+        press: 1,
+        settled: { ref: "9efb08a1.Decide.2", how: "sent", letters: ["C"], note: "" },
+      },
+    ]);
   });
 
   test("a box that can't be emptied sends nothing, and says so", () => {
     const last = steps([PRESS, read(BOXES.first), emptied(1, false)]).at(-1);
 
     expect(last?.state.submit).toEqual({ tag: "refused", why: NOT_EMPTIED_TEXT });
+    expect(last?.state.sent).toEqual([]);
     expect(last?.effects).toEqual([]);
   });
 });
@@ -189,9 +199,9 @@ describe("a Submit refused and put back", () => {
     ]).slice(3);
 
     expect(refusal?.effects).toEqual([
-      { kind: "release-sent", moved: [FIRST_SENT] },
       { kind: "read-prompt", press: 1, purpose: "put-back" },
     ]);
+    expect(refusal?.state.sent).toEqual([]);
     expect(box?.effects).toEqual([
       {
         kind: "fill-prompt",
@@ -224,6 +234,17 @@ describe("a Submit refused and put back", () => {
       why: notPutBackText("busy", BOXES.first),
     });
   });
+
+  test("puts back only its own answers: an earlier press's answer to the same item stays Done", () => {
+    const earlier = [...sending(BOXES.both), entered()];
+    const last = after([...earlier, ...sending(BOXES.first, 2), refused("busy", 2)]);
+
+    expect(last.sent).toEqual([
+      { press: 1, settled: BOTH_FIRST },
+      { press: 1, settled: BOTH_SECOND },
+    ]);
+    expect(heldNow(last.sent)).toEqual([BOTH_FIRST, BOTH_SECOND]);
+  });
 });
 
 describe("a press that fails", () => {
@@ -234,10 +255,13 @@ describe("a press that fails", () => {
     });
   });
 
-  test("puts back the answers it held Done", () => {
-    expect(steps([...sending(BOXES.first), failed("boom")]).at(-1)?.effects).toEqual([
-      { kind: "release-sent", moved: [FIRST_SENT] },
-    ]);
+  test("puts back the answers it held Done, and only those", () => {
+    const earlier = [...sending(BOXES.both), entered()];
+
+    expect(after([...sending(BOXES.first), failed("boom")]).sent).toEqual([]);
+    expect(after([...earlier, ...sending(BOXES.first, 2), failed("boom", 2)]).sent).toEqual(
+      after(earlier).sent,
+    );
   });
 
   test("before it read the box, says only why", () => {
@@ -279,13 +303,18 @@ describe("failingPress", () => {
   test("names none for an event no press made, or a failure already ending a press", () => {
     expect(failingPress(reading, SESSION, [])).toBeUndefined();
     expect(failingPress(reading, failed("boom"), [])).toBeUndefined();
+    expect(
+      failingPress(reading, { type: "refresh-asked", releases: true }, [
+        { kind: "read-transcript", refresh: 1 },
+      ]),
+    ).toBeUndefined();
   });
 });
 
 describe("readsOutside", () => {
-  test("is true only for the box emptied and the engine's answer to the draft", () => {
-    expect(readsOutside(emptied())).toBe(true);
+  test("is true only for the engine's answer to the draft", () => {
     expect(readsOutside(entered())).toBe(true);
+    expect(readsOutside(emptied())).toBe(false);
     expect(readsOutside(putBack(true))).toBe(false);
     expect(readsOutside(SESSION)).toBe(false);
     expect(readsOutside(failed("boom"))).toBe(false);
@@ -398,10 +427,11 @@ describe("turns", () => {
 describe("a press a session's start overtook", () => {
   const OVERTAKEN = [...sending(BOXES.first), SESSION];
 
-  test("leaves Submit idle, the press finishing apart", () => {
-    expect(after(OVERTAKEN)).toEqual({
+  test("leaves Submit idle, the press finishing apart, and no answer held", () => {
+    expect(after(OVERTAKEN)).toMatchObject({
       presses: 1,
       submit: { tag: "idle" },
+      sent: [],
       overtaken: [
         {
           press: 1,
@@ -414,13 +444,13 @@ describe("a press a session's start overtook", () => {
   });
 
   test("taken, closes the pane as it would have", () => {
-    const last = steps([...OVERTAKEN, entered()], BOTH_SENT).at(-1);
+    const last = steps([...OVERTAKEN, entered()], OUTSIDE, ALL_DONE).at(-1);
 
     expect(last?.effects).toEqual([{ kind: "close-pane" }]);
     expect(last?.state.overtaken).toEqual([]);
   });
 
-  test("refused, puts its answers and its draft back, and the pane says so", () => {
+  test("refused, puts its draft back, and the pane says so on a line of its own", () => {
     const [refusal, , put] = steps([
       ...OVERTAKEN,
       refused("busy"),
@@ -429,10 +459,10 @@ describe("a press a session's start overtook", () => {
     ]).slice(4);
 
     expect(refusal?.effects).toEqual([
-      { kind: "release-sent", moved: [FIRST_SENT] },
       { kind: "read-prompt", press: 1, purpose: "put-back" },
     ]);
-    expect(put?.state.submit).toEqual({ tag: "refused", why: notSentText("busy") });
+    expect(put?.state.submit).toEqual({ tag: "idle" });
+    expect(put?.state.aside).toEqual({ said: notSentText("busy"), presses: 1 });
     expect(put?.state.overtaken).toEqual([]);
   });
 
@@ -442,17 +472,14 @@ describe("a press a session's start overtook", () => {
 
     expect(last?.state.submit).toEqual(after(later).submit);
     expect(last?.effects).toEqual([
-      { kind: "release-sent", moved: [FIRST_SENT] },
       { kind: "read-prompt", press: 1, purpose: "put-back" },
     ]);
     expect(after([...later, entered(2)]).submit).toEqual({ tag: "idle" });
   });
 
-  // A known gap, kept from the old handlers until a later area tags each
-  // hold by its press and keeps an overtaken press's message apart: the two
-  // presses share the prompt box, the answers held Done and what the pane
-  // says.
-  test("shares the box, the answers held Done and what the pane says with a later press, as the old handlers did", () => {
+  // The two presses still share the prompt box, which is the engine's: the
+  // overtaken press's draft goes back into the box the later one emptied.
+  test("keeps to itself beside a later press: its refusal leaves the later press's answers held, and what it says stays apart from what the later press says", () => {
     const run = steps([
       ...OVERTAKEN,
       PRESS,
@@ -462,40 +489,52 @@ describe("a press a session's start overtook", () => {
       readBack("", 1),
       putBack(true, 1),
     ]).slice(OVERTAKEN.length);
-    // The answers held Done from the session's start on, which empties them.
-    const held = run
-      .flatMap((s) => s.effects)
-      .reduce<readonly Settlement[]>(
-        (sent, e) =>
-          e.kind === "hold-sent"
-            ? withHeld(sent, e.moved)
-            : e.kind === "release-sent"
-              ? withoutRead(sent, e.moved)
-              : sent,
-        [],
-      );
+    const last = run.at(-1);
+    const later: readonly Held[] = [
+      { press: 2, settled: BOTH_FIRST },
+      { press: 2, settled: BOTH_SECOND },
+    ];
 
-    // Press 1's refusal takes back press 2's answer to the item both answer.
-    expect(held.map((s) => s.ref)).toEqual(["9efb08a1.Decide.2"]);
+    // Press 1's refusal leaves press 2's answers to both items held.
+    expect(last?.state.sent).toEqual(later);
+    expect(shownOf(last?.state ?? START).settledRefs).toEqual(ITEMS.map((i) => i.ref));
     // Press 1's draft goes into the box press 2 emptied as it sends.
-    expect(run.at(-1)?.effects).toEqual([{ kind: "set-draft", text: BOXES.first }]);
-    // Press 2 sends on, the pane saying press 1's refusal meanwhile.
-    expect(run.at(-1)?.state.submit).toEqual({
+    expect(last?.effects).toEqual([{ kind: "set-draft", text: BOXES.first }]);
+    // Press 2 sends on, saying nothing; press 1's refusal is said apart.
+    expect(last?.state.submit).toEqual({
       tag: "pressed",
       press: {
         press: 2,
         at: "sending",
         draft: BOXES.both,
-        stage: {
-          at: "submitting",
-          moved: [
-            { ref: "9efb08a1.Decide.1", how: "sent", letters: ["A"], note: "" },
-            { ref: "9efb08a1.Decide.2", how: "sent", letters: ["A", "C"], note: "" },
-          ],
-        },
+        stage: { at: "submitting", moved: later.map((h) => h.settled) },
       },
-      said: notSentText("busy"),
+      said: "",
     });
+    expect(last?.state.aside).toEqual({ said: notSentText("busy"), presses: 2 });
+
+    // Press 2 taken: its end leaves what press 1 said, which came after it
+    // was pressed.
+    const taken = step(last?.state ?? START, entered(2), OUTSIDE).state;
+    expect(taken.submit).toEqual({ tag: "idle" });
+    expect(taken.aside.said).toBe(notSentText("busy"));
+    // A press pressed since, once it ends, says in its place.
+    expect(after([PRESS, read(BOXES.mention, 3)], OUTSIDE, taken).aside.said).toBe("");
+  });
+
+  test("what it says goes once a turn starts, or the session starts again", () => {
+    const said = after([...OVERTAKEN, refused("busy"), readBack(""), putBack(true)]);
+
+    expect(after([started("t1")], OUTSIDE, said).aside.said).toBe("");
+    expect(after([SESSION], OUTSIDE, said).aside.said).toBe("");
+  });
+
+  test("what it says stays through a later press that sends nothing and says nothing new, as for a box of blanks, which keeps all the pane said before it", () => {
+    const said = after([...OVERTAKEN, refused("busy"), readBack(""), putBack(true)]);
+
+    expect(after([PRESS, read(BOXES.blank, 2)], OUTSIDE, said).aside.said).toBe(
+      notSentText("busy"),
+    );
   });
 });
 
@@ -546,30 +585,41 @@ const stageOf = (press: Press | undefined): string | undefined =>
   press?.at === "sending" ? press.stage.at : undefined;
 
 describe("the random event sequences", () => {
-  test("have a press under way beside an overtaken one in at least a third of runs", () => {
-    const runs = fc.sample(commandsArb, { numRuns: 1000, seed: 42 });
-    const share =
-      runs.filter((commands) =>
-        walk(commands, OUTSIDE).some(
-          ({ stepped }) =>
-            stepped.state.submit.tag === "pressed" && stepped.state.overtaken.length > 0,
-        ),
-      ).length / runs.length;
+  const runs = fc.sample(commandsArb, { numRuns: 1000, seed: 42 });
+  const shareOf = (isMet: (state: PaneState) => boolean, from = START): number =>
+    runs.filter((commands) =>
+      walk(commands, OUTSIDE, from).some(({ stepped }) => isMet(stepped.state)),
+    ).length / runs.length;
 
-    expect(share).toBeGreaterThanOrEqual(1 / 3);
+  test("have a press under way beside an overtaken one in at least a third of runs", () => {
+    expect(
+      shareOf((state) => state.submit.tag === "pressed" && state.overtaken.length > 0),
+    ).toBeGreaterThanOrEqual(1 / 3);
+  });
+
+  test("have a press hold an answer to an item an earlier press holds in at least a tenth of runs that start with one held", () => {
+    expect(
+      shareOf(
+        (state) =>
+          state.sent.some((h) =>
+            state.sent.some((o) => o.press !== h.press && o.settled.ref === h.settled.ref),
+          ),
+        { ...START, sent: EARLIER },
+      ),
+    ).toBeGreaterThanOrEqual(1 / 10);
   });
 });
 
 describe("Submit's invariants over random event sequences", () => {
-  const sequences = fc.tuple(commandsArb, outsideArb);
+  const sequences = fc.tuple(commandsArb, outsideArb, startArb);
   const holds = (
     check: (
       s: Readonly<{ before: PaneState; event: Event; stepped: Stepped; outside: Outside }>,
     ) => boolean,
   ) =>
     fc.assert(
-      fc.property(sequences, ([events, outside]) =>
-        walk(events, outside).every((s) => check({ ...s, outside })),
+      fc.property(sequences, ([events, outside, from]) =>
+        walk(events, outside, from).every((s) => check({ ...s, outside })),
       ),
       { numRuns: 500 },
     );
@@ -580,8 +630,9 @@ describe("Submit's invariants over random event sequences", () => {
         commandsArb,
         outsideArb,
         outsideArb,
-        (commands, a, b) =>
-          walk(commands, a).every(
+        startArb,
+        (commands, a, b, from) =>
+          walk(commands, a, from).every(
             ({ before, event }) =>
               readsOutside(event) ||
               isDeepStrictEqual(step(before, event, a), step(before, event, b)),
@@ -593,8 +644,8 @@ describe("Submit's invariants over random event sequences", () => {
 
   test("a failed press steps the same under any outside areas, or none", () => {
     fc.assert(
-      fc.property(commandsArb, outsideArb, (commands, outside) =>
-        walk(commands, outside).every(({ stepped: { state } }) =>
+      fc.property(commandsArb, outsideArb, startArb, (commands, outside, from) =>
+        walk(commands, outside, from).every(({ stepped: { state } }) =>
           [
             ...(state.submit.tag === "pressed" ? [state.submit.press] : []),
             ...state.overtaken,
@@ -614,12 +665,26 @@ describe("Submit's invariants over random event sequences", () => {
     const raisedRefs = ITEMS.map((item) => item.ref);
 
     holds(({ stepped }) =>
-      stepped.effects.every(
-        (e) =>
-          e.kind !== "hold-sent" ||
-          e.moved.every((moved) => raisedRefs.includes(moved.ref)),
-      ),
+      stepped.state.sent.every((h) => raisedRefs.includes(h.settled.ref)),
     );
+  });
+
+  test("a press holds answers only as its box is emptied, and puts back only its own", () => {
+    holds(({ before, event, stepped }) => {
+      const added = stepped.state.sent.filter((h) => !before.sent.includes(h));
+      const gone = before.sent.filter((h) => !stepped.state.sent.includes(h));
+      const press = "press" in event ? event.press : undefined;
+
+      return (
+        added.every(
+          (h) =>
+            event.type === "prompt-filled" &&
+            event.purpose === "empty" &&
+            h.press === press,
+        ) &&
+        (event.type === "session-started" || gone.every((h) => h.press === press))
+      );
+    });
   });
 
   test("the pane closes only on a draft the engine took, when nothing is left open and the setting says to", () => {
@@ -630,7 +695,11 @@ describe("Submit's invariants over random event sequences", () => {
           (event.type === "prompt-submitted" &&
             event.refusal === undefined &&
             stageOf(pressIn(before, event.press)) === "submitting" &&
-            closesOnSubmit(outside.raised, outside.sent, outside.isClosedWhenAllSubmitted)),
+            closesOnSubmit(
+              before.raised,
+              heldNow(before.sent),
+              outside.isClosedWhenAllSubmitted,
+            )),
       ),
     );
   });
@@ -648,7 +717,7 @@ describe("Submit's invariants over random event sequences", () => {
     );
   });
 
-  test("an answer to one press never changes another, nor its calls", () => {
+  test("an answer to one press never changes another, nor its calls, nor its holds", () => {
     holds(({ before, event, stepped }) => {
       if (!isAnswer(event)) {
         return true;
@@ -659,13 +728,39 @@ describe("Submit's invariants over random event sequences", () => {
       ].filter((p) => p.press !== event.press);
       const isOtherUnderWay =
         before.submit.tag === "pressed" && before.submit.press.press !== event.press;
+      const othersHeld = (state: PaneState) =>
+        state.sent.filter((h) => h.press !== event.press);
 
       return (
         others.every((p) => pressIn(stepped.state, p.press) === p) &&
         (!isOtherUnderWay ||
           (stepped.state.submit.tag === "pressed" &&
-            stepped.state.submit.turn === turnOf(before.submit))) &&
+            before.submit.tag === "pressed" &&
+            stepped.state.submit.turn === turnOf(before.submit) &&
+            stepped.state.submit.said === before.submit.said)) &&
+        isDeepStrictEqual(othersHeld(stepped.state), othersHeld(before)) &&
         stepped.effects.every((e) => !("press" in e) || e.press === event.press)
+      );
+    });
+  });
+
+  test("what an overtaken press says changes only as one ends, a turn or a session starts, or a press pressed since it was said ends", () => {
+    holds(({ before, event, stepped }) => {
+      const { aside } = stepped.state;
+      const endedOvertaken =
+        "press" in event &&
+        before.overtaken.some((p) => p.press === event.press) &&
+        !stepped.state.overtaken.some((p) => p.press === event.press);
+      const endedLater =
+        before.submit.tag === "pressed" &&
+        stepped.state.submit.tag !== "pressed" &&
+        before.aside.presses < before.submit.press.press;
+
+      return (
+        aside === before.aside ||
+        endedOvertaken ||
+        (aside.said === "" &&
+          (event.type === "turn-started" || event.type === "session-started" || endedLater))
       );
     });
   });
