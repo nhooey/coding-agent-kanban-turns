@@ -4,7 +4,7 @@
 // Each function takes the items and returns new ones, or a part of them;
 // none changes what it's given.
 
-import { answerTo, isAnswered } from "./answers.ts";
+import { choiceTo } from "./answers.ts";
 import { refOf } from "./items.ts";
 import type {
   DecideItem,
@@ -125,6 +125,20 @@ export const settlementOf = (
     : undefined;
 };
 
+/** The refs of the raised items the item supersedes, oldest first: those settled as superseded by it, the inverse of each one's `by`; never its own, which an earlier raising of it settles by. */
+export const supersedesOf = (
+  raised: Raised,
+  item: DecideItem,
+): readonly string[] =>
+  raised.items.flatMap((each) =>
+    refOf(each.item) !== refOf(item) &&
+    each.state.tag === "settled" &&
+    each.state.settlement?.how === "superseded" &&
+    each.state.settlement.by === refOf(item)
+      ? [refOf(each.item)]
+      : [],
+  );
+
 /** The items once a refresh couldn't read the transcript, for `problem`: each raised item settled or open as it was. */
 export const unread = (
   raised: Raised,
@@ -161,11 +175,13 @@ export const seen = (raised: Raised): Raised => ({
 /**
  * What the pane's Submit sends for the items: one `sent` settlement for
  * each raised item the draft answers, open or answered again once Done,
- * with its letters and note.
+ * with its letters and note; none for an answer whose line asks a
+ * question, which leaves its item where it stands, since the turn's end
+ * reads it as picking nothing.
  */
 export const sentOf = (draft: string, raised: Raised): readonly Settlement[] =>
   decideItemsOf(raised).flatMap((item) => {
-    const answer = answerTo(draft, item);
+    const answer = choiceTo(draft, item);
 
     return answer === undefined
       ? []
@@ -262,6 +278,6 @@ export const closesOnSubmit = (
   isEnabled: boolean,
 ): boolean => isEnabled && stillOpen(withSent(raised, sent)).length === 0;
 
-/** How many open items the draft answers. */
+/** How many open items the draft answers with a choice, as choiceTo reads it: a line that only asks about an item counts for none. */
 export const answeredCount = (raised: Raised, draft: string): number =>
-  stillOpen(raised).filter((item) => isAnswered(draft, item)).length;
+  stillOpen(raised).filter((item) => choiceTo(draft, item) !== undefined).length;

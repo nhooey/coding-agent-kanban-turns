@@ -270,7 +270,7 @@ describe("the facts gathered once, against each reading working them out again",
         .map((item) => item.list),
     }));
     expect(new Set(seen.flatMap(({ hows }) => hows))).toEqual(
-      new Set(["answered", "reassessed", "restated"]),
+      new Set(["answered", "reassessed", "superseded"]),
     );
     expect(seen.some(({ isFreeing }) => isFreeing)).toBe(true);
     expect(seen.some(({ isPinnedFreeing }) => isPinnedFreeing)).toBe(true);

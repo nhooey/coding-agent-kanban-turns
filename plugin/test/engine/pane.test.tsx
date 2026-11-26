@@ -1987,6 +1987,152 @@ test("a question in a reply whose item is Done opens every level it's under, the
   await ui.unmount();
 });
 
+// A later turn's item restating ITEMS[0] on another subject, naming it in
+// supersedes.
+const RESTATED = { ...LATER, supersedes: ["9efb08a1.Decide.1"] } as const;
+
+/** The records of the later turn b2c3d4e5, whose reply raises RESTATED. */
+const restating = (): readonly TranscriptRecord[] => [
+  human("b2c3d4e5", "go on"),
+  replyRecord([RESTATED], listsText([RESTATED])),
+];
+
+/**
+ * The engine with ITEMS raised in turn 9efb08a1, then RESTATED in turn
+ * b2c3d4e5, each turn's end read. The kit has no layout to scroll a pane
+ * by, and hands no `$.ui.scroll` on to a hook, so a link's scroll to the
+ * item can't be seen here: the tests see the pane open with the keyboard
+ * and the item's levels opened.
+ */
+const superseding = async ($: Engine, on: On) => {
+  const later: TranscriptRecord[] = [];
+  const state = engine(on, () => ITEMS, listsText, () => later);
+  await $.tool.call({ tool: TOOL, items: ITEMS } as never);
+  await $.turn.complete(replyDone("t0"));
+  later.push(...restating());
+  await $.tool.call({ tool: TOOL, items: [RESTATED] } as never);
+  await $.turn.complete(replyDone("t1"));
+
+  return state;
+};
+
+test("an item a later one names in supersedes is Done, its line a link to the later item, whose box links back, each opening the other", async ($, on) => {
+  const state = await superseding($, on);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  expect(await titles(ui)).toEqual([
+    "🧠 Decide.1 · Which loader to keep",
+    "🧠 Decide.2 · Cleanups to start",
+    "🧠 Decide.3 · Ship tonight?",
+  ]);
+
+  // The newer item's box names the item it supersedes, a link that opens
+  // the Done branch, that item's turn there and its box.
+  const back = "b2c3d4e5.Decide.1.link.9efb08a1.Decide.1";
+  expect((await ui.find({ type: "Button", key: back }))?.text).toBe("Supersedes 9efb08a1.Decide.1");
+  expect((await ui.find({ type: "Button", key: "done" }))?.text).toBe("▸ Done (1)");
+  await ui.press({ key: back });
+  expect((await ui.find({ type: "Button", key: "done" }))?.text).toBe("▾ Done (1)");
+  expect((await ui.find({ type: "Button", key: "done.9efb08a1" }))?.text).toContain("▾ ── 9efb08a1");
+  expect(await titles(ui)).toContain("🧠 Decide.1 · Which cache to keep (done)");
+  expect(state.opens.at(-1)).toBe(true);
+
+  // The older item's box says what superseded it, a link back.
+  const forth = "9efb08a1.Decide.1.link.b2c3d4e5.Decide.1";
+  expect((await ui.find({ type: "Button", key: forth }))?.text).toBe("Superseded by b2c3d4e5.Decide.1");
+  state.opens.length = 0;
+  await ui.press({ key: forth });
+  expect(state.opens).toEqual([true]);
+
+  // Its box closed again, its Done line ends on the same link.
+  await ui.press({ key: "9efb08a1.Decide.1.line" });
+  expect(await doneLines(ui)).toEqual(["🧠 Decide.1  Which cache to keep · Superseded by b2c3d4e5.Decide.1"]);
+  const row = "9efb08a1.Decide.1.superseded-by";
+  expect((await ui.find({ type: "Button", key: row }))?.text).toBe("Superseded by b2c3d4e5.Decide.1");
+  state.opens.length = 0;
+  await ui.press({ key: row });
+  expect(state.opens).toEqual([true]);
+  expect(await doneLines(ui)).toEqual(["🧠 Decide.1  Which cache to keep · Superseded by b2c3d4e5.Decide.1"]);
+  await ui.unmount();
+});
+
+test("a reply's own boxes draw the same links, and a click there opens the pane at the other item, every level above it open", async ($, on) => {
+  const state = await superseding($, on);
+  const reply = await $.ui.mount({ ...REPLY, props: { ...REPLY.props, text: listsText([RESTATED]) } });
+  const back = "b2c3d4e5.Decide.1.link.9efb08a1.Decide.1";
+  expect((await reply.find({ type: "Button", key: back }))?.text).toBe("Supersedes 9efb08a1.Decide.1");
+  state.isPaneOpen = false;
+
+  await reply.press({ key: back });
+  expect(state.isPaneOpen).toBe(true);
+  expect(state.opens.at(-1)).toBe(true);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  expect((await ui.find({ type: "Button", key: "done" }))?.text).toBe("▾ Done (1)");
+  expect((await ui.find({ type: "Button", key: "done.9efb08a1" }))?.text).toContain("▾ ── 9efb08a1");
+  expect(await titles(ui)).toContain("🧠 Decide.1 · Which cache to keep (done)");
+  await reply.unmount();
+
+  // The older item's reply box links forward to the newer one.
+  const first = await $.ui.mount({ ...REPLY, props: { ...REPLY.props, text: listsText(ITEMS) } });
+  const forth = "9efb08a1.Decide.1.link.b2c3d4e5.Decide.1";
+  expect((await first.find({ type: "Button", key: forth }))?.text).toBe("Superseded by b2c3d4e5.Decide.1");
+  state.opens.length = 0;
+  await first.press({ key: forth });
+  expect(state.opens).toEqual([true]);
+  await first.unmount();
+  await ui.unmount();
+});
+
+test("the tool's result says what it ignored of an item's supersedes, as naming no Decide item", async ($, on) => {
+  engine(on, () => ITEMS);
+  const given = { ...RESTATED, supersedes: ["9efb08a1.Decide.1", "Decide.2", "9efb08a1.Todo.1"] };
+  const answer: Readonly<{ result?: unknown }> = await $.tool.call({ tool: TOOL, items: [given] } as never);
+
+  expect(answer.result).toBe(
+    "Drew buttons for 1 Decide items under the final response and in the Decide pane: b2c3d4e5.Decide.1." +
+      ` Ignored in b2c3d4e5.Decide.1's supersedes, as no Decide item's reference, <turn>.Decide.<n>: "Decide.2", "9efb08a1.Todo.1".`,
+  );
+
+  const bare: Readonly<{ result?: unknown }> = await $.tool.call({
+    tool: TOOL,
+    items: [{ ...RESTATED, supersedes: "9efb08a1.Decide.1" }],
+  } as never);
+  expect(bare.result).toBe(
+    "Drew buttons for 1 Decide items under the final response and in the Decide pane: b2c3d4e5.Decide.1." +
+      ` Ignored b2c3d4e5.Decide.1's supersedes, "9efb08a1.Decide.1", as no list, ["<turn>.Decide.<n>"];` +
+      " so it replaces an earlier item on its subject, as with no supersedes.",
+  );
+});
+
+test("an answer that only asks a question leaves its item open on Submit, until the reply restates it", async ($, on) => {
+  const later: TranscriptRecord[] = [];
+  const state = engine(on, () => ITEMS, listsText, () => later);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  await ui.input({ key: "9efb08a1.Decide.1.notes", text: "how would B work?" });
+
+  // Waiting in the draft, the question leaves the item Open, not Queued.
+  expect(await ui.find({ type: "Button", key: "queued" })).toBeUndefined();
+  expect((await ui.find({ type: "Button", key: "open" }))?.text).toBe("▾ Open (3)");
+  await ui.press({ key: "submit" });
+
+  // Sent, and the item still open: a question picks nothing.
+  expect(state.sent).toEqual([`${HEADER}9efb08a1.Decide.1: how would B work?\n`]);
+  expect(await titles(ui)).toEqual([
+    "🧠 Decide.1 · Which cache to keep",
+    "🧠 Decide.2 · Cleanups to start",
+    "🧠 Decide.3 · Ship tonight?",
+  ]);
+  expect(await ui.find({ type: "Button", key: "done" })).toBeUndefined();
+
+  // The reply restates it, naming it in supersedes: now it's Done.
+  later.push(submitted("b2c3d4e5", state.sent[0] ?? ""), replyRecord([RESTATED], listsText([RESTATED])));
+  await $.turn.start({ text: state.sent[0] ?? "", turnId: "t2" });
+  await $.turn.complete(replyDone("t2"));
+  await openDone(ui);
+  expect(await doneLines(ui)).toEqual(["🧠 Decide.1  Which cache to keep · Superseded by b2c3d4e5.Decide.1"]);
+  await ui.unmount();
+});
+
 test("a reply without the items' summaries is drawn as the engine draws it", async ($, on) => {
   engine(on, () => ITEMS);
   await $.tool.call({ tool: TOOL, items: ITEMS } as never);
@@ -2442,6 +2588,51 @@ test("a pane stored under the shape from before each raised item held where it s
 
   // Read as absent, the stale value draws nothing: no items, open or Done.
   expect(await titles(ui)).toEqual([]);
+  expect(await ui.find({ type: "Text", text: /^No open Decide items/ })).toBeDefined();
+  await ui.unmount();
+});
+
+test("a pane stored under the shape from before a superseded item named what superseded it is not used", async ($, on) => {
+  engine(on, () => ITEMS);
+  // What the plugin kept under the pane-5 shape, while an item a later one
+  // restated settled as `restated`, naming no item: the first item so
+  // settled, as a reload finds it. The store answers it whatever the plugin
+  // writes since.
+  const [first, ...rest] = ITEMS;
+  const stale = {
+    shape: "pane-5",
+    value: {
+      presses: 1,
+      submit: { tag: "idle" },
+      overtaken: [],
+      aside: { said: "", presses: 0 },
+      refresh: { asked: 1, shown: 1, reads: [] },
+      raised: {
+        session: "session-1",
+        turns: [],
+        items: [
+          { item: first, state: { tag: "settled", settlement: { how: "restated" } } },
+          ...rest.map((item) => ({ item, state: { tag: "open" } })),
+        ],
+        seenRefs: [],
+        problem: "",
+        settingsProblems: [],
+      },
+      sent: [],
+      merged: [],
+      counts: "",
+      settings: { tag: "unread", asked: 0 },
+    },
+  };
+  on("state.get", (_, e, next) =>
+    e.key === "pane" ? { value: { value: stale, version: 1 } } : next(e),
+  );
+  await $.tool.call({ tool: TOOL, items: ITEMS } as never);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+
+  // Read as absent, the stale value draws nothing: no items, open or Done.
+  expect(await titles(ui)).toEqual([]);
+  expect(await ui.find({ type: "Button", key: "done" })).toBeUndefined();
   expect(await ui.find({ type: "Text", text: /^No open Decide items/ })).toBeDefined();
   await ui.unmount();
 });

@@ -19,6 +19,7 @@ import {
   sentOf,
   settlementOf,
   stillOpen,
+  supersedesOf,
   unread,
   unseen,
   withHeld,
@@ -151,8 +152,8 @@ describe("a refresh", () => {
       letters: ["B"],
       note: "only the loader",
     } as const;
-    const restated = { ref: "9efb08a1.Decide.2", how: "restated" } as const;
-    const after = refreshed(raised, [checkbox], [answered, restated], []);
+    const superseded = { ref: "9efb08a1.Decide.2", how: "superseded", by: "b2c3d4e5.Decide.1" } as const;
+    const after = refreshed(raised, [checkbox], [answered, superseded], []);
     expect(states(after)).toEqual([
       { tag: "settled", settlement: { how: "answered", turn: "b2c3d4e5", letters: ["B"], note: "only the loader" } },
       { tag: "open" },
@@ -172,9 +173,9 @@ describe("a refresh", () => {
   });
 
   test("keeps one settlement for an item, the last said of it, and none for an item not raised", () => {
-    const first = { ref: "9efb08a1.Decide.1", how: "restated" } as const;
+    const first = { ref: "9efb08a1.Decide.1", how: "superseded", by: "b2c3d4e5.Decide.1" } as const;
     const last = { ref: "9efb08a1.Decide.1", how: "reassessed" } as const;
-    const stray = { ref: "cafecafe.Decide.9", how: "restated" } as const;
+    const stray = { ref: "cafecafe.Decide.9", how: "superseded", by: "9efb08a1.Decide.1" } as const;
     const after = refreshed(raised, [checkbox], [first, stray, last], []);
     expect(states(after)).toEqual([settledAs(last), { tag: "open" }]);
     expect(settlementOf(after, { ...binary, ref: "cafecafe.Decide.9" })).toBeUndefined();
@@ -214,6 +215,44 @@ describe("a refresh", () => {
   });
 });
 
+describe("the items an item supersedes", () => {
+  const newer: DecideItem = { ...radio, turn: "b2c3d4e5", ref: "b2c3d4e5.Decide.1", summary: "Which loader to keep" };
+  const by = (ref: string, of: string): Settlement => ({ ref, how: "superseded", by: of });
+  const all: Raised = { ...emptyRaised, items: openItems([radio, checkbox, binary, newer]) };
+
+  test("are those settled as superseded by it, oldest first: the inverse of each one's by", () => {
+    const after = refreshed(
+      all,
+      [binary, newer],
+      [by("9efb08a1.Decide.1", "b2c3d4e5.Decide.1"), by("9efb08a1.Decide.2", "b2c3d4e5.Decide.1")],
+      [],
+    );
+    expect(supersedesOf(after, newer)).toEqual(["9efb08a1.Decide.1", "9efb08a1.Decide.2"]);
+    expect(supersedesOf(after, binary)).toEqual([]);
+  });
+
+  test("leave out an item superseded by another, one settled any other way, and one open again", () => {
+    const answered = { ref: "9efb08a1.Decide.2", how: "answered", turn: "b2c3d4e5", letters: ["A"], note: "" } as const;
+    const after = refreshed(
+      all,
+      [radio, newer],
+      [by("9efb08a1.Decide.1", "b2c3d4e5.Decide.1"), answered, by("9efb08a1.Decide.3", "c3d4e5f6.Decide.1")],
+      [],
+    );
+    expect(supersedesOf(after, newer)).toEqual([]);
+  });
+
+  test("leave out the item itself, which an earlier raising of it settles by", () => {
+    const after = refreshed(
+      all,
+      [radio],
+      [by("9efb08a1.Decide.2", "b2c3d4e5.Decide.1"), by("b2c3d4e5.Decide.1", "b2c3d4e5.Decide.1")],
+      [],
+    );
+    expect(supersedesOf(after, newer)).toEqual(["9efb08a1.Decide.2"]);
+  });
+});
+
 describe("announcing new items", () => {
   test("open items not yet seen are unseen, settled ones never", () => {
     const after = refreshed(raised, [checkbox], [], []);
@@ -234,6 +273,11 @@ describe("how many open items the draft answers", () => {
     expect(answeredCount(after, "9efb08a1.Decide.1.A\n")).toBe(0);
     expect(answeredCount(raised, "")).toBe(0);
   });
+
+  test("counts none for a line that only asks about an item", () => {
+    expect(answeredCount(raised, "9efb08a1.Decide.1: how would B work?\n9efb08a1.Decide.2.A\n")).toBe(1);
+    expect(answeredCount(raised, "9efb08a1.Decide.1: why?\n9efb08a1.Decide.1.A\n")).toBe(1);
+  });
 });
 
 describe("the answers Submit sent, Done before the turn's end reads them", () => {
@@ -242,6 +286,13 @@ describe("the answers Submit sent, Done before the turn's end reads them", () =>
   test("are the open items the draft answers, with its letters and note", () => {
     expect(sentOf(draft, raised)).toEqual([
       { ref: "9efb08a1.Decide.1", how: "sent", letters: ["B"], note: "only the loader" },
+      { ref: "9efb08a1.Decide.2", how: "sent", letters: ["A"], note: "" },
+    ]);
+  });
+
+  test("leave out an answer that asks a question, which picks nothing and keeps its item open until the reply restates it", () => {
+    expect(sentOf("9efb08a1.Decide.1: how would B work?\n", raised)).toEqual([]);
+    expect(sentOf("9efb08a1.Decide.1.B: why not C?\n9efb08a1.Decide.2.A\n", raised)).toEqual([
       { ref: "9efb08a1.Decide.2", how: "sent", letters: ["A"], note: "" },
     ]);
   });

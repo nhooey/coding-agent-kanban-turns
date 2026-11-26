@@ -54,9 +54,10 @@ const settlementArb: fc.Arbitrary<Settlement> = fc.oneof(
   fc
     .tuple(fc.constantFrom(...REFS), fc.constantFrom("b2c3d4e5", "c3d4e5f6"), lettersArb, noteArb)
     .map(([ref, turn, letters, note]): Settlement => ({ ref, how: "answered", turn, letters, note })),
+  fc.constantFrom(...REFS).map((ref): Settlement => ({ ref, how: "reassessed" })),
   fc
-    .tuple(fc.constantFrom(...REFS), fc.constantFrom("reassessed" as const, "restated" as const))
-    .map(([ref, how]): Settlement => ({ ref, how })),
+    .tuple(fc.constantFrom(...REFS), fc.constantFrom(...REFS))
+    .map(([ref, by]): Settlement => ({ ref, how: "superseded", by })),
   fc
     .tuple(fc.constantFrom(...REFS), lettersArb, noteArb)
     .map(([ref, letters, note]): Settlement => ({ ref, how: "sent", letters, note })),

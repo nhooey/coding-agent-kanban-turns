@@ -16,8 +16,8 @@
 // - a field the shape doesn't name, in a turn, a message, an item or an
 //   option;
 // - a field of the wrong type: an item's `number` that isn't a whole number
-//   1 or more, a `note`, `frees`, `pros`, `cons` or `notes` that isn't a
-//   list of strings, or a `glyph` or `consequence` that isn't a string;
+//   1 or more, a `note`, `frees`, `supersedes`, `pros`, `cons` or `notes`
+//   that isn't a list of strings, or a `glyph` or `consequence` that isn't a string;
 // - an option kind the spec doesn't name, or an option letter outside the
 //   grammar's letters, one its kind doesn't take, or one given twice.
 
@@ -73,6 +73,7 @@ const ITEM_FIELDS: Readonly<Record<keyof DecideItem, true>> = {
   note: true,
   options: true,
   frees: true,
+  supersedes: true,
 };
 const OPTION_FIELDS: Readonly<Record<keyof DecideOption, true>> = {
   letter: true,
@@ -132,6 +133,7 @@ const ITEM_CHECKS: Readonly<Partial<Record<keyof DecideItem, Check>>> = {
   },
   note: STRINGS,
   frees: STRINGS,
+  supersedes: STRINGS,
 };
 const OPTION_CHECKS: Readonly<Partial<Record<keyof DecideOption, Check>>> = {
   glyph: STRING,

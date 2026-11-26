@@ -6983,12 +6983,29 @@ var isOption = (value) => isObject(value) && typeof value.letter === "string" &&
 var isItem = (value) => isObject(value) && typeof value.turn === "string" && typeof value.number === "number" && typeof value.summary === "string" && Array.isArray(value.options) && value.options.every(isOption);
 var kindOf = (kind) => typeof kind === "string" && Object.hasOwn(SPEC.options.kinds, kind) ? kind : DEFAULT_KIND;
 var freesField = (frees) => Array.isArray(frees) ? { frees: uniqueRefs(frees) } : {};
-var withRef = ({ frees, ...item }) => ({
+var decideRefOf = (text) => {
+  const ref = typeof text === "string" ? refOfText(text.trim()) : void 0;
+  return ref?.list === DECIDE.header ? ref : void 0;
+};
+var supersededRefs = (values) => [
+  ...new Set(
+    values.flatMap((value) => {
+      const ref = decideRefOf(value);
+      return ref === void 0 ? [] : [refText(ref)];
+    })
+  )
+];
+var supersedesField = (supersedes) => {
+  const refs = Array.isArray(supersedes) ? supersededRefs(supersedes) : [];
+  return Array.isArray(supersedes) && (supersedes.length === 0 || refs.length > 0) ? { supersedes: refs } : {};
+};
+var withRef = ({ frees, supersedes, ...item }) => ({
   ...item,
   list: DECIDE.header,
   kind: kindOf(item.kind),
   ref: refOf(item),
-  ...freesField(frees)
+  ...freesField(frees),
+  ...supersedesField(supersedes)
 });
 var itemsField = (value) => isObject(value) && "items" in value ? value.items : [];
 var itemsOf = (value) => {
@@ -7020,7 +7037,7 @@ Every response in a turn shows what is done, what is still open and what the use
   "shape": "## The shape\n\n- **Header:** the header line ends in a hard line break, two spaces. The line under it holds one `{{characters.header-underline}}` {{codepoint.header-underline}} per column of the header, the emoji counting 2, so `{{header.waiting}}` takes {{underline.waiting}} and `{{header.authorizations}}` {{underline.authorizations}}. The first item follows on the next line.\n- **Item:** a numbered item opens on its summary, in bold, alone on its line and ending in a hard line break; the rest of the item starts on the line beneath, at the column the summary starts at. The summary is a phrase, or the question for an {{lists.answers.header}} or a {{lists.decide.header}} item, with no trailing colon, since nothing follows it on its line. It names its subject, never its category, and the item to do first leads. A summary that says all there is, such as a check that passed, is the whole item. A bullet, such as a {{roll-up.glyph}} roll-up item, keeps its summary and text on one line. A {{lists.done.header}} item comes from the commit or the run output, never from memory. No item points back with a phrase like \"the quotes\" or \"those episodes\": each names what it means by its label, since what set it up has scrolled away.\n- **Parts:** an item holding several things the user acts on, or several parallel parts, lists them under its summary as a nested list, one to a line, never joined in a sentence. A {{lists.decide.header}} item's options keep the shape \"A {{lists.decide.header}} item\" gives them.\n- **Figures:** a figure in an item, a count, size or duration, is the output of a query run in the same turn that reads the state it counts, never a tally of lines the session saw go by, and the item names the query beside it: ``4 of 6 runs ok (`run_headless.py --summary --job night`)``. A figure no query can give is an estimate, and the item says so: `about 20 min (estimate)`.\n- **Numbering:** each list numbers from 1 and nothing else in the final response is numbered except an item's own steps, so `{{lists.decide.header}}.2` names one thing. A second final response to the same prompt continues the numbering, and so does each topic of a response grouped by topic.\n- **Separator:** in every list, the {{roll-up.glyph}} roll-up included, a multi-line item is parted from each neighbour by a separator line: the list's indent, {{codepoint.separator}} `{{characters.separator}}`, and nothing else, directly under the item's last line, with no blank line beside it inside the list. Since a summary has its line to itself, every item with more than its summary is multi-line, every {{lists.decide.header}} item among them. Items that are only their summary sit together, and the first item follows its header with no separator.\n- **End of a list:** a list ends at a blank line. One blank line goes after a list's last line, its last separator line if it has one, and before whatever header follows: the next list's, a {{roll-up.glyph}} roll-up group's, the {{roll-up.glyph}} header or the count line. Without it, Markdown reads the header as more of the last item's text, and the next list continues the same numbering, so `{{lists.todo.header}}.1` renders as the 8th item.\n\nTwo lists in one response, each ended by a blank line, then the count line:\n\n```text\n{{header.done}}  \n{{rule.done}}\n1. **Tokenizer fix in commit `a1b2c3d`**  \n   {{characters.separator}}\n2. **Test suite rerun after the fix**  \n   412 passed and 0 failed, in 3 minutes.\n   {{characters.separator}}\n\n{{header.todo}}  \n{{rule.todo}}\n1. **Rotate the `deploy-bot` key in the cloud console**  \n   It was issued before the leak, and rotating it frees the release.\n\n{{example.count-line}}\n```\n\nBefore sending a final response, check the draft for each of these and fix every one:\n\n- a missing or misplaced separator line, a line of other whitespace where one belongs, or a blank line beside one inside a list;\n- text after a numbered item's summary on its line, or a summary line with no hard line break;\n- a list among a {{lists.decide.header}} item's options;\n- a {{untaught.glyphs}} option, or one lettered {{untaught.letters}};\n- a header or topic underline of the wrong width;\n- a list under a topic that does not number on from the topics before;\n- a header written directly under a list, with no blank line between;\n- a table inside a list item, or a table without a blank line above and below it.",
   "skill-description": "Every response in a turn is kanban-shaped, as the {{plugin}} plugin teaches and checks it. A progress update between tool calls is one line whose state emoji show what is done, running and next. The final response is up to {{count.lists}} underlined, numbered lists of what is new this turn, in a fixed order, {{names.lists}}, each item's bold summary on its own line, then what earlier turns left open under {{roll-up.glyph}}, in full on an interval, otherwise as one count line. {{lists.decide.header}} items and their capital-lettered options, {{kinds.names}}, each read alone, with pros and cons; an answer that asks a question is answered in its item, never taken as a choice. `scripts/kanban.js` runs the plugin's core: the count line, the roll-up's draft and the reply lint. Load this skill only where the conversation holds no block opening \"This block is the `{{plugin}}:{{skill.name}}` skill's format\", which the plugin's hooks send.",
   "title": "# Kanban turn responses",
-  "tool": "## The plugin's tool\n\nThe {{plugin}} plugin draws clickable buttons for a final response's {{lists.decide.header}} items, through the tool `{{tool}}`.\n\n- When: call `{{tool}}` once, right before writing a final response that holds {{lists.decide.header}} items, so their buttons sit just under the reply and in the {{lists.decide.header}} pane. Don't call it for a response without {{lists.decide.header}} items.\n- Input: `{\"items\": [...]}`, one entry per {{lists.decide.header}} item of that response, in its order, each with:\n  - `turn`: the turn id, the first {{reference.turn-id.length}} characters of the latest prompt's promptId;\n  - `number` and `summary`: the item's number in the {{lists.decide.header}} list and its bold summary;\n  - `kind`: {{kinds.names}}, from the item's option glyphs ({{glyphs.options}});\n  - `frees`: the references the item's `{{frees.label}}:` line names, where it has one;\n  - `options`: each option's `letter`, `name` and `consequence`, and its {{options.pro}} and {{options.con}} lines, without the glyph, as `pros` and `cons`.\n- A click on a button writes the answer's reference, such as `{{example.turn}}.{{lists.decide.header}}.2.B`, into the user's prompt draft and sends nothing.\n- Write the final response exactly as you would without the tool: the buttons add to it and replace nothing.",
+  "tool": "## The plugin's tool\n\nThe {{plugin}} plugin draws clickable buttons for a final response's {{lists.decide.header}} items, through the tool `{{tool}}`.\n\n- When: call `{{tool}}` once, right before writing a final response that holds {{lists.decide.header}} items, so their buttons sit just under the reply and in the {{lists.decide.header}} pane. Don't call it for a response without {{lists.decide.header}} items.\n- Input: `{\"items\": [...]}`, one entry per {{lists.decide.header}} item of that response, in its order, each with:\n  - `turn`: the turn id, the first {{reference.turn-id.length}} characters of the latest prompt's promptId;\n  - `number` and `summary`: the item's number in the {{lists.decide.header}} list and its bold summary;\n  - `kind`: {{kinds.names}}, from the item's option glyphs ({{glyphs.options}});\n  - `frees`: the references the item's `{{frees.label}}:` line names, where it has one;\n  - `supersedes`: where the item restates an earlier turn's {{lists.decide.header}} item, after a question about it or with its options rewritten, a list of the references of the items it replaces, `[\"<turn>.{{lists.decide.header}}.<n>\"]`, such as `[\"{{example.turn}}.{{lists.decide.header}}.2\"]`, each turn always written: each earlier item moves to {{lists.done.header}}, superseded by this one, and each links to the other. Left out, or naming no item, an earlier item with the same subject is the one replaced; `[]` replaces none;\n  - `options`: each option's `letter`, `name` and `consequence`, and its {{options.pro}} and {{options.con}} lines, without the glyph, as `pros` and `cons`.\n- A click on a button writes the answer's reference, such as `{{example.turn}}.{{lists.decide.header}}.2.B`, into the user's prompt draft and sends nothing.\n- Write the final response exactly as you would without the tool: the buttons add to it and replace nothing.",
   "tools": '## The plugin\'s other tools\n\nTwo more of the {{plugin}} plugin\'s tools read and check final responses.\n\n- `{{outstanding-tool}}`: call it before writing a final response that closes on the {{roll-up.glyph}} roll-up or its count line, or that prints open items again. It gives the count line, a draft of the full roll-up to prune of what is settled, and the open {{lists.decide.header}} items raised through `{{tool}}`, in its input\'s shape.\n- `{{lint-tool}}`: call it with a draft final response, `{"text": "..."}`, before sending it, and fix every line it reports. Unless its user has turned that off, the plugin also lints each final response as its turn ends, and hands what it finds on with the next prompt.'
 };
 
@@ -7374,6 +7391,11 @@ var ITEM_SCHEMA = {
       items: { type: "string" },
       description: `The references the item's \`${SPEC.frees.label}:\` line names, each \`<turn>.<List>.<n>\`.`
     },
+    supersedes: {
+      type: "array",
+      items: { type: "string" },
+      description: `The earlier ${DECIDE.header} items this one restates and replaces, a list, \`["<turn>.${DECIDE.header}.<n>"]\`; left out, or naming no item, an earlier item on the same subject is the one replaced, and \`[]\` replaces none.`
+    },
     options: {
       type: "array",
       items: {
@@ -7406,7 +7428,8 @@ var ITEM_SCHEMA = {
 };
 var TOOL_DESCRIPTION = [
   `Draws clickable buttons for this turn's ${DECIDE.header} items in the transcript, just under the final response, and lists them in the plugin's ${DECIDE.header} pane.`,
-  `Call it once, right before writing the final response, with every ${DECIDE.header} item that response will hold, in its order: each item's turn id, number, summary, kind and frees, and each option's letter, name, consequence, pros and cons.`,
+  `Call it once, right before writing the final response, with every ${DECIDE.header} item that response will hold, in its order: each item's turn id, number, summary, kind, frees and supersedes, and each option's letter, name, consequence, pros and cons.`,
+  `An item that restates an earlier turn's ${DECIDE.header} item names it in supersedes, \`<turn>.${DECIDE.header}.<n>\`, which moves the earlier one to ${DONE.header}.`,
   `\`${OUTSTANDING_TOOL}\` gives earlier turns' open ${DECIDE.header} items in this shape.`,
   "A click writes the item's reference into the user's prompt draft; nothing is sent."
 ].join(" ");
@@ -7719,8 +7742,9 @@ var answerOfMatch = (line, m, found2) => {
 };
 var lettersAfterRef = (m) => m.groups?.["dot"] ?? m.groups?.["spaced"];
 var answerKey = (answer2) => `${answer2.turn}	${answer2.number}`;
+var asksQuestion = (line) => line.includes("?");
 var answersOfLine = (line) => {
-  const found2 = line.includes("?") ? [] : [
+  const found2 = asksQuestion(line) ? [] : [
     ...[...line.matchAll(ANSWER_WITH_ID)].map(
       (m) => answerOfMatch(line, m, {
         turn: m[1],
@@ -8723,7 +8747,8 @@ var ITEM_FIELDS = {
   ref: true,
   note: true,
   options: true,
-  frees: true
+  frees: true,
+  supersedes: true
 };
 var OPTION_FIELDS = {
   letter: true,
@@ -8759,7 +8784,8 @@ var ITEM_CHECKS = {
     what: "a whole number, 1 or more"
   },
   note: STRINGS,
-  frees: STRINGS
+  frees: STRINGS,
+  supersedes: STRINGS
 };
 var OPTION_CHECKS = {
   glyph: STRING,

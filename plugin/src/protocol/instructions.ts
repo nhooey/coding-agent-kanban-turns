@@ -9,7 +9,7 @@ import { FRAGMENTS } from "./fragments.ts";
 import type { FragmentName } from "./fragments.ts";
 import { lettersInWords } from "./kinds.ts";
 import { assembled, placeholderValues } from "./prose.ts";
-import { DECIDE, DEFAULT_KIND } from "./rules.ts";
+import { DECIDE, DEFAULT_KIND, DONE } from "./rules.ts";
 import { SPEC } from "./spec.ts";
 import {
   LINT_TOOL,
@@ -85,6 +85,11 @@ export const ITEM_SCHEMA = {
       items: { type: "string" },
       description: `The references the item's \`${SPEC.frees.label}:\` line names, each \`<turn>.<List>.<n>\`.`,
     },
+    supersedes: {
+      type: "array",
+      items: { type: "string" },
+      description: `The earlier ${DECIDE.header} items this one restates and replaces, a list, \`["<turn>.${DECIDE.header}.<n>"]\`; left out, or naming no item, an earlier item on the same subject is the one replaced, and \`[]\` replaces none.`,
+    },
     options: {
       type: "array",
       items: {
@@ -126,7 +131,8 @@ export const INPUT_SCHEMA = {
 /** What the tool does, as the engine lists it to the agent. */
 export const TOOL_DESCRIPTION = [
   `Draws clickable buttons for this turn's ${DECIDE.header} items in the transcript, just under the final response, and lists them in the plugin's ${DECIDE.header} pane.`,
-  `Call it once, right before writing the final response, with every ${DECIDE.header} item that response will hold, in its order: each item's turn id, number, summary, kind and frees, and each option's letter, name, consequence, pros and cons.`,
+  `Call it once, right before writing the final response, with every ${DECIDE.header} item that response will hold, in its order: each item's turn id, number, summary, kind, frees and supersedes, and each option's letter, name, consequence, pros and cons.`,
+  `An item that restates an earlier turn's ${DECIDE.header} item names it in supersedes, \`<turn>.${DECIDE.header}.<n>\`, which moves the earlier one to ${DONE.header}.`,
   `\`${OUTSTANDING_TOOL}\` gives earlier turns' open ${DECIDE.header} items in this shape.`,
   "A click writes the item's reference into the user's prompt draft; nothing is sent.",
 ].join(" ");
