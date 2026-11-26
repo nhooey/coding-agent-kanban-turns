@@ -123,6 +123,19 @@ export type Turn = Readonly<{
 }>;
 
 /**
+ * Where a raised Decide item stands: open, or settled, as the last refresh
+ * found it or Submit sent it, with how it settled where the transcript or
+ * Submit says. A settled item holds one settlement at most, and an open one
+ * none.
+ */
+export type ItemState = Readonly<
+  { tag: "open" } | { tag: "settled"; settlement?: Settlement }
+>;
+
+/** A raised Decide item, and where it stands. */
+export type RaisedItem = Readonly<{ item: DecideItem; state: ItemState }>;
+
+/**
  * Every Decide item raised in this session, oldest first: the pane lists
  * them all, and a reply draws its own under its text. An item stays once
  * raised; one no longer open is settled, Done in the UI, drawn dimmed, its
@@ -133,18 +146,14 @@ export type Raised = Readonly<{
   session: string;
   /** The ids of the turns the last refresh read, oldest first: what a turn's index in the pane counts back from. */
   turns: readonly string[];
-  /** Each item a `kanban_options` call drew or a refresh found open, by ref once, oldest first. */
-  items: readonly DecideItem[];
-  /** Raised refs the last refresh didn't find open. */
-  settledRefs: readonly string[];
-  /** How each item the last refresh found settled settled, by its ref. */
-  settlements: readonly Settlement[];
+  /** Each item a `kanban_options` call drew or a refresh found open, by ref once, oldest first, with where it stands. */
+  items: readonly RaisedItem[];
   /** Refs raised by the last main-loop turn's end, so the pane opens by itself only for a new one. */
   seenRefs: readonly string[];
   /** Why the last refresh couldn't read the transcript, for the pane to say; empty when it could. */
   problem: string;
-  /** What was wrong with the settings files at the last refresh, for the pane to say. */
-  warnings: readonly string[];
+  /** What was wrong with the settings files at the last refresh, for the pane to say: a usable file's warnings, or why the defaults file is unusable. */
+  settingsProblems: readonly string[];
 }>;
 
 /**

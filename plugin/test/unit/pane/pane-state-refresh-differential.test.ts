@@ -57,6 +57,7 @@ import {
   turnCompletedRefresh,
 } from "../../oracle/refresh.ts";
 import { BOXES, ITEMS, RAISED, START, replyArb, turnArb } from "../../fixtures/submit.ts";
+import { settledRefsOf } from "../../fixtures/raised.ts";
 import type { Reply } from "../../fixtures/submit.ts";
 import {
   COUNTS,
@@ -435,9 +436,9 @@ describe("the refresh's step against the old handlers", () => {
     const older = await answerRead($, newer, open, 0);
 
     // The old handlers drew the first item open again, from the older read.
-    expect(observedOld($).shown.settledRefs).toEqual([]);
+    expect(settledRefsOf(observedOld($).shown)).toEqual([]);
     // `step` keeps what the newer read found: the first item answered.
-    expect(observedNew(older).shown.settledRefs).toEqual(["9efb08a1.Decide.1"]);
+    expect(settledRefsOf(observedNew(older).shown)).toEqual(["9efb08a1.Decide.1"]);
     expect(older.state.refresh).toEqual({ asked: 2, shown: 2, reads: [] });
     expect(older.diverged.stale).toBe(true);
   });
@@ -455,7 +456,7 @@ describe("the refresh's step against the old handlers", () => {
 
     expect(observedNew(landed)).toEqual(observedOld($));
     expect(landed.state.sent).toEqual([]);
-    expect(observedNew(landed).shown.settledRefs).toEqual(["9efb08a1.Decide.1"]);
+    expect(settledRefsOf(observedNew(landed).shown)).toEqual(["9efb08a1.Decide.1"]);
     expect(landed.state.refresh).toEqual({ asked: 2, shown: 1, reads: [] });
     expect(landed.landedLate).toBe(1);
     expect(landed.diverged).toEqual(NOT_DIVERGED);

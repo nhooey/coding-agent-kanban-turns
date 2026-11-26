@@ -44,6 +44,7 @@ import { dispatch, readAlone, settingsEngine } from "../../oracle/settings.ts";
 import type { SettingsEngine } from "../../oracle/settings.ts";
 import type { TranscriptReply } from "../../oracle/submit.ts";
 import { BOXES, RAISED, START, replyArb } from "../../fixtures/submit.ts";
+import { settledRefsOf } from "../../fixtures/raised.ts";
 import type { Reply } from "../../fixtures/submit.ts";
 import { GONE, PULL, TRANSCRIPTS, foundArb, mergedArb } from "../../fixtures/refresh.ts";
 import {
@@ -389,9 +390,9 @@ describe("the settings' step against the old handlers", () => {
     );
 
     // The old handlers settled the first item from the read.
-    expect(withSent($.pane.raised, []).settledRefs).toEqual(["9efb08a1.Decide.1"]);
+    expect(settledRefsOf(withSent($.pane.raised, []))).toEqual(["9efb08a1.Decide.1"]);
     // `step` settles nothing while the settings can't be used, and says why.
-    expect(n.m.state.raised.settledRefs).toEqual([]);
+    expect(settledRefsOf(n.m.state.raised)).toEqual([]);
     expect(problemsOf(n.m.state.raised)).toBe(MISSING);
     expect(n.m.diverged.drawn).toBe(true);
   });
@@ -417,7 +418,7 @@ describe("the settings' step against the old handlers", () => {
     expect(n.m.reads).toHaveLength(1);
     expect(n.m.diverged.freed).toBe(true);
     expect(heldNow(landed.state.sent)).toEqual([]);
-    expect(landed.state.raised.settledRefs).toEqual([]);
+    expect(settledRefsOf(landed.state.raised)).toEqual([]);
     expect(problemsOf(landed.state.raised)).toBe(MISSING);
   });
 

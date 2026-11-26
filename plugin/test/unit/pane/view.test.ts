@@ -33,8 +33,10 @@ import {
   settledText,
   submitStep,
 } from "../../../src/pane/view.ts";
-import type { DecideItem, Raised } from "../../../types/index.d.ts";
+import type { SettledTexts } from "../../../src/pane/view.ts";
+import type { DecideItem, Raised, Settlement } from "../../../types/index.d.ts";
 import { SETTINGS } from "../../fixtures/settings.ts";
+import { openItems } from "../../fixtures/raised.ts";
 
 const radio: DecideItem = {
   turn: "9efb08a1",
@@ -58,7 +60,9 @@ const binary: DecideItem = {
     { letter: "N", name: "Hold" },
   ],
 };
-const raised: Raised = { ...emptyRaised, items: [radio, binary] };
+const raised: Raised = { ...emptyRaised, items: openItems([radio, binary]) };
+const SETTLED = { tag: "settled" } as const;
+const OPEN = { tag: "open" } as const;
 
 describe("the text with no open items", () => {
   test("says why when the reason is known", () => {
@@ -70,7 +74,9 @@ describe("the text with no open items", () => {
 describe("/answers's reply", () => {
   test("counts the open items the pane opened over, the settled left out", () => {
     expect(answersText(raised)).toBe("Decide pane opened: 2 open Decide items.");
-    expect(answersText({ ...raised, settledRefs: ["9efb08a1.Decide.1"] })).toBe(
+    expect(
+      answersText({ ...raised, items: [{ item: radio, state: SETTLED }, { item: binary, state: OPEN }] }),
+    ).toBe(
       "Decide pane opened: 1 open Decide items.",
     );
   });
@@ -80,7 +86,7 @@ describe("/answers's reply", () => {
       "No open Decide items: it broke.",
     );
     expect(
-      answersText({ ...raised, settledRefs: ["9efb08a1.Decide.1", "9efb08a1.Decide.2"] }),
+      answersText({ ...raised, items: [{ item: radio, state: SETTLED }, { item: binary, state: SETTLED }] }),
     ).toBe("No open Decide items.");
   });
 });
@@ -147,6 +153,34 @@ describe("what made an item Done", () => {
     expect(settledText(sent)).toBe("Sent: B");
     expect(settledText({ ...sent, note: "only the loader" })).toBe("Sent: B · only the loader");
     expect(sentLetters(sent)).toEqual(["B"]);
+  });
+
+  test("has a text for every way an item settles, which the type checker holds it to", () => {
+    // `npm run typecheck` checks this: a table of texts missing a `how` is
+    // refused, so a `how` added to `Settlement` without its text is a
+    // compile error, not a line that says something else.
+    const lacking: Omit<SettledTexts, "restated"> = {
+      answered: () => "",
+      sent: () => "",
+      reassessed: () => "",
+    };
+    // @ts-expect-error `restated` has no text.
+    const missing: SettledTexts = lacking;
+    const every: Record<Settlement["how"], true> = {
+      answered: true,
+      sent: true,
+      reassessed: true,
+      restated: true,
+    };
+    const hows = Object.keys(every) as readonly Settlement["how"][];
+
+    expect(missing).toBe(lacking);
+    expect(hows.map((how) => settledText({ ref: "r", how, turn: "4a2206b0", letters: [], note: "" } as Settlement))).toEqual([
+      "Answered in 4a2206b0: ",
+      "Sent: ",
+      "Done: reassessed",
+      "Done: asked again",
+    ]);
   });
 });
 

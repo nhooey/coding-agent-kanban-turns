@@ -2127,6 +2127,48 @@ test("a pane stored under the shape from before the settings moved into it is no
   await ui.unmount();
 });
 
+test("a pane stored under the shape from before each raised item held where it stands is not used", async ($, on) => {
+  engine(on, () => ITEMS);
+  // What the plugin kept under the pane-4 shape, while the raised items
+  // were bare and their settled refs, settlements and the settings'
+  // problems lists beside them: the first item settled, as a reload finds
+  // it. The store answers it whatever the plugin writes since.
+  const stale = {
+    shape: "pane-4",
+    value: {
+      presses: 1,
+      submit: { tag: "idle" },
+      overtaken: [],
+      aside: { said: "", presses: 0 },
+      refresh: { asked: 1, shown: 1, reads: [] },
+      raised: {
+        session: "session-1",
+        turns: [],
+        items: ITEMS,
+        settledRefs: [ITEMS[0]?.ref],
+        settlements: [],
+        seenRefs: [],
+        problem: "",
+        warnings: [],
+      },
+      sent: [],
+      merged: [],
+      counts: "",
+      settings: { tag: "unread", asked: 0 },
+    },
+  };
+  on("state.get", (_, e, next) =>
+    e.key === "pane" ? { value: { value: stale, version: 1 } } : next(e),
+  );
+  await $.tool.call({ tool: TOOL, items: ITEMS } as never);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+
+  // Read as absent, the stale value draws nothing: no items, open or Done.
+  expect(await titles(ui)).toEqual([]);
+  expect(await ui.find({ type: "Text", text: /^No open Decide items/ })).toBeDefined();
+  await ui.unmount();
+});
+
 test("Submit moves the items its draft answers to Done at once, and the turn's end confirms them", async ($, on) => {
   const later: TranscriptRecord[] = [];
   const state = engine(on, () => ITEMS, listsText, () => later);

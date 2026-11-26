@@ -12,11 +12,12 @@ import { expect } from "expect";
 import fc from "fast-check";
 
 import { countLine } from "../../../src/items/outstanding.ts";
-import { problemsOf, unseen } from "../../../src/items/raised.ts";
+import { decideItemsOf, problemsOf, unseen } from "../../../src/items/raised.ts";
 import { INITIAL_PANE, shownOf, step } from "../../../src/pane/pane-state.ts";
 import type { Event, Found, Stepped } from "../../../src/pane/pane-state.ts";
 import type { Loaded, PaneState } from "../../../types/index.d.ts";
 import { BOXES, EARLIER, ITEMS, RAISED, START, startArb } from "../../fixtures/submit.ts";
+import { settledRefsOf } from "../../fixtures/raised.ts";
 import { BAD_KEY, BROKEN, MISSING, usable } from "../../fixtures/settings.ts";
 import {
   COUNTS,
@@ -121,9 +122,9 @@ describe("a refresh", () => {
     const last = steps([ASK, read(1, ANSWERED)], START, usable(false, [BAD_KEY])).at(-1);
 
     expect(last?.state.refresh).toEqual({ asked: 1, shown: 1, reads: [] });
-    expect(last?.state.raised.settledRefs).toEqual(["9efb08a1.Decide.1"]);
+    expect(settledRefsOf(last?.state.raised ?? START.raised)).toEqual(["9efb08a1.Decide.1"]);
     expect(last?.state.raised.turns).toEqual(["9efb08a1", "b2c3d4e5"]);
-    expect(last?.state.raised.warnings).toEqual([BAD_KEY]);
+    expect(last?.state.raised.settingsProblems).toEqual([BAD_KEY]);
     expect(last?.state.counts).toBe("📌 Outstanding: 🔍 1");
     expect(last?.effects).toEqual([
       {
@@ -144,7 +145,7 @@ describe("a refresh", () => {
     const settled = after([ASK, read(1, ANSWERED)]);
     const last = steps([ASK, read(2, FAILED)], settled, usable(false, [BAD_KEY])).at(-1);
 
-    expect(last?.state.raised.settledRefs).toEqual(settled.raised.settledRefs);
+    expect(last?.state.raised.items).toEqual(settled.raised.items);
     expect(last?.state.counts).toBe(settled.counts);
     expect(problemsOf(last?.state.raised ?? RAISED)).toBe(`${BAD_KEY}; ${GONE}`);
     expect(last?.state.refresh).toEqual({ asked: 2, shown: 1, reads: [] });
@@ -190,13 +191,13 @@ describe("an older refresh", () => {
   test("whose read answers first is shown until the newer one's answers", () => {
     const older = after([ASK, ASK, read(1, OPEN)]);
 
-    expect(older.raised.settledRefs).toEqual([]);
+    expect(settledRefsOf(older.raised)).toEqual([]);
     expect(older.refresh).toEqual({
       asked: 2,
       shown: 1,
       reads: [onTranscript(2)],
     });
-    expect(after([read(2, ANSWERED)], older).raised.settledRefs).toEqual(["9efb08a1.Decide.1"]);
+    expect(settledRefsOf(after([read(2, ANSWERED)], older).raised)).toEqual(["9efb08a1.Decide.1"]);
   });
 
   test("that couldn't read the transcript, answering late, doesn't say why over a newer one", () => {
@@ -209,7 +210,7 @@ describe("an older refresh", () => {
 
     expect(failed.refresh).toEqual({ asked: 2, shown: 0, reads: [onTranscript(1)] });
     expect(problemsOf(failed.raised)).toBe(GONE);
-    expect(last.raised.settledRefs).toEqual(["9efb08a1.Decide.1"]);
+    expect(settledRefsOf(last.raised)).toEqual(["9efb08a1.Decide.1"]);
     expect(problemsOf(last.raised)).toBe("");
     expect(last.refresh).toEqual({ asked: 2, shown: 1, reads: [] });
   });
@@ -246,9 +247,9 @@ describe("a turn's end's refresh", () => {
     const failed = after([read(2, FAILED)], reading);
     const last = after([read(1, ANSWERED)], failed);
 
-    expect(shownOf(failed).settledRefs).toEqual(["9efb08a1.Decide.1"]);
+    expect(settledRefsOf(shownOf(failed))).toEqual(["9efb08a1.Decide.1"]);
     expect(last.sent).toEqual([]);
-    expect(shownOf(last).settledRefs).toEqual(["9efb08a1.Decide.1"]);
+    expect(settledRefsOf(shownOf(last))).toEqual(["9efb08a1.Decide.1"]);
     expect(last.refresh).toEqual({ asked: 2, shown: 1, reads: [] });
   });
 
@@ -257,7 +258,7 @@ describe("a turn's end's refresh", () => {
     const last = after([...sending(BOXES.first, 2), read(1, OPEN)], reading);
 
     expect(last.sent).toEqual([{ press: 2, settled: FIRST_SENT }]);
-    expect(last.raised.settledRefs).toEqual([]);
+    expect(settledRefsOf(last.raised)).toEqual([]);
   });
 
   test("that can't read the transcript takes nothing out", () => {
@@ -335,7 +336,7 @@ describe("the items looked at", () => {
 
 describe("the raised items", () => {
   test("take in the items a kanban_options call draws", () => {
-    expect(after([{ type: "items-drawn", items: [DRAWN] }]).raised.items).toEqual([...ITEMS, DRAWN]);
+    expect(decideItemsOf(after([{ type: "items-drawn", items: [DRAWN] }]).raised)).toEqual([...ITEMS, DRAWN]);
   });
 
   test("stay for the same session, and go, with the answers held for them, for another", () => {
@@ -354,7 +355,7 @@ describe("the raised items", () => {
 
     expect(restarted.sent).toEqual([]);
     expect(restarted.refresh).toEqual(reading.refresh);
-    expect(after([read(1, ANSWERED)], restarted).raised.settledRefs).toEqual(["9efb08a1.Decide.1"]);
+    expect(settledRefsOf(after([read(1, ANSWERED)], restarted).raised)).toEqual(["9efb08a1.Decide.1"]);
   });
 
   test("of another session take in no read asked before it was joined: each is dropped as it answers, and the new session's own refresh is shown", () => {
@@ -366,7 +367,7 @@ describe("the raised items", () => {
     expect(late.raised).toBe(joined.raised);
     expect(late.raised.items).toEqual([]);
     expect(problemsOf(late.raised)).toBe("");
-    expect(after([ASK, read(3, OPEN)], late).raised.items).toEqual(ITEMS);
+    expect(decideItemsOf(after([ASK, read(3, OPEN)], late).raised)).toEqual(ITEMS);
   });
 });
 
@@ -435,7 +436,6 @@ describe("the refresh's invariants over random event sequences", () => {
       const isShown = isNewer && "turns" in event.found && before.settings.tag === "loaded";
       const isSettledSame =
         state.raised.items === before.raised.items &&
-        state.raised.settledRefs === before.raised.settledRefs &&
         state.counts === before.counts &&
         state.refresh.shown === before.refresh.shown;
 
@@ -528,7 +528,7 @@ describe("the refresh's invariants over random event sequences", () => {
 
   test("every answer Submit holds Done is a raised item's", () => {
     holds(({ stepped: { state } }) =>
-      state.sent.every((h) => state.raised.items.some((item) => item.ref === h.settled.ref)),
+      state.sent.every((h) => decideItemsOf(state.raised).some((item) => item.ref === h.settled.ref)),
     );
   });
 
@@ -539,8 +539,16 @@ describe("the refresh's invariants over random event sequences", () => {
   test("a raised item stays raised, but for another session's", () => {
     holds(({ before, event, stepped: { state } }) =>
       event.type === "session-joined" ||
-      before.raised.items.every((item) => state.raised.items.some((i) => i.ref === item.ref)),
+      decideItemsOf(before.raised).every((item) => decideItemsOf(state.raised).some((i) => i.ref === item.ref)),
     );
+  });
+
+  test("each raised item is raised once, by its ref", () => {
+    holds(({ stepped: { state } }) => {
+      const refs = decideItemsOf(state.raised).map((item) => item.ref);
+
+      return new Set(refs).size === refs.length;
+    });
   });
 
   test("the pane opens by itself only over an open item it hadn't been opened over", () => {

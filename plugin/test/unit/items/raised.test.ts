@@ -11,6 +11,7 @@ import {
   forSession,
   heldNow,
   isSettled,
+  decideItemsOf,
   problemsOf,
   refreshed,
   released,
@@ -26,6 +27,7 @@ import {
   withoutRead,
 } from "../../../src/items/raised.ts";
 import type { DecideItem, Raised } from "../../../types/index.d.ts";
+import { openItems, settledRefsOf } from "../../fixtures/raised.ts";
 
 const radio: DecideItem = {
   turn: "9efb08a1",
@@ -61,8 +63,9 @@ const binary: DecideItem = {
     { letter: "N", name: "Hold" },
   ],
 };
-const raised: Raised = { ...emptyRaised, session: "s1", items: [radio, checkbox] };
-const refs = (r: Raised) => r.items.map((item) => item.ref);
+const raised: Raised = { ...emptyRaised, session: "s1", items: openItems([radio, checkbox]) };
+const refs = (r: Raised) => decideItemsOf(r).map((item) => item.ref);
+const states = (r: Raised) => r.items.map((each) => each.state);
 
 describe("the session the items belong to", () => {
   test("the same session keeps its items", () => {
@@ -91,12 +94,20 @@ describe("merging items in", () => {
       "9efb08a1.Decide.2",
       "9efb08a1.Decide.3",
     ]);
-    expect(merged.items[0]?.note).toEqual(["Both are built."]);
+    expect(decideItemsOf(merged)[0]?.note).toEqual(["Both are built."]);
   });
 
-  test("an item handed over twice at once is raised once", () => {
-    expect(refs(withItems(emptyRaised, [binary, binary]))).toEqual([
-      "9efb08a1.Decide.3",
+  test("an item handed over twice at once is raised once, holding the later content", () => {
+    const told = { ...binary, note: ["Tonight's build is green."] };
+    expect(decideItemsOf(withItems(emptyRaised, [binary, told]))).toEqual([told]);
+  });
+
+  test("a new item is open, and an item raised before keeps where it stands", () => {
+    const settled = refreshed(raised, [checkbox], [], []);
+    expect(states(withItems(settled, [{ ...radio, note: ["Again."] }, binary]))).toEqual([
+      { tag: "settled" },
+      { tag: "open" },
+      { tag: "open" },
     ]);
   });
 });
@@ -109,19 +120,24 @@ describe("a refresh", () => {
       "9efb08a1.Decide.2",
       "9efb08a1.Decide.3",
     ]);
-    expect(after.settledRefs).toEqual(["9efb08a1.Decide.1"]);
+    expect(settledRefsOf(after)).toEqual(["9efb08a1.Decide.1"]);
     expect(isSettled(after, radio)).toBe(true);
     expect(isSettled(after, checkbox)).toBe(false);
+    expect(isSettled(after, { ...binary, ref: "cafecafe.Decide.9" })).toBe(false);
   });
 
-  test("an item open again is no longer settled", () => {
-    const settled = refreshed(raised, [checkbox], [], []);
-    expect(refreshed(settled, [radio, checkbox], [], []).settledRefs).toEqual([]);
+  test("an item open again is no longer settled, and holds no settlement", () => {
+    const answered = { ref: "9efb08a1.Decide.1", how: "answered", turn: "b2c3d4e5", letters: ["A"], note: "" } as const;
+    const settled = refreshed(raised, [checkbox], [answered], []);
+    const reopened = refreshed(settled, [radio, checkbox], [answered], []);
+    expect(settledRefsOf(reopened)).toEqual([]);
+    expect(states(reopened)).toEqual([{ tag: "open" }, { tag: "open" }]);
+    expect(settlementOf(reopened, radio)).toBeUndefined();
   });
 
-  test("keeps the settings' warnings, and clears an earlier read's problem", () => {
+  test("keeps the settings' problems, and clears an earlier read's problem", () => {
     const after = refreshed(unread(raised, "no file", []), [checkbox], [], ["bad key"]);
-    expect(after.warnings).toEqual(["bad key"]);
+    expect(after.settingsProblems).toEqual(["bad key"]);
     expect(after.problem).toBe("");
   });
 
@@ -135,9 +151,24 @@ describe("a refresh", () => {
     } as const;
     const restated = { ref: "9efb08a1.Decide.2", how: "restated" } as const;
     const after = refreshed(raised, [checkbox], [answered, restated], []);
-    expect(after.settlements).toEqual([answered]);
+    expect(states(after)).toEqual([{ tag: "settled", settlement: answered }, { tag: "open" }]);
     expect(settlementOf(after, radio)).toEqual(answered);
     expect(settlementOf(after, checkbox)).toBeUndefined();
+  });
+
+  test("keeps one settlement for an item, the last said of it, and none for an item not raised", () => {
+    const first = { ref: "9efb08a1.Decide.1", how: "restated" } as const;
+    const last = { ref: "9efb08a1.Decide.1", how: "reassessed" } as const;
+    const stray = { ref: "cafecafe.Decide.9", how: "restated" } as const;
+    const after = refreshed(raised, [checkbox], [first, stray, last], []);
+    expect(states(after)).toEqual([{ tag: "settled", settlement: last }, { tag: "open" }]);
+    expect(settlementOf(after, { ...binary, ref: "cafecafe.Decide.9" })).toBeUndefined();
+  });
+
+  test("settles an item the transcript doesn't say how, with no settlement", () => {
+    const after = refreshed(raised, [checkbox], [], []);
+    expect(states(after)).toEqual([{ tag: "settled" }, { tag: "open" }]);
+    expect(settlementOf(after, radio)).toBeUndefined();
   });
 
   test("keeps the ids of the turns it read, in order, for the pane's turn headers", () => {
@@ -148,13 +179,12 @@ describe("a refresh", () => {
   test("that couldn't read the transcript settles nothing and reopens nothing", () => {
     const before = refreshed(raised, [checkbox], [], []);
     const after = unread(before, "Error: no file", ["bad key"]);
-    expect(after.items).toEqual(before.items);
-    expect(after.settledRefs).toEqual(before.settledRefs);
+    expect(after.items).toBe(before.items);
     expect(after.problem).toBe("Error: no file");
-    expect(after.warnings).toEqual(["bad key"]);
+    expect(after.settingsProblems).toEqual(["bad key"]);
   });
 
-  test("says the settings' warnings, then the read's problem, in one line", () => {
+  test("says the settings' problems, then the read's problem, in one line", () => {
     expect(problemsOf(unread(raised, "Error: no file", ["bad key", "worse key"]))).toBe(
       "bad key; worse key; Error: no file",
     );
@@ -222,8 +252,15 @@ describe("the answers Submit sent, Done before the turn's end reads them", () =>
     const sent = sentOf(draft, after);
     const shown = withSent(after, sent);
     expect(settlementOf(shown, radio)).toEqual(sent[0]);
-    expect(shown.settlements).toEqual(sent);
-    expect(shown.settledRefs).toEqual(["9efb08a1.Decide.1", "9efb08a1.Decide.2"]);
+    expect(states(shown)).toEqual(sent.map((settlement) => ({ tag: "settled", settlement })));
+  });
+
+  test("leave an item they don't answer as it stood, and make Done each item they answer with the last sent for it", () => {
+    const first = { ref: "9efb08a1.Decide.1", how: "sent", letters: ["A"], note: "" } as const;
+    const last = { ref: "9efb08a1.Decide.1", how: "sent", letters: ["B"], note: "" } as const;
+    const shown = withSent(raised, [first, last]);
+    expect(states(shown)).toEqual([{ tag: "settled", settlement: last }, { tag: "open" }]);
+    expect(shown.items[1]).toBe(raised.items[1]);
   });
 
   const again = { ref: "9efb08a1.Decide.1", how: "sent", letters: ["A"], note: "" } as const;
@@ -275,7 +312,8 @@ describe("the answers Submit sent, Done before the turn's end reads them", () =>
 
   test("make nothing Done for an item not raised", () => {
     const stray = { ref: "cafecafe.Decide.9", how: "sent", letters: ["A"], note: "" } as const;
-    expect(withSent(raised, [stray]).settledRefs).toEqual([]);
+    expect(settledRefsOf(withSent(raised, [stray]))).toEqual([]);
+    expect(withSent(raised, [stray])).toBe(raised);
   });
 });
 
