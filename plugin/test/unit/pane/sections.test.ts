@@ -151,6 +151,11 @@ describe("an item's state in the pane", () => {
     expect(open && paneStateOf(open, "9efb08a1.Decide.1: keep both")).toBe("queued");
   });
 
+  test("is Open while the draft's line for it only asks a question, or asks one beside a pick, which Submit sends without settling it", () => {
+    expect(open && paneStateOf(open, "9efb08a1.Decide.1: how would B work?")).toBe("open");
+    expect(open && paneStateOf(open, "9efb08a1.Decide.1.A: but how?")).toBe("open");
+  });
+
   test("is Open again once its last pick is undone", () => {
     expect(open && paneStateOf(open, choose(picked, older1, "A"))).toBe("open");
   });

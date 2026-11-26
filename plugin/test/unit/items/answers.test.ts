@@ -2,6 +2,7 @@ import { describe, test } from "node:test";
 import { expect } from "expect";
 
 import {
+  choiceTo,
   choose,
   REASSESS_LINE,
   draftHeader,
@@ -14,9 +15,22 @@ import {
   toggledReassess,
   withNote,
 } from "../../../src/items/answers.ts";
-import { itemsOf } from "../../../src/items/items.ts";
+import { asksQuestion } from "../../../src/items/answer-lines.ts";
+import {
+  decideRefOf,
+  ignoredSupersedes,
+  isSameTurn,
+  itemsOf,
+  reraisable,
+} from "../../../src/items/items.ts";
 import { codeSpans } from "../../../src/pane/layout.ts";
-import { itemOfLink, linkedItems, linkedQuestions } from "../../../src/pane/links.ts";
+import {
+  itemOfLink,
+  itemOfRef,
+  linkedItems,
+  linkedQuestions,
+  refOfLink,
+} from "../../../src/pane/links.ts";
 import type { DecideItem } from "../../../types/index.d.ts";
 
 const radio: DecideItem = {
@@ -274,6 +288,14 @@ describe("questions in a reply", () => {
     );
     expect(itemOfLink(items, linked.hrefs[0] ?? "")).toBe(0);
     expect(itemOfLink(items, "https://example.com/")).toBe(-1);
+    expect(refOfLink(linked.hrefs[0] ?? "")).toBe("9efb08a1.Decide.1");
+    expect(refOfLink("https://example.com/9efb08a1.Decide.1")).toBe("");
+  });
+
+  test("the item a ref names, by its place, -1 for none", () => {
+    expect(itemOfRef(items, "9efb08a1.Decide.3")).toBe(2);
+    expect(itemOfRef(items, "9efb08a1.Decide.9")).toBe(-1);
+    expect(itemOfRef(items, "")).toBe(-1);
   });
 
   test("the items a reply links, once each, in the reply's order", () => {
@@ -394,5 +416,97 @@ describe("the items a kanban_options call hands over", () => {
 
     expect(given?.frees).toEqual(["abc12345.Todo.1", "abc123.Review.2"]);
     expect(bad === undefined ? true : "frees" in bad).toBe(false);
+  });
+
+  test("an item's supersedes keep only Decide items' references, each once, an empty one kept, one not given an array or naming no item dropped", () => {
+    const item = { turn: "abc12345", number: 4, summary: "S", options: [{ letter: "A", name: "a" }] };
+    const [given, empty, bad, none, naming] = itemsOf({
+      items: [
+        {
+          ...item,
+          supersedes: ["682e71fb.Decide.1", " 682e71fb.Decide.1", "682e71.Decide.2", "682e71fb.Todo.1", "Decide.3", 7],
+        },
+        { ...item, number: 5, supersedes: [] },
+        { ...item, number: 6, supersedes: "682e71fb.Decide.1" },
+        { ...item, number: 7 },
+        { ...item, number: 8, supersedes: ["682e71fb.Todo.1", "Decide.3"] },
+      ],
+    });
+
+    expect(given?.supersedes).toEqual(["682e71fb.Decide.1", "682e71.Decide.2"]);
+    expect(empty?.supersedes).toEqual([]);
+    expect(bad === undefined ? true : "supersedes" in bad).toBe(false);
+    expect(none === undefined ? true : "supersedes" in none).toBe(false);
+    expect(naming === undefined ? true : "supersedes" in naming).toBe(false);
+  });
+
+  test("what an item's supersedes held that itemsOf leaves out, by the item's ref, as JSON, and whether any of it stands", () => {
+    const item = { turn: "abc12345", number: 4, summary: "S", options: [{ letter: "A", name: "a" }] };
+
+    expect(
+      ignoredSupersedes({
+        items: [
+          { ...item, supersedes: ["682e71fb.Decide.1", "682e71fb.Todo.1", "Decide.3", 7, " 682e71fb.Decide.2 "] },
+          { ...item, number: 5, supersedes: ["682e71fb.Decide.1"] },
+          { ...item, number: 6, supersedes: "682e71fb.Decide.x" },
+          { ...item, number: 7 },
+          { ...item, number: 8, supersedes: ["Decide.3"] },
+          { ...item, number: 9, supersedes: [] },
+          { turn: 1, supersedes: ["x"] },
+        ],
+      }),
+    ).toEqual([
+      { ref: "abc12345.Decide.4", values: [`"682e71fb.Todo.1"`, `"Decide.3"`, "7"], left: "some" },
+      { ref: "abc12345.Decide.6", values: [`"682e71fb.Decide.x"`], left: "list" },
+      { ref: "abc12345.Decide.8", values: [`"Decide.3"`], left: "all" },
+    ]);
+    expect(ignoredSupersedes([])).toEqual([]);
+  });
+
+  test("an open item handed back to raise again leaves out its supersedes, and keeps the rest", () => {
+    const item: DecideItem = { ...radio, ref: "9efb08a1.Decide.1", supersedes: ["682e71fb.Decide.1"] };
+    const again = reraisable(item);
+
+    expect("supersedes" in again).toBe(false);
+    expect(again).toEqual({ ...radio, ref: "9efb08a1.Decide.1" });
+  });
+
+  test("two turn ids name one turn where either is a prefix of the other, and an empty one names none", () => {
+    expect(isSameTurn("9efb08a1", "9efb08")).toBe(true);
+    expect(isSameTurn("9efb08", "9efb08a1")).toBe(true);
+    expect(isSameTurn("9efb08a1", "b2c3d4e5")).toBe(false);
+    expect(isSameTurn("", "9efb08a1")).toBe(false);
+    expect(isSameTurn("9efb08a1", "")).toBe(false);
+  });
+
+  test("a Decide item's reference is its turn, by an id or a long enough prefix, the list and its number, the whole text", () => {
+    expect(decideRefOf("682e71fb.Decide.1")).toEqual({ turn: "682e71fb", list: "Decide", number: 1 });
+    expect(decideRefOf(" 682e71.Decide.12 ")).toEqual({ turn: "682e71", list: "Decide", number: 12 });
+    for (const text of ["682e7.Decide.1", "682e71fb.Todo.1", "Decide.1", "682e71fb.Decide.0", "682e71fb.Decide.1.A", 1]) {
+      expect(decideRefOf(text)).toBeUndefined();
+    }
+  });
+});
+
+describe("an answer that picks", () => {
+  test("is the draft's answer to the item, unless its line asks a question", () => {
+    expect(choiceTo("9efb08a1.Decide.1.B\n", radio)?.letters).toEqual(["B"]);
+    expect(choiceTo("9efb08a1.Decide.1: later\n", radio)?.note).toBe("later");
+    expect(choiceTo("9efb08a1.Decide.1: how would B work?\n", radio)).toBeUndefined();
+    expect(choiceTo("Why? 9efb08a1.Decide.1.A", radio)).toBeUndefined();
+    expect(choiceTo("9efb08a1.Decide.2: why?\n9efb08a1.Decide.1.A\n", radio)?.letters).toEqual(["A"]);
+    expect(choiceTo("", radio)).toBeUndefined();
+  });
+
+  test("is the latest of the item's answers on a line that asks no question, a question before it passed over", () => {
+    expect(choiceTo("9efb08a1.Decide.1: why?\n9efb08a1.Decide.1.A\n", radio)?.letters).toEqual(["A"]);
+    expect(choiceTo("9efb08a1.Decide.1.A\n9efb08a1.Decide.1.B\n", radio)?.letters).toEqual(["B"]);
+    expect(choiceTo("9efb08a1.Decide.1.A\n9efb08a1.Decide.1: but why?\n", radio)?.letters).toEqual(["A"]);
+  });
+
+  test("a line asks a question where it holds a question mark", () => {
+    expect(asksQuestion("Decide.1?")).toBe(true);
+    expect(asksQuestion("9efb08a1.Decide.1.B: why not C?")).toBe(true);
+    expect(asksQuestion("9efb08a1.Decide.1.B: only the loader")).toBe(false);
   });
 });

@@ -173,7 +173,7 @@ const settlementOf = (
   item: DecideItem,
   answer: Answer | undefined,
   isBeforeReassess: boolean,
-  isRestated: boolean,
+  by: string | undefined,
 ): Settlement | undefined =>
   answer !== undefined
     ? {
@@ -185,9 +185,25 @@ const settlementOf = (
       }
     : isBeforeReassess
       ? { ref: refOf(item), how: "reassessed" }
-      : isRestated
-        ? { ref: refOf(item), how: "restated" }
+      : by !== undefined
+        ? { ref: refOf(item), how: "superseded", by }
         : undefined;
+
+/**
+ * The item that superseded the one at `n` among `raised`: the one at
+ * `latest`, the latest on its subject, by its ref, where that's another
+ * item; undefined where it's the item itself. The turns these oracles read
+ * give no `supersedes`, so the subject alone settles which item that is.
+ */
+const restatedBy = (
+  raised: readonly Readonly<{ item: DecideItem }>[],
+  latest: number | undefined,
+  n: number,
+): string | undefined => {
+  const item = latest === undefined || latest === n ? undefined : raised[latest]?.item;
+
+  return item === undefined ? undefined : refOf(item);
+};
 
 /** Every Decide item the `kanban_options` calls raised, oldest first, and how it settled, if it did. */
 export const decideStates = (turns: readonly Turn[]): readonly DecideState[] => {
@@ -211,7 +227,7 @@ export const decideStates = (turns: readonly Turn[]): readonly DecideState[] => 
       item,
       answerFor(answers, item.turn, at, item.number),
       at < start,
-      last.get(subjectKey(item.summary)) !== n,
+      restatedBy(raised, last.get(subjectKey(item.summary)), n),
     ),
   }));
 };

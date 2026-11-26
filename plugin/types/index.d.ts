@@ -37,15 +37,22 @@ export type DecideItem = Readonly<{
   options: readonly DecideOption[];
   /** The items it frees, by reference, `0f311c94.Todo.1`: those its `Frees:` line names. */
   frees?: readonly string[];
+  /**
+   * The earlier Decide items it replaces, by reference, `682e71fb.Decide.1`.
+   * Left out, a later item on an item's subject replaces it; given, even
+   * empty, it replaces those it names alone.
+   */
+  supersedes?: readonly string[];
 }>;
 
 /**
  * How a Decide item stopped being open, which the UI calls Done: the user's
  * answer to it, the letters and note it gave and the id of the turn it was
- * sent in; a later `reassess` turn; a later item on its subject, the item
- * asked again; or, until the turn's end reads the transcript, the answer the
- * pane's Submit sent. `HowSettled` is that alone, apart from which item it
- * settled; `Settlement` names the item by its ref.
+ * sent in; a later `reassess` turn; a later item that replaced it, by that
+ * item's ref, one naming it in `supersedes` or else one on its subject; or,
+ * until the turn's end reads the transcript, the answer the pane's Submit
+ * sent. `HowSettled` is that alone, apart from which item it settled;
+ * `Settlement` names the item by its ref.
  */
 export type HowSettled = Readonly<
   | {
@@ -54,7 +61,8 @@ export type HowSettled = Readonly<
       letters: readonly string[];
       note: string;
     }
-  | { how: "reassessed" | "restated" }
+  | { how: "reassessed" }
+  | { how: "superseded"; by: string }
   | { how: "sent"; letters: readonly string[]; note: string }
 >;
 

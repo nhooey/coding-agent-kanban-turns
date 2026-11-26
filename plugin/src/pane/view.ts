@@ -8,12 +8,14 @@
 import type { DecideItem, Raised, Settings, Settlement } from "../../types/index.d.ts";
 import { answersIn, hasReassess } from "../items/answers.ts";
 import { glyphOf, optionMark, refOf } from "../items/items.ts";
+import type { Ignored } from "../items/items.ts";
 import { DECIDE, DONE, REASSESS, itemLabel } from "../protocol/rules.ts";
 import { problemsOf, stillOpen } from "../items/raised.ts";
 import { padToCells, widestCells } from "../text/cells.ts";
 import { capitalized } from "../text/words.ts";
 import { isReassessLine, withoutDraftHeader } from "../transcript/turns.ts";
 import { LAYOUT } from "./layout.ts";
+import { doneLine } from "./sections.ts";
 
 /** What the pane and /answers say when there are no open items, with why when it's known. */
 export const noItemsText = (problem: string): string =>
@@ -37,11 +39,37 @@ export const configText = (
     "\n",
   );
 
-/** The `kanban_options` tool's result: how many items it drew buttons for, by reference. */
-export const drewText = (items: readonly DecideItem[]): string =>
-  `Drew buttons for ${items.length} ${DECIDE.header} items under the final response and in the ${DECIDE.header} pane: ${items
-    .map(refOf)
-    .join(", ")}.`;
+/** The form `supersedes` takes, as the tool's result names it. */
+const SUPERSEDES_FORM = `["<turn>.${DECIDE.header}.<n>"]`;
+
+/** What the tool's result says the item then supersedes, after it ignored all of its `supersedes`. */
+const SUBJECT_FALLBACK = `so it replaces an earlier item on its subject, as with no supersedes`;
+
+/** What the tool's result says of what it ignored in one item's `supersedes`, by why, as Ignored's `left` says. */
+const IGNORED_TEXTS: Readonly<Record<Ignored["left"], (ignored: Ignored) => string>> = {
+  some: ({ ref, values }) =>
+    `Ignored in ${ref}'s supersedes, as no ${DECIDE.header} item's reference, <turn>.${DECIDE.header}.<n>: ${values.join(", ")}.`,
+  all: ({ ref, values }) =>
+    `Ignored all of ${ref}'s supersedes, as no ${DECIDE.header} item's reference, <turn>.${DECIDE.header}.<n>: ${values.join(", ")}; ${SUBJECT_FALLBACK}.`,
+  list: ({ ref, values }) =>
+    `Ignored ${ref}'s supersedes, ${values.join(", ")}, as no list, ${SUPERSEDES_FORM}; ${SUBJECT_FALLBACK}.`,
+};
+
+/**
+ * The `kanban_options` tool's result: how many items it drew buttons for,
+ * by reference, then, for each item whose `supersedes` held what itemsOf
+ * leaves out, what it ignored there and what the item then supersedes.
+ */
+export const drewText = (
+  items: readonly DecideItem[],
+  ignored: readonly Ignored[] = [],
+): string =>
+  [
+    `Drew buttons for ${items.length} ${DECIDE.header} items under the final response and in the ${DECIDE.header} pane: ${items
+      .map(refOf)
+      .join(", ")}.`,
+    ...ignored.map((each) => IGNORED_TEXTS[each.left](each)),
+  ].join(" ");
 
 /** What the pane says when Submit finds a file mention, pasted text or a pasted image, which a plugin's prompt sends unexpanded. */
 export const NEEDS_ENTER_TEXT =
@@ -232,15 +260,15 @@ export type SettledTexts = {
  * What made a Done item Done, by how: the answer, `Answered in <turn>:
  * <letters>`, its note after ` · ` or in place of the letters; the answer
  * Submit sent, `Sent: <letters>`, until the turn's end reads it; a later
- * `reassess`, `Done: reassessed`; or a later item on its subject, `Done:
- * asked again`. The pane's word for a settled item is the Done list's name,
- * so it follows the spec's header.
+ * `reassess`, `Done: reassessed`; or a later item that replaced it,
+ * `Superseded by <ref>`. The pane's word for a settled item is the Done
+ * list's name, so it follows the spec's header.
  */
 const SETTLED_TEXTS: SettledTexts = {
   answered: (s) => `Answered in ${s.turn}: ${lettersAndNote(s.letters, s.note)}`,
   sent: (s) => `Sent: ${lettersAndNote(s.letters, s.note)}`,
   reassessed: () => `${DONE.header}: ${REASSESS}ed`,
-  restated: () => `${DONE.header}: asked again`,
+  superseded: (s) => `Superseded by ${s.by}`,
 };
 
 /** What the settlement's `how` says of it. */
@@ -251,6 +279,60 @@ const textOf = <How extends Settlement["how"]>(
 /** The line under a Done item's title saying what made it Done, as `SETTLED_TEXTS` says, or `Done` where the transcript doesn't say. */
 export const settledText = (settlement: Settlement | undefined): string =>
   settlement === undefined ? DONE.header : textOf(settlement);
+
+/** A line naming another item: its text, and the ref of the item a click on it shows. */
+export type ItemLink = Readonly<{ text: string; to: string }>;
+
+/** The link the line saying what made a Done item Done is: a superseded item's, to the item that replaced it; none for any other. */
+export const settledLink = (
+  settlement: Settlement | undefined,
+): ItemLink | undefined =>
+  settlement?.how === "superseded"
+    ? { text: settledText(settlement), to: settlement.by }
+    : undefined;
+
+/** A Done item's one line in its expanded section, as doneLine gives it, and the link that ends it, where what made it Done is one. */
+export type DoneRow = Readonly<{
+  line: Readonly<{ label: string; text: string }>;
+  link: ItemLink | undefined;
+}>;
+
+/** A Done item's row: its line saying what made it Done, or, where that's a link, its line up to the link, then the link. */
+export const doneRowOf = (
+  item: DecideItem,
+  settlement: Settlement | undefined,
+): DoneRow => {
+  const link = settledLink(settlement);
+
+  return {
+    line: doneLine(item, link === undefined ? settledText(settlement) : ""),
+    link,
+  };
+};
+
+/** The lines of an item's box naming each item it supersedes, `Supersedes 682e71fb.Decide.1`, each a link to it. */
+export const supersedesLinks = (refs: readonly string[]): readonly ItemLink[] =>
+  refs.map((ref) => ({ text: `Supersedes ${ref}`, to: ref }));
+
+/**
+ * What an item's box says under its title of where it stands: `settled`,
+ * the line saying what made a Done item Done, where that's no link, empty
+ * otherwise; and `links`, the one saying what made it Done where it's a
+ * link, `Superseded by <ref>`, then one per item in `supersedes`, the refs
+ * of those it supersedes.
+ */
+export const boxLines = (
+  isDone: boolean,
+  settlement: Settlement | undefined,
+  supersedes: readonly string[],
+): Readonly<{ settled: string; links: readonly ItemLink[] }> => {
+  const link = isDone ? settledLink(settlement) : undefined;
+
+  return {
+    settled: isDone && link === undefined ? settledText(settlement) : "",
+    links: [...(link === undefined ? [] : [link]), ...supersedesLinks(supersedes)],
+  };
+};
 
 /** The letters the answer that made an item Done picked, sent or read; none when something else did. */
 export const sentLetters = (

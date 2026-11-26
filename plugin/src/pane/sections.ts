@@ -8,8 +8,8 @@
 // Open; and the stops the pane's j and k keys move the focus ring between.
 // No `$`, no I/O.
 
-import { isAnswered } from "../items/answers.ts";
-import { refOf } from "../items/items.ts";
+import { choiceTo, isAnswered } from "../items/answers.ts";
+import { isSameTurn, refOf } from "../items/items.ts";
 import { DONE, itemLabel } from "../protocol/rules.ts";
 import { SPEC } from "../protocol/spec.ts";
 import { padToCells, widestCells } from "../text/cells.ts";
@@ -54,10 +54,6 @@ export type PaneGroups = Readonly<Record<Branch, readonly TurnGroup[]>>;
 
 /** The marks a toggle opens on: one while it's collapsed, one while it's expanded. */
 type ToggleMarks = Pick<Settings["marks"], "collapsed" | "expanded">;
-
-/** Whether two turn ids name one turn: either may be a prefix of the other, as an answer's may. */
-const isSameTurn = (a: string, b: string): boolean =>
-  a.startsWith(b) || b.startsWith(a);
 
 /** A turn's index counting back from the latest turn the transcript holds, which is 0; undefined for a turn not read. */
 export const relativeIndex = (
@@ -126,7 +122,9 @@ export const lineKey = (item: DecideItem): string => `${refOf(item)}.line`;
 /**
  * Where a raised item stands in the pane: Done once settled; Queued while
  * the draft answers it, a pick or a note waiting for Submit, unless it's
- * the one `heldAfterPick` holds in Open (`held`, its ref); else Open.
+ * the one `heldAfterPick` holds in Open (`held`, its ref), or the draft's
+ * line for it asks a question, which Submit sends without settling it;
+ * else Open.
  */
 export const paneStateOf = (
   raised: RaisedItem,
@@ -136,7 +134,7 @@ export const paneStateOf = (
   const branch = BRANCH_OF_TAG[raised.state.tag];
 
   return branch === "open" &&
-    isAnswered(draft, raised.item) &&
+    choiceTo(draft, raised.item) !== undefined &&
     refOf(raised.item) !== held
     ? "queued"
     : branch;
@@ -241,7 +239,7 @@ export const branchOf = (
 export const countOf = (groups: readonly TurnGroup[]): number =>
   groups.reduce((sum, group) => sum + group.items.length, 0);
 
-/** Where /answers scrolls: the first item the draft doesn't answer, newest turn first, as the pane draws Open. */
+/** Where /answers scrolls: the first item the draft doesn't mention, newest turn first, as the pane draws Open. */
 export const firstUnansweredIn = (
   groups: PaneGroups,
   draft: string,
