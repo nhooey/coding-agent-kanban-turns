@@ -307,7 +307,7 @@ export const keyRows = (
 ): readonly KeyRow[] => [
   {
     key: keys.next,
-    does: `${glyphs.next} Next: the next item, or ${DONE.header} header`,
+    does: `${glyphs.next} Next: the next item, or header`,
   },
   { key: keys.previous, does: `${glyphs.previous} Previous: the item before` },
   { key: keys.submit, does: `${glyphs.submit} Submit: send the draft` },

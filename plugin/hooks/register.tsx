@@ -6,15 +6,17 @@
 // count line above the prompt, and /answers, open it with the keyboard. A
 // click writes the item's reference, on a line of its own, into the prompt
 // draft and never sends it; only the pane's Submit sends a prompt. An item
-// no longer open is Done: it stays, dimmed, in its turn's Done section,
-// collapsed until a click opens it, and its options still answer it again.
+// no longer open is Done: it moves, dimmed, to its turn under the Done
+// branch, collapsed until a click opens it, and its options still answer it
+// again.
 //
 // The pane, top to bottom: a header row, `🖥️ Kanban · 📌 <count line>`, how
 // many open items the draft answers, and ↑ Previous, ↓ Next, ? Keys and
 // ✖ Close; under it, once ? Keys opens it, a panel listing every key; then
-// each turn under a faint header, its open items drawn in full, then its
-// Done section; then a footer saying what Submit will send, beside
-// 🔄 Reassess and 📤 Submit.
+// each turn with an open item under a faint header, a toggle, its open
+// items drawn in full; then the Done branch's toggle, `▸ Done (n)`, and
+// under it each turn with a Done item, under its own toggle; then a footer
+// saying what Submit will send, beside 🔄 Reassess and 📤 Submit.
 //
 // An item is drawn as the skill writes it: its summary, its note, then each
 // option as `glyph letter. name: consequence` with its ➕ and ➖ lines indented
@@ -67,7 +69,7 @@ import { itemsOf, refOf } from "../src/items/items.ts";
 import { freesLineOf } from "../src/items/frees.ts";
 import { LAYOUT, codeSpans } from "../src/pane/layout.ts";
 import { cellWidth } from "../src/text/cells.ts";
-import { DECIDE, DONE, REASSESS } from "../src/protocol/rules.ts";
+import { DECIDE, REASSESS } from "../src/protocol/rules.ts";
 import { capitalized } from "../src/text/words.ts";
 import { SPEC } from "../src/protocol/spec.ts";
 import {
@@ -88,7 +90,6 @@ import {
   isSettled,
   problemsOf,
   settlementOf,
-  stillOpen,
 } from "../src/items/raised.ts";
 import {
   INITIAL_PANE,
@@ -101,18 +102,36 @@ import {
 } from "../src/pane/pane-state.ts";
 import type { Effect, Event, Found, Stepped } from "../src/pane/pane-state.ts";
 import {
-  doneHeader,
-  doneKey,
+  BRANCHES,
+  BRANCH_NAMES,
+  NO_FOLDS,
+  boxToggle,
+  branchHeader,
+  branchOf,
+  branchToggle,
+  countOf,
+  countedLabel,
   doneLine,
-  lineKey,
-  paneStops,
-  steppedStop,
-  toggledKey,
   firstUnansweredIn,
-  turnSections,
-  withKeys,
+  heldAfterFocus,
+  heldAfterPick,
+  isOpen,
+  lineKey,
+  paneGroups,
+  paneStops,
+  ringAfterMove,
+  steppedStop,
+  turnHeader,
+  turnToggle,
+  withItemShown,
+  withToggled,
 } from "../src/pane/sections.ts";
-import type { TurnSection } from "../src/pane/sections.ts";
+import type {
+  Branch,
+  PaneGroups,
+  Toggle,
+  TurnGroup,
+} from "../src/pane/sections.ts";
 import { transcriptPathFor, turnsOfText } from "../src/transcript/claude-code.ts";
 import {
   NOT_DECODED,
@@ -144,6 +163,7 @@ import {
 import type { NotesMode } from "../src/pane/view.ts";
 import type {
   DecideItem,
+  Folds,
   LintNote,
   Loaded,
   PaneState,
@@ -165,16 +185,28 @@ const READ_BYTES = 4 * 1024 * 1024;
 // a hotkey leaves on one of them is no item's, so j and k don't count from it.
 const STEPS = { next: "next", previous: "previous" } as const;
 
-// The Done sections a click opened, by `doneKey`, and the Done items a click
-// opened to their full box, by ref: everything else Done stays collapsed.
-const expanded = atom(
-  { plugin: "coding-agent-kanban-turns", key: "expanded" } as const,
-  [] as readonly string[],
+// The toggles a click moved, by key: in `expanded`, those that start
+// collapsed, the Done branch and the Done items opened to their full box;
+// in `collapsed`, those that start expanded, the Open and Queued branches
+// and every turn's header. Only a click on a toggle, or what scrolls to an
+// item, changes them: an item moving between branches leaves them as they
+// are. Change the tag when Folds' fields change.
+const folds = atom(
+  { plugin: "coding-agent-kanban-turns", key: "folds" } as const,
+  NO_FOLDS,
+  { shape: "folds-1" },
 );
 // The key of the element the pane's focus ring is on, as `ui.focus` last
 // said; empty before it says, or once the pane closes. j and k count from it.
 const focused = atom(
   { plugin: "coding-agent-kanban-turns", key: "focused" } as const,
+  "",
+);
+// The checkbox item a pick in Open holds there, by ref, so further picks
+// land where the first did: it moves to Queued once the ring leaves it.
+// Empty for none, and once the pane closes.
+const held = atom(
+  { plugin: "coding-agent-kanban-turns", key: "held" } as const,
   "",
 );
 // Whether the pane's keys panel, which `? Keys` toggles, is open; closed,
@@ -225,28 +257,45 @@ const settingsNow = async ($: EngineInterface): Promise<Settings | null> =>
 const shownNow = async ($: EngineInterface): Promise<Raised> =>
   shownOf(await read($, pane));
 
-/** The pane's state, read once, with its sections, newest turn first, the Done sections and items a click opened, and the stops j and k move between. */
+/**
+ * The pane's state, read once, with the draft, the element the ring is on,
+ * the groups, Open, Queued and Done, each newest turn first, the toggles a
+ * click moved, and the stops j and k move between.
+ */
 const paneNow = async (
   $: EngineInterface,
 ): Promise<
   Readonly<{
     state: PaneState;
     shown: Raised;
-    sections: readonly TurnSection[];
-    open: readonly string[];
+    text: string;
+    ring: string;
+    groups: PaneGroups;
+    folded: Folds;
     stops: ReturnType<typeof paneStops>;
   }>
 > => {
   const state = await read($, pane);
   const shown = shownOf(state);
-  const sections = turnSections(
-    decideItemsOf(shown),
-    (item) => isSettled(shown, item),
+  const text = await read($, draft);
+  const ring = await read($, focused);
+  const groups = paneGroups(
+    shown.items,
+    text,
     shown.turns,
+    await read($, held),
   );
-  const open = await read($, expanded);
+  const folded = await read($, folds);
 
-  return { state, shown, sections, open, stops: paneStops(sections, open) };
+  return {
+    state,
+    shown,
+    text,
+    ring,
+    groups,
+    folded,
+    stops: paneStops(groups, folded),
+  };
 };
 
 /** This session's transcript file: where the engine says it is, else, when it can't say, where Claude Code keeps it. */
@@ -429,15 +478,55 @@ const rewriteDraft = async (
   await update($, draft, () => text);
 };
 
+/**
+ * Rewrites the draft with `edit` for `item`, then, where that moved the item
+ * out of Open with the ring on it, moves the ring on as `ringAfterMove`
+ * says, so the person picks down the list without scrolling. The folds stay
+ * as they are.
+ */
+const answerItem = async (
+  $: EngineInterface,
+  item: DecideItem,
+  edit: (text: string) => string,
+): Promise<void> => {
+  const before = await paneNow($);
+  await rewriteDraft($, edit);
+  await update($, held, () =>
+    heldAfterPick(item, branchOf(before.groups, item)),
+  );
+  const after = await paneNow($);
+  const key = ringAfterMove(
+    before.groups,
+    after.groups,
+    after.folded,
+    item,
+    after.ring,
+  );
+
+  if (key !== undefined) {
+    await reveal($, { key }, "nearest");
+
+    if (await ringTo($, key)) {
+      await ringMoved($, key);
+    }
+  }
+};
+
+/** The ring landed on `key`: the element j and k count from, and a held item let go once the ring leaves it. */
+const ringMoved = async ($: EngineInterface, key: string): Promise<void> => {
+  await update($, focused, () => key);
+  await update($, held, (now) => heldAfterFocus(now, key));
+};
+
 /** Writes the draft with the item's answer for `letter`, a `reassess` line kept last. */
 const answer = ($: EngineInterface, item: DecideItem, letter: string) =>
-  rewriteDraft($, (text) =>
+  answerItem($, item, (text) =>
     reassessKept(text, (body) => choose(body, item, letter)),
   );
 
 /** Writes the item's note into the draft, on a line of its own, a `reassess` line kept last. */
 const note = ($: EngineInterface, item: DecideItem, said: string) =>
-  rewriteDraft($, (text) =>
+  answerItem($, item, (text) =>
     reassessKept(text, (body) => withNote(body, item, said)),
   );
 
@@ -675,12 +764,14 @@ const ringTo = async ($: EngineInterface, key: string): Promise<boolean> => {
 };
 
 /**
- * ✏️ Add a note under a reply: the pane, with the keyboard, its item's
- * notes field in sight, the item above it, and the ring on the field.
+ * ✏️ Add a note under a reply: the pane, with the keyboard, every level its
+ * item is under opened, its notes field in sight, the item above it, and
+ * the ring on the field.
  * The field also takes the focus as the pane draws it, until the ring is
  * on it: a pane already open with the ring elsewhere moves it there.
  */
 const openNotes = async ($: EngineInterface, item: DecideItem): Promise<void> => {
+  await showLevels($, item);
   await openPane($, true, refOf(item));
   await reveal($, { key: notesKey(item) }, "end");
 
@@ -690,9 +781,8 @@ const openNotes = async ($: EngineInterface, item: DecideItem): Promise<void> =>
 };
 
 /**
- * j or k: the focus ring to the next or the previous item, or Done header,
- * from the one it's on, the pane scrolled to show it; nothing past either
- * end.
+ * j or k: the focus ring to the next or the previous item, or header, from
+ * the one it's on, the pane scrolled to show it; nothing past either end.
  */
 const step = async ($: EngineInterface, by: 1 | -1): Promise<void> => {
   const { stops } = await paneNow($);
@@ -702,19 +792,29 @@ const step = async ($: EngineInterface, by: 1 | -1): Promise<void> => {
     await reveal($, { key }, "nearest");
 
     if (await ringTo($, key)) {
-      await update($, focused, () => key);
+      await ringMoved($, key);
     }
   }
 };
 
-/** A click on a Done header, a Done item's line or its box's title: that section or item opened, or closed again. */
-const toggleExpanded = ($: EngineInterface, key: string) =>
-  update($, expanded, (open) => toggledKey(open, key));
+/** A click on a toggle, a branch's header, a turn's, a Done item's line or its box's title: that toggle flipped. */
+const fold = ($: EngineInterface, toggle: Toggle) =>
+  update($, folds, (now) => withToggled(now, toggle));
 
-/** Closes the pane; its notes field no longer waits for the focus, its ring is on nothing, and its keys panel is closed. */
+/** Every level `item` is under opened, to scroll to it: its branch, its turn there and, for a Done item, its box. */
+const showLevels = async ($: EngineInterface, item: DecideItem): Promise<void> => {
+  const branch = branchOf((await paneNow($)).groups, item);
+
+  if (branch !== undefined) {
+    await update($, folds, (now) => withItemShown(now, item, branch));
+  }
+};
+
+/** Closes the pane; its notes field no longer waits for the focus, its ring is on nothing, no item is held, and its keys panel is closed. */
 const closePane = async ($: EngineInterface): Promise<void> => {
   await update($, noting, () => "");
   await update($, focused, () => "");
+  await update($, held, () => "");
   await update($, isKeysOpen, () => false);
   await $.ui.close({ id: PANE.id });
 };
@@ -737,17 +837,18 @@ const reopen = async ($: EngineInterface): Promise<Raised> => {
   await refresh($);
   await dispatch($, { type: "seen" });
   await openPane($, true);
-  const { shown, sections } = await paneNow($);
-  const item = firstUnansweredIn(sections, await read($, draft));
+  const { shown, groups } = await paneNow($);
+  const item = firstUnansweredIn(groups, await read($, draft));
 
   if (item !== undefined) {
+    await showLevels($, item);
     await reveal($, { key: refOf(item) });
   }
 
   return shown;
 };
 
-/** A question's link pressed: the pane, with the keyboard, scrolled to its item, its Done section and box opened when it's Done. */
+/** A question's link pressed: the pane, with the keyboard, scrolled to its item, every level it's under opened, and its box when it's Done. */
 const showItem = async ($: EngineInterface, href: string): Promise<void> => {
   const r = await shownNow($);
   const items = decideItemsOf(r);
@@ -755,11 +856,7 @@ const showItem = async ($: EngineInterface, href: string): Promise<void> => {
   await openPane($, true);
 
   if (item !== undefined) {
-    if (isSettled(r, item)) {
-      await update($, expanded, (open) =>
-        withKeys(open, [doneKey(item.turn), refOf(item)]),
-      );
-    }
+    await showLevels($, item);
     await reveal($, { key: refOf(item) });
   }
 };
@@ -778,6 +875,7 @@ export const register: Register = (on) => {
     // conversation key keeps it from any other.
     await dispatch($, { type: "session-started" });
     await update($, focused, () => "");
+    await update($, held, () => "");
     const started = await next(e);
     await $.command.register({
       name: "answers",
@@ -990,7 +1088,7 @@ export const register: Register = (on) => {
     const key = e.element ?? "";
 
     if (moved.deny === undefined && key !== STEPS.next && key !== STEPS.previous) {
-      await update($, focused, () => key).catch(() => undefined);
+      await ringMoved($, key).catch(() => undefined);
     }
 
     return moved;
@@ -1093,23 +1191,24 @@ export const register: Register = (on) => {
   });
 
   // The pane: the header row, the keys panel when it's open, then each
-  // turn, newest first, then the footer.
+  // branch, Open, Queued and Done, its turns newest first, then the footer.
   on("ui.render", { component: "Pane", requestId: PANE.id }, async ($, e) => {
     const elements = $.ui.resolve(e);
     const { Box, Text } = elements;
     const s = await settingsNow($);
-    const { state, shown: r, sections, open, stops } = await paneNow($);
+    const { state, shown: r, text, ring, groups, folded, stops } =
+      await paneNow($);
 
     if (s === null) {
       return <Text dimColor>{noItemsText(problemsOf(r))}</Text>;
     }
 
-    const text = await read($, draft);
     const { isBusy, problem } = submitShown(state.submit);
-    const ring = await read($, focused);
+    const drawn = BRANCHES.filter((branch) => groups[branch].length > 0);
     const notingNow = await read($, noting);
     const line = state.counts;
-    const openCount = stillOpen(r).length;
+    const queuedCount = countOf(groups.queued);
+    const openCount = countOf(groups.open) + queuedCount;
 
     return (
       <Box flexDirection="column">
@@ -1124,7 +1223,7 @@ export const register: Register = (on) => {
             {kanbanLine(elements, s, [{ key: "counts", text: line }])}
             {openCount === 0 ? null : (
               <Text key="answered">
-                {answeredText(answeredCount(r, text), openCount)}
+                {answeredText(queuedCount, openCount)}
               </Text>
             )}
           </Box>
@@ -1187,24 +1286,26 @@ export const register: Register = (on) => {
             Nothing open
           </Text>
         ) : null}
-        {sections.map((section, n) => (
-          <Box
-            key={`${section.turn}.section`}
-            flexDirection="column"
-            marginTop={n === 0 && openCount > 0 ? 0 : LAYOUT.blockGap}
-          >
-            <Text key={`${section.turn}.turn`} dimColor>
-              {section.header}
-            </Text>
-            {itemBoxes($, elements, s, r, section.open, {
-              key: `${section.turn}.open`,
-              text,
-              isPane: true,
-              noting: notingNow,
-            })}
-            {doneSection($, elements, s, r, section, open, text)}
-          </Box>
-        ))}
+        {drawn.map((branch, n) =>
+          branchSection(
+            $,
+            elements,
+            s,
+            branch,
+            groups[branch],
+            folded,
+            n === 0 && openCount > 0 ? 0 : LAYOUT.blockGap,
+            (group) =>
+              branch === "done"
+                ? doneItems($, elements, s, r, group, folded, text)
+                : itemBoxes($, elements, s, r, group.items, {
+                    key: `${group.key}-items`,
+                    text,
+                    isPane: true,
+                    noting: notingNow,
+                  }),
+          ),
+        )}
         <Box
           key="footer"
           marginTop={LAYOUT.blockGap}
@@ -1437,7 +1538,7 @@ const keysPanel = (elements: Pick<Elements, "Box" | "Text">, s: Settings) => {
 };
 
 /**
- * A Done item's one dim line in its open section, `▌🧠 Decide.1  <summary> ·
+ * A Done item's one dim line in its open group, `▌🧠 Decide.1  <summary> ·
  * <what made it Done>`, the summary wrapping under its own start; a click on
  * it, the summary's button, opens the item's full box.
  */
@@ -1468,7 +1569,7 @@ const doneRow = (
           label={item.summary}
           plain
           dimColor
-          onPress={() => toggleExpanded($, refOf(item))}
+          onPress={() => fold($, boxToggle(item))}
         >
           {line.text}
         </Button>,
@@ -1478,57 +1579,126 @@ const doneRow = (
 };
 
 /**
- * A turn's Done section: its header, `▸ Done (2)`, a toggle; once open, each
- * Done item's one dim line, `▌🧠 Decide.1  <summary> · <what made it Done>`,
- * which a click opens to the item's full box, whose title closes it again.
- * A closed section draws its header alone.
+ * A branch: its header, `▾ Open (3)`, `▾ Queued (1)` or `▸ Done (2)`, a
+ * toggle, Open and Queued expanded at first and Done collapsed; once
+ * expanded, each turn with an item in it, newest first, under its own
+ * header, and in each what `body` draws of the turn's items there.
  */
-const doneSection = (
+const branchSection = (
+  $: EngineInterface,
+  elements: Elements,
+  s: Settings,
+  branch: Branch,
+  groups: readonly TurnGroup[],
+  folded: Folds,
+  marginTop: number,
+  body: (group: TurnGroup) => RenderNode,
+) => {
+  const { Box, Button } = elements;
+  const count = countOf(groups);
+  const toggle = branchToggle(branch);
+  const isExpanded = isOpen(folded, toggle);
+
+  return (
+    <Box key={`${branch}-branch`} flexDirection="column" marginTop={marginTop}>
+      <Button
+        key={branch}
+        label={countedLabel(BRANCH_NAMES[branch], count)}
+        plain
+        onPress={() => fold($, toggle)}
+      >
+        {branchHeader(branch, count, isExpanded, s.marks)}
+      </Button>
+      {isExpanded
+        ? groups.map((group, n) =>
+            turnSection(
+              $,
+              elements,
+              s,
+              group,
+              folded,
+              n === 0 ? 0 : LAYOUT.blockGap,
+              () => body(group),
+            ),
+          )
+        : null}
+    </Box>
+  );
+};
+
+/**
+ * A turn's group in a branch: its faint header, `▾ ── 9efb08a1 ₋₂ (2) ──`,
+ * a toggle that folds the group's items, in this branch alone; once
+ * expanded, which it is at first, what `body` draws of its items.
+ */
+const turnSection = (
+  $: EngineInterface,
+  elements: Elements,
+  s: Settings,
+  group: TurnGroup,
+  folded: Folds,
+  marginTop: number,
+  body: () => RenderNode,
+) => {
+  const { Box, Button } = elements;
+  const toggle = turnToggle(group);
+  const isExpanded = isOpen(folded, toggle);
+
+  return (
+    <Box key={`${group.key}-box`} flexDirection="column" marginTop={marginTop}>
+      <Button
+        key={group.key}
+        label={countedLabel(group.label, group.items.length)}
+        plain
+        dimColor
+        onPress={() => fold($, toggle)}
+      >
+        {turnHeader(group.label, group.items.length, isExpanded, s.marks)}
+      </Button>
+      {isExpanded ? body() : null}
+    </Box>
+  );
+};
+
+/**
+ * A turn's Done items: each one dim line, `▌🧠 Decide.1  <summary> · <what
+ * made it Done>`, which a click opens to the item's full box, whose title
+ * closes it again.
+ */
+const doneItems = (
   $: EngineInterface,
   elements: Elements,
   s: Settings,
   r: Raised,
-  section: TurnSection,
-  open: readonly string[],
+  group: TurnGroup,
+  folded: Folds,
   text: string,
 ) => {
-  const { Box, Button } = elements;
-  const key = doneKey(section.turn);
-  const isOpen = open.includes(key);
+  const { Box } = elements;
 
-  return section.done.length === 0 ? null : (
-    <Box key={`${key}-box`} flexDirection="column">
-      <Button
-        key={key}
-        label={`${DONE.header} (${section.done.length})`}
-        plain
-        onPress={() => toggleExpanded($, key)}
-      >
-        {doneHeader(section.done.length, isOpen, s.marks)}
-      </Button>
-      {isOpen
-        ? section.done.map((item) =>
-            open.includes(refOf(item)) ? (
-              <Box key={`${refOf(item)}.full`} flexDirection="column">
-                {itemBoxes($, elements, s, r, [item], {
-                  key: `${refOf(item)}.boxes`,
-                  text,
-                  isPane: true,
-                  noting: "",
-                  onTitle: () => toggleExpanded($, refOf(item)),
-                })}
-              </Box>
-            ) : (
-              doneRow(
-                $,
-                elements,
-                s,
-                item,
-                doneLine(item, settledText(settlementOf(r, item))),
-              )
-            ),
+  return (
+    <Box key={`${group.key}-items`} flexDirection="column">
+      {group.items.map((item) =>
+        isOpen(folded, boxToggle(item)) ? (
+          <Box key={`${refOf(item)}.full`} flexDirection="column">
+            {itemBoxes($, elements, s, r, [item], {
+              key: `${refOf(item)}.boxes`,
+              text,
+              isPane: true,
+              noting: "",
+              onTitle: () => fold($, boxToggle(item)),
+            })}
+          </Box>
+        ) : (
+          doneRow(
+            $,
+            elements,
+            s,
+            item,
+            doneLine(item, settledText(settlementOf(r, item))),
           )
-        : null}
+        ),
+      )}
     </Box>
   );
 };

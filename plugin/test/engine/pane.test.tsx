@@ -485,14 +485,14 @@ type Pressable = Drawing & {
   press: (target: { key: string }) => Promise<unknown>;
 };
 
-/** The pane's turn headers, in the order drawn. */
+/** The pane's turn headers, each a toggle, in the order drawn: the open branch's, then, while it's expanded, the Done branch's. */
 const turnHeaders = async (ui: Drawing) =>
-  (await ui.findAll({ type: "Text", text: /^── / })).map((found) => found.text);
+  (await ui.findAll({ type: "Button", text: / ── / })).map((found) => found.text);
 
 /**
- * The Done items' one-line rows, in the order drawn, once their sections
- * are open, each as `label  text`: a Box keyed `<ref>.line-hang` holding
- * the label, then the text, which wraps under its own start.
+ * The Done items' one-line rows, in the order drawn, once their branch and
+ * turn are open, each as `label  text`: a Box keyed `<ref>.line-hang`
+ * holding the label, then the text, which wraps under its own start.
  */
 const doneLines = async (ui: Drawing) =>
   (await ui.findAll({ type: "Box", text: /^🧠 Decide\.\d+/ }))
@@ -505,7 +505,7 @@ const leadOf = async (
   key: string,
 ) => (await ui.find({ type: "Box", key: `${key}-hang-lead` }))?.text;
 
-/** Opens every Done section of the pane, by the Done headers drawn. */
+/** Opens the pane's Done branch, by its header, when it's drawn collapsed; its turns are expanded at first. */
 const openDone = async (ui: Pressable) => {
   for (const found of await ui.findAll({ type: "Button", text: /^▸ Done \(\d+\)$/ })) {
     await ui.press({ key: found.key ?? "" });
@@ -695,7 +695,7 @@ test("a user's config.jsonc is not read: the defaults are in effect", async ($, 
   await ui.unmount();
 });
 
-test("the pane keeps every item raised, newest turn first, a Done one in its turn's collapsed Done section", async ($, on) => {
+test("the pane keeps every item raised, newest turn first, a Done one in its turn under the collapsed Done branch", async ($, on) => {
   const later: TranscriptRecord[] = [];
   const state = engine(on, () => ITEMS, listsText, () => later);
   await $.turn.complete(replyDone("t1"));
@@ -708,28 +708,36 @@ test("the pane keeps every item raised, newest turn first, a Done one in its tur
   );
   await $.turn.complete(replyDone("t2"));
 
-  // Each turn under a faint header naming its index, the latest ₀; its open
+  // Each turn with an open item under a faint header, a toggle, expanded,
+  // naming its index, the latest ₀, and its open items' count; its open
   // items drawn in full.
-  expect(await turnHeaders(ui)).toEqual(["── b2c3d4e5 ₀ ──", "── 9efb08a1 ₋₁ ──"]);
-  expect((await ui.find({ type: "Text", text: /^── 9efb08a1/ }))?.props).toMatchObject({ dimColor: true });
+  expect(await turnHeaders(ui)).toEqual(["▾ ── b2c3d4e5 ₀ (1) ──", "▾ ── 9efb08a1 ₋₁ (2) ──"]);
+  expect((await ui.find({ type: "Button", key: "open.9efb08a1" }))?.props).toMatchObject({ dimColor: true });
   expect(await titles(ui)).toEqual([
     "🧠 Decide.1 · Which loader to keep",
     "🧠 Decide.2 · Cleanups to start",
     "🧠 Decide.3 · Ship tonight?",
   ]);
 
-  // The Done section is collapsed: its header alone, none of the item's
-  // elements.
-  const header = await ui.find({ type: "Button", key: "9efb08a1.done" });
+  // The Done branch is collapsed: its header alone, none of its turns' or
+  // the item's elements.
+  const header = await ui.find({ type: "Button", key: "done" });
   expect(header?.text).toBe("▸ Done (1)");
   expect(header?.props["dimColor"]).not.toBe(true);
+  expect(await ui.find({ type: "Button", key: "done.9efb08a1" })).toBeUndefined();
   expect(await ui.find({ type: "Button", key: "9efb08a1.Decide.1.A" })).toBeUndefined();
   expect(await doneLines(ui)).toEqual([]);
 
-  // A click opens it to one dim line per Done item, opened by a ▌ in the
-  // settled colour.
-  await ui.press({ key: "9efb08a1.done" });
-  expect((await ui.find({ type: "Button", key: "9efb08a1.done" }))?.text).toBe("▾ Done (1)");
+  // A click opens it to each turn with a Done item, under its own header,
+  // expanded, counting the turn's Done items, then one dim line per Done
+  // item, opened by a ▌ in the settled colour.
+  await ui.press({ key: "done" });
+  expect((await ui.find({ type: "Button", key: "done" }))?.text).toBe("▾ Done (1)");
+  expect(await turnHeaders(ui)).toEqual([
+    "▾ ── b2c3d4e5 ₀ (1) ──",
+    "▾ ── 9efb08a1 ₋₁ (2) ──",
+    "▾ ── 9efb08a1 ₋₁ (1) ──",
+  ]);
   expect(await doneLines(ui)).toEqual([
     "🧠 Decide.1  Which cache to keep · Answered in b2c3d4e5: A",
   ]);
@@ -744,7 +752,7 @@ test("the pane keeps every item raised, newest turn first, a Done one in its tur
   // A click on the line opens the item's full box, dimmed but for its
   // options, which pick as an open item's do: a click writes a fresh
   // reference into the draft and marks the option ✅, the sent answer
-  // keeping its ☑️, and the item stays in its Done section. A click on its
+  // keeping its ☑️, and the item stays under the Done branch. A click on its
   // title closes it to its line again.
   await ui.press({ key: "9efb08a1.Decide.1.line" });
   expect(await titles(ui)).toContain("🧠 Decide.1 · Which cache to keep (done)");
@@ -760,12 +768,233 @@ test("the pane keeps every item raised, newest turn first, a Done one in its tur
   expect(await titles(ui)).not.toContain("🧠 Decide.1 · Which cache to keep (done)");
   expect(await doneLines(ui)).toHaveLength(1);
 
-  // A second click on the Done header collapses the section again.
-  await ui.press({ key: "9efb08a1.done" });
+  // A second click on the Done header collapses the branch again.
+  await ui.press({ key: "done" });
   expect(await doneLines(ui)).toEqual([]);
 
   await ui.press({ key: "b2c3d4e5.Decide.1.B" });
   expect(state.box).toBe(`${HEADER}b2c3d4e5.Decide.1.B\n`);
+  await ui.unmount();
+});
+
+test("the Done branch's header folds every Done turn together, and a turn's header folds that turn in its own branch alone", async ($, on) => {
+  const later: TranscriptRecord[] = [];
+  engine(on, () => ITEMS, listsText, () => later);
+  await $.turn.complete(replyDone("t1"));
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  // Two turns with a Done item: 9efb08a1, with open items too, and
+  // b2c3d4e5, whose one item a later prompt answers.
+  later.push(
+    human("b2c3d4e5", "9efb08a1.Decide.1.A"),
+    replyRecord([LATER], listsText([LATER])),
+  );
+  await $.turn.complete(replyDone("t2"));
+  later.push(human("c3d4e5f6", "b2c3d4e5.Decide.1.A"), assistant("On it."));
+  await $.turn.complete(replyDone("t3"));
+  const header = async (key: string) => (await ui.find({ type: "Button", key }))?.text;
+
+  // The Done branch counts every Done item, across its turns.
+  expect(await header("done")).toBe("▸ Done (2)");
+  await ui.press({ key: "done" });
+  expect(await turnHeaders(ui)).toEqual([
+    "▾ ── 9efb08a1 ₋₂ (2) ──",
+    "▾ ── b2c3d4e5 ₋₁ (1) ──",
+    "▾ ── 9efb08a1 ₋₂ (1) ──",
+  ]);
+  expect(await doneLines(ui)).toEqual([
+    "🧠 Decide.1  Which loader to keep · Answered in c3d4e5f6: A",
+    "🧠 Decide.1  Which cache to keep · Answered in b2c3d4e5: A",
+  ]);
+
+  // Folding 9efb08a1 under Open hides its open items, and leaves it under
+  // Done as it was.
+  await ui.press({ key: "open.9efb08a1" });
+  expect(await header("open.9efb08a1")).toBe("▸ ── 9efb08a1 ₋₂ (2) ──");
+  expect(await titles(ui)).toEqual([]);
+  expect(await header("done.9efb08a1")).toBe("▾ ── 9efb08a1 ₋₂ (1) ──");
+  expect(await doneLines(ui)).toHaveLength(2);
+
+  // Folding it under Done too hides its Done line alone; opening it under
+  // Open again brings back its open items.
+  await ui.press({ key: "done.9efb08a1" });
+  expect(await doneLines(ui)).toEqual(["🧠 Decide.1  Which loader to keep · Answered in c3d4e5f6: A"]);
+  await ui.press({ key: "open.9efb08a1" });
+  expect(await titles(ui)).toEqual(["🧠 Decide.2 · Cleanups to start", "🧠 Decide.3 · Ship tonight?"]);
+  expect(await header("done.9efb08a1")).toBe("▸ ── 9efb08a1 ₋₂ (1) ──");
+
+  // Collapsing the Done branch hides every Done turn together, and the
+  // Open branch stays.
+  await ui.press({ key: "done" });
+  expect(await header("done")).toBe("▸ Done (2)");
+  expect(await header("done.b2c3d4e5")).toBeUndefined();
+  expect(await header("done.9efb08a1")).toBeUndefined();
+  expect(await doneLines(ui)).toEqual([]);
+  expect(await turnHeaders(ui)).toEqual(["▾ ── 9efb08a1 ₋₂ (2) ──"]);
+
+  // Opened again, each Done turn is as it was left.
+  await ui.press({ key: "done" });
+  expect(await header("done.b2c3d4e5")).toBe("▾ ── b2c3d4e5 ₋₁ (1) ──");
+  expect(await header("done.9efb08a1")).toBe("▸ ── 9efb08a1 ₋₂ (1) ──");
+  await ui.unmount();
+});
+
+test("the Open branch's header folds every open turn together, and opens them again as they were", async ($, on) => {
+  const later: TranscriptRecord[] = [];
+  engine(on, () => ITEMS, listsText, () => later);
+  await $.turn.complete(replyDone("t1"));
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  later.push(human("b2c3d4e5", "go on"), replyRecord([LATER], listsText([LATER])));
+  await $.turn.complete(replyDone("t2"));
+  const header = async (key: string) => (await ui.find({ type: "Button", key }))?.text;
+
+  expect(await header("open")).toBe("▾ Open (4)");
+  await ui.press({ key: "open.9efb08a1" });
+  await ui.press({ key: "open" });
+  expect(await header("open")).toBe("▸ Open (4)");
+  expect(await turnHeaders(ui)).toEqual([]);
+  expect(await titles(ui)).toEqual([]);
+
+  await ui.press({ key: "open" });
+  expect(await turnHeaders(ui)).toEqual(["▾ ── b2c3d4e5 ₀ (1) ──", "▸ ── 9efb08a1 ₋₁ (3) ──"]);
+  expect(await titles(ui)).toEqual(["🧠 Decide.1 · Which loader to keep"]);
+  await ui.unmount();
+});
+
+test("a pick moves its item to Queued and an unpick back to Open, every toggle as it was left, only the counts changing; Submit moves it to Done", async ($, on) => {
+  const later: TranscriptRecord[] = [];
+  const state = engine(on, () => ITEMS, listsText, () => later);
+  await $.turn.complete(replyDone("t1"));
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  later.push(human("b2c3d4e5", "go on"), replyRecord([LATER], listsText([LATER])));
+  await $.turn.complete(replyDone("t2"));
+  const header = async (key: string) => (await ui.find({ type: "Button", key }))?.text;
+  // The newer turn folded under Open.
+  await ui.press({ key: "open.b2c3d4e5" });
+
+  // A pick: the item moves to its turn under Queued, expanded at first, its
+  // box whole there, its options still live; nothing else folds or opens.
+  await ui.press({ key: "9efb08a1.Decide.1.A" });
+  expect(await header("open")).toBe("▾ Open (3)");
+  expect(await header("open.b2c3d4e5")).toBe("▸ ── b2c3d4e5 ₀ (1) ──");
+  expect(await header("open.9efb08a1")).toBe("▾ ── 9efb08a1 ₋₁ (2) ──");
+  expect(await header("queued")).toBe("▾ Queued (1)");
+  expect(await header("queued.9efb08a1")).toBe("▾ ── 9efb08a1 ₋₁ (1) ──");
+  expect(await titles(ui)).toEqual([
+    "🧠 Decide.2 · Cleanups to start",
+    "🧠 Decide.3 · Ship tonight?",
+    "🧠 Decide.1 · Which cache to keep",
+  ]);
+  expect(await leadOf(ui, "9efb08a1.Decide.1.A")).toBe("✅ A. ");
+  expect(await ui.find({ type: "Input", key: "9efb08a1.Decide.1.notes" })).toBeDefined();
+  expect(await ui.find({ type: "Text", text: /^1 of 4 answered$/ })).toBeDefined();
+
+  // Folded under Queued, a second pick only counts there.
+  await ui.press({ key: "queued.9efb08a1" });
+  await ui.press({ key: "9efb08a1.Decide.3.Y" });
+  expect(await header("queued.9efb08a1")).toBe("▸ ── 9efb08a1 ₋₁ (2) ──");
+  expect(await header("open.9efb08a1")).toBe("▾ ── 9efb08a1 ₋₁ (1) ──");
+  expect(await header("open.b2c3d4e5")).toBe("▸ ── b2c3d4e5 ₀ (1) ──");
+
+  // An unpick puts the item back in Open, Queued's turn still folded.
+  await ui.press({ key: "queued.9efb08a1" });
+  await ui.press({ key: "9efb08a1.Decide.3.Y" });
+  expect(await header("open.9efb08a1")).toBe("▾ ── 9efb08a1 ₋₁ (2) ──");
+  expect(await header("queued")).toBe("▾ Queued (1)");
+  await ui.press({ key: "queued.9efb08a1" });
+
+  // Submit moves the queued item to Done, which stays collapsed.
+  await ui.press({ key: "submit" });
+  expect(state.sent).toHaveLength(1);
+  expect(await header("queued")).toBeUndefined();
+  expect(await header("done")).toBe("▸ Done (1)");
+  expect(await header("open.b2c3d4e5")).toBe("▸ ── b2c3d4e5 ₀ (1) ──");
+  await ui.press({ key: "done" });
+  expect(await doneLines(ui)).toEqual(["🧠 Decide.1  Which cache to keep · Sent: A"]);
+
+  // A turn new to Queued starts expanded, the folded ones staying folded.
+  await ui.press({ key: "open.b2c3d4e5" });
+  await ui.press({ key: "b2c3d4e5.Decide.1.B" });
+  expect(await header("queued.b2c3d4e5")).toBe("▾ ── b2c3d4e5 ₀ (1) ──");
+  await ui.unmount();
+});
+
+test("a pick under the ring moves a radio item to Queued at once; a checkbox item stays in Open until the ring leaves it", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  // The ring landing on an element, as the engine says of a Tab, an arrow
+  // or a click. A plugin's own $.ui.focus never reaches the kit's hooks, nor
+  // another plugin's, so where a pick sends the ring is left to a live
+  // session; test/unit/pane/sections.test.ts's ringAfterMove tests hold it.
+  state.isRingMovable = true;
+  const ringOn = (element: string) =>
+    $.ui.focus({ component: "Pane", requestId: "kanban-turns", element, origin: { kind: "person" } });
+
+  // A radio item, one pick: it moves.
+  await ringOn("9efb08a1.Decide.1.A");
+  await ui.press({ key: "9efb08a1.Decide.1.A" });
+  expect(await titles(ui)).toEqual([
+    "🧠 Decide.2 · Cleanups to start",
+    "🧠 Decide.3 · Ship tonight?",
+    "🧠 Decide.1 · Which cache to keep",
+  ]);
+
+  // A checkbox item takes more than one pick: it stays in Open while the
+  // ring is on one of its elements.
+  await ringOn("9efb08a1.Decide.2.A");
+  await ui.press({ key: "9efb08a1.Decide.2.A" });
+  await ringOn("9efb08a1.Decide.2.C");
+  await ui.press({ key: "9efb08a1.Decide.2.C" });
+  expect((await titles(ui))[0]).toBe("🧠 Decide.2 · Cleanups to start");
+  expect((await ui.find({ type: "Button", key: "open" }))?.text).toBe("▾ Open (2)");
+  expect(state.box).toBe(`${HEADER}9efb08a1.Decide.1.A\n9efb08a1.Decide.2.A,C\n`);
+
+  // Once the ring leaves it, it moves to Queued.
+  await ringOn("9efb08a1.Decide.3.Y");
+  expect(await titles(ui)).toEqual([
+    "🧠 Decide.3 · Ship tonight?",
+    "🧠 Decide.1 · Which cache to keep",
+    "🧠 Decide.2 · Cleanups to start",
+  ]);
+  expect((await ui.find({ type: "Button", key: "queued" }))?.text).toBe("▾ Queued (2)");
+
+  // A checkbox item picked again in Queued stays there.
+  await ringOn("9efb08a1.Decide.2.B");
+  await ui.press({ key: "9efb08a1.Decide.2.B" });
+  expect((await ui.find({ type: "Button", key: "queued" }))?.text).toBe("▾ Queued (2)");
+  await ui.unmount();
+});
+
+test("/answers opens the turn its first unanswered item is under, where a click folded it", async ($, on) => {
+  engine(on, () => ITEMS);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  await ui.press({ key: "open.9efb08a1" });
+  expect((await ui.find({ type: "Button", key: "open.9efb08a1" }))?.text).toBe("▸ ── 9efb08a1 ₀ (3) ──");
+
+  await $.command.run(ANSWERS);
+  expect((await ui.find({ type: "Button", key: "open.9efb08a1" }))?.text).toBe("▾ ── 9efb08a1 ₀ (3) ──");
+  expect(await titles(ui)).toHaveLength(3);
+  await ui.unmount();
+});
+
+test("folds stored under an older shape are not used: every toggle starts as it's made", async ($, on) => {
+  const later: TranscriptRecord[] = [];
+  engine(on, () => ITEMS, listsText, () => later);
+  // What an older shape kept, the Done branch opened; the store answers it
+  // whatever the plugin writes since.
+  on("state.get", (_, e, next) =>
+    e.key === "folds"
+      ? { value: { value: { shape: "folds-0", value: { expanded: ["done"], collapsed: ["open"] } }, version: 1 } }
+      : next(e),
+  );
+  await $.turn.complete(replyDone("t1"));
+  later.push(human("b2c3d4e5", "9efb08a1.Decide.1.A"), assistant("On it."));
+  await $.turn.complete(replyDone("t2"));
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+
+  expect((await ui.find({ type: "Button", key: "done" }))?.text).toBe("▸ Done (1)");
+  expect((await ui.find({ type: "Button", key: "open" }))?.text).toBe("▾ Open (2)");
   await ui.unmount();
 });
 
@@ -864,7 +1093,7 @@ test("every key the pane takes is a setting: each button's hotkey, rebound by th
   });
   await ui.press({ key: "keys" });
   const row = async (n: number) => (await ui.find({ type: "Box", key: `keys-${n}-hang` }))?.text;
-  expect(await row(0)).toBe("n↓ Next: the next item, or Done header");
+  expect(await row(0)).toBe("n↓ Next: the next item, or header");
   expect(await row(1)).toBe("p↑ Previous: the item before");
   expect(await row(2)).toBe("u📤 Submit: send the draft");
   expect(await row(3)).toBe("e🔄 Reassess: add or take out the reassess line");
@@ -916,7 +1145,7 @@ test("? Keys opens a panel under the header listing every key, and a second pres
   await again.unmount();
 });
 
-test("↓ Next and ↑ Previous follow the focus ring, dim at either end of the items and the Done header", async ($, on) => {
+test("↓ Next and ↑ Previous follow the focus ring, stopping on each toggle, dim at either end", async ($, on) => {
   const later: TranscriptRecord[] = [];
   const state = engine(on, () => ITEMS, listsText, () => later);
   await $.turn.complete(replyDone("t1"));
@@ -943,13 +1172,40 @@ test("↓ Next and ↑ Previous follow the focus ring, dim at either end of the 
   expect(await dim("next")).toBe(false);
   expect(await dim("previous")).toBe(false);
 
-  // On the first item's notes field, the item counts: nothing is before it.
-  await ringOn("9efb08a1.Decide.2.notes");
+  // On the Open branch's header, the first stop: nothing is before it.
+  await ringOn("open");
   expect(await dim("previous")).toBe(true);
   expect(await dim("next")).toBe(false);
 
-  // On the Done header, the last stop while its section is closed.
-  await ringOn("9efb08a1.done");
+  // On the first turn's header, the Open branch's is before it.
+  await ringOn("open.9efb08a1");
+  expect(await dim("previous")).toBe(false);
+  expect(await dim("next")).toBe(false);
+
+  // On the first item's notes field, the item counts: its turn's header is
+  // before it.
+  await ringOn("9efb08a1.Decide.2.notes");
+  expect(await dim("previous")).toBe(false);
+  expect(await dim("next")).toBe(false);
+
+  // On the Done branch's header, the last stop while the branch is closed.
+  await ringOn("done");
+  expect(await dim("next")).toBe(true);
+  expect(await dim("previous")).toBe(false);
+
+  // Opened, its turn's header and that turn's line follow it; the line is
+  // the last.
+  await ui.press({ key: "done" });
+  expect(await dim("next")).toBe(false);
+  await ringOn("done.9efb08a1");
+  expect(await dim("next")).toBe(false);
+  expect(await dim("previous")).toBe(false);
+  await ringOn("9efb08a1.Decide.1.line");
+  expect(await dim("next")).toBe(true);
+
+  // A folded turn's items are no stops: its header is the last.
+  await ringOn("done.9efb08a1");
+  await ui.press({ key: "done.9efb08a1" });
   expect(await dim("next")).toBe(true);
   expect(await dim("previous")).toBe(false);
 
@@ -957,7 +1213,16 @@ test("↓ Next and ↑ Previous follow the focus ring, dim at either end of the 
   // item the ring was on.
   await ringOn("next");
   expect(await dim("next")).toBe(true);
-  expect(state.focus).toEqual(["9efb08a1.Decide.2.notes", "9efb08a1.done", "next"]);
+  expect(state.focus).toEqual([
+    "open",
+    "open.9efb08a1",
+    "9efb08a1.Decide.2.notes",
+    "done",
+    "done.9efb08a1",
+    "9efb08a1.Decide.1.line",
+    "done.9efb08a1",
+    "next",
+  ]);
   await ui.unmount();
 });
 
@@ -1121,7 +1386,7 @@ test("a message sent while a turn runs settles the item it answers", async ($, o
     "🧠 Decide.1 · Which cache to keep",
     "🧠 Decide.3 · Ship tonight?",
   ]);
-  expect((await ui.find({ type: "Button", key: "9efb08a1.done" }))?.text).toBe("▸ Done (1)");
+  expect((await ui.find({ type: "Button", key: "done" }))?.text).toBe("▸ Done (1)");
   expect(await countsOn(line)).toBe("📌 Outstanding: 🚧 1 · 🧠 2");
   await line.unmount();
   await ui.unmount();
@@ -1139,9 +1404,11 @@ test("the Reassess button's prompt replaces every earlier item", async ($, on) =
   const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
   const line = await $.ui.mount({ ...ABOVE_PROMPT, surface: "terminal" });
 
-  expect(await turnHeaders(ui)).toEqual(["── b2c3d4e5 ₀ ──", "── 9efb08a1 ₋₁ ──"]);
+  expect(await turnHeaders(ui)).toEqual(["▾ ── b2c3d4e5 ₀ (1) ──"]);
   expect(await titles(ui)).toEqual(["🧠 Decide.1 · Which loader to keep"]);
-  expect((await ui.find({ type: "Button", key: "9efb08a1.done" }))?.text).toBe("▸ Done (3)");
+  expect((await ui.find({ type: "Button", key: "done" }))?.text).toBe("▸ Done (3)");
+  await ui.press({ key: "done" });
+  expect(await turnHeaders(ui)).toEqual(["▾ ── b2c3d4e5 ₀ (1) ──", "▾ ── 9efb08a1 ₋₁ (3) ──"]);
   expect(await countsOn(line)).toBe("📌 Outstanding: 🚧 1 · 🧠 1");
   await line.unmount();
   await ui.unmount();
@@ -1308,7 +1575,7 @@ test("a transcript that can't be read settles nothing, and the pane says why", a
     "🧠 Decide.2 · Cleanups to start",
     "🧠 Decide.3 · Ship tonight?",
   ]);
-  expect((await ui.find({ type: "Button", key: "9efb08a1.done" }))?.text).toBe("▸ Done (1)");
+  expect((await ui.find({ type: "Button", key: "done" }))?.text).toBe("▸ Done (1)");
   expect(await ui.find({ type: "Text", text: /the transcript is gone/ })).toBeDefined();
   expect(await countsOn(line)).toBe("📌 Outstanding: 🚧 1 · 🧠 2");
   await line.unmount();
@@ -1689,7 +1956,7 @@ test("a question in a reply opens the pane with the keyboard, though it can't sc
   await reply.unmount();
 });
 
-test("a question in a reply whose item is Done opens its turn's Done section and its box", async ($, on) => {
+test("a question in a reply whose item is Done opens every level it's under, the Done branch and its turn there, and its box", async ($, on) => {
   const open: unknown[] = [...ITEMS];
   engine(on, () => open);
   await $.tool.call({ tool: TOOL, items: ITEMS } as never);
@@ -1698,14 +1965,24 @@ test("a question in a reply whose item is Done opens its turn's Done section and
   await $.turn.complete(replyDone("t1"));
   const reply = await $.ui.mount(REPLY);
   const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  // The item's turn folded under the Done branch, and the branch closed;
+  // the same turn folded under Open too.
+  await ui.press({ key: "done" });
+  await ui.press({ key: "done.9efb08a1" });
+  await ui.press({ key: "done" });
+  await ui.press({ key: "open.9efb08a1" });
+  expect(await ui.find({ type: "Button", key: "done.9efb08a1" })).toBeUndefined();
   expect(await doneLines(ui)).toEqual([]);
 
   await reply.press({
     key: "kanban-questions",
     link: { href: "https://kanban-turns.invalid/9efb08a1.Decide.1" },
   });
-  expect((await ui.find({ type: "Button", key: "9efb08a1.done" }))?.text).toBe("▾ Done (1)");
+  expect((await ui.find({ type: "Button", key: "done" }))?.text).toBe("▾ Done (1)");
+  expect((await ui.find({ type: "Button", key: "done.9efb08a1" }))?.text).toBe("▾ ── 9efb08a1 ₀ (1) ──");
   expect(await titles(ui)).toContain("🧠 Decide.1 · Which cache to keep (done)");
+  // The turn under Open stays as it was: folded.
+  expect((await ui.find({ type: "Button", key: "open.9efb08a1" }))?.text).toBe("▸ ── 9efb08a1 ₀ (2) ──");
   await reply.unmount();
   await ui.unmount();
 });
@@ -2372,10 +2649,14 @@ test("a user's marks draw every surface in their own glyphs, an option's lead pa
   expect(await ui.find({ type: "Text", text: /^v Next: the next item/ })).toBeDefined();
   expect(await ui.find({ type: "Text", text: /^X Close: close the pane$/ })).toBeDefined();
 
-  // A turn's Done header, closed and open, and the bar opening a Done line.
-  expect(await button(ui, "9efb08a1.done")).toBe("+ Done (1)");
-  await ui.press({ key: "9efb08a1.done" });
-  expect(await button(ui, "9efb08a1.done")).toBe("- Done (1)");
+  // The Done branch's header and a turn's, closed and open, and the bar
+  // opening a Done line.
+  expect(await button(ui, "done")).toBe("+ Done (1)");
+  await ui.press({ key: "done" });
+  expect(await button(ui, "done")).toBe("- Done (1)");
+  expect(await button(ui, "done.9efb08a1")).toBe("- ── 9efb08a1 ₋₁ (1) ──");
+  await ui.press({ key: "open.9efb08a1" });
+  expect(await button(ui, "open.9efb08a1")).toBe("+ ── 9efb08a1 ₋₁ (2) ──");
   expect((await ui.find({ type: "Text", text: /^\|$/ }))?.props).toMatchObject({ color: "ide" });
 
   // The Done item's sent option and the option the draft picks, each lead
@@ -2430,7 +2711,7 @@ test("a Submit the engine refuses moves nothing to Done", async ($, on) => {
   await ui.press({ key: "submit" });
 
   expect(await titles(ui)).toHaveLength(3);
-  expect(await ui.find({ type: "Button", key: "9efb08a1.done" })).toBeUndefined();
+  expect(await ui.find({ type: "Button", key: "done" })).toBeUndefined();
   await ui.unmount();
 });
 
@@ -2622,6 +2903,35 @@ test("under a reply, ✏️ Add a note opens the pane with the keyboard at the i
   ).toEqual([]);
   await ui.unmount();
   await reply.unmount();
+});
+
+test("✏️ Add a note under a reply opens every level its item is under: its turn under Open, folded by a click", async ($, on) => {
+  const open: unknown[] = [...ITEMS];
+  engine(on, () => open);
+  await $.tool.call({ tool: TOOL, items: ITEMS } as never);
+  await $.turn.complete(replyDone("t0"));
+  open.splice(0, 1);
+  await $.turn.complete(replyDone("t1"));
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  const reply = await $.ui.mount(REPLY);
+  // The turn folded under Open, and under Done, its branch open.
+  await ui.press({ key: "open.9efb08a1" });
+  await ui.press({ key: "done" });
+  await ui.press({ key: "done.9efb08a1" });
+  expect(await ui.find({ type: "Input", key: "9efb08a1.Decide.3.notes" })).toBeUndefined();
+  // A Done item has no notes, so no ✏️ Add a note under the reply.
+  expect(await reply.find({ type: "Button", key: "9efb08a1.Decide.1.add-note" })).toBeUndefined();
+
+  await reply.press({ key: "9efb08a1.Decide.3.add-note" });
+  expect((await ui.find({ type: "Button", key: "open.9efb08a1" }))?.text).toBe("▾ ── 9efb08a1 ₀ (2) ──");
+  expect((await ui.find({ type: "Input", key: "9efb08a1.Decide.3.notes" }))?.props).toMatchObject({
+    autoFocus: true,
+  });
+  // The same turn under Done stays as it was: folded.
+  expect((await ui.find({ type: "Button", key: "done.9efb08a1" }))?.text).toBe("▸ ── 9efb08a1 ₀ (1) ──");
+  await reply.unmount();
+  await ui.unmount();
 });
 
 test("✏️ Add a note in a pane already open asks for the ring on the field, which waits for it until it lands", async ($, on) => {

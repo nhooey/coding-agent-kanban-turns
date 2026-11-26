@@ -437,7 +437,7 @@ describe("the keys panel", () => {
 
   test("lists each key the pane takes and what it does, then the engine's", () => {
     expect(keyRows(keys, SETTINGS.marks.buttons)).toEqual([
-      { key: "j", does: "↓ Next: the next item, or Done header" },
+      { key: "j", does: "↓ Next: the next item, or header" },
       { key: "k", does: "↑ Previous: the item before" },
       { key: "s", does: "📤 Submit: send the draft" },
       { key: "r", does: "🔄 Reassess: add or take out the reassess line" },
@@ -456,7 +456,7 @@ describe("the keys panel", () => {
   test("draws each button's glyph as it's given", () => {
     const glyphs = { dismiss: "X", next: "v", previous: "^", submit: ">", reassess: "R", help: "H", kanban: "K" };
     expect(keyRows(keys, glyphs).slice(0, 6)).toEqual([
-      { key: "j", does: "v Next: the next item, or Done header" },
+      { key: "j", does: "v Next: the next item, or header" },
       { key: "k", does: "^ Previous: the item before" },
       { key: "s", does: "> Submit: send the draft" },
       { key: "r", does: "R Reassess: add or take out the reassess line" },

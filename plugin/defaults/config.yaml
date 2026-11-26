@@ -44,7 +44,7 @@ counts:
 keys:
   # ✖ Close: close the pane.
   dismiss: q
-  # ↓ Next: move the focus ring to the next item, or Done header.
+  # ↓ Next: move the focus ring to the next item, or header.
   next: j
   # ↑ Previous: move the focus ring to the item before.
   previous: k
@@ -76,8 +76,8 @@ notes:
 # control character or a line break, refuses your file. Quote a mark YAML
 # would read as something else, such as ">" or "-". An option's mark is
 # padded to the widest of `chosen`, `sent` and its item's glyphs, and a
-# Done header's to the wider of `collapsed` and `expanded`, so a pick or a
-# toggle moves no text.
+# toggle's, each branch's header and each turn's, to the wider of
+# `collapsed` and `expanded`, so a pick or a toggle moves no text.
 marks:
   # A Done item's options that the answer which made it Done picked,
   # drawn at full strength in the dimmed item, with no underline, beside
@@ -91,13 +91,15 @@ marks:
   # glyph of the ✏️ Add a note button under a reply, and what opens the
   # count of picks above the prompt, `✏️ 2 picked`.
   note: ✏️
-  # The bar that opens a Done item's line in its turn's Done section,
-  # drawn in colors.settled.
+  # The bar that opens a Done item's line under the Done branch, drawn
+  # in colors.settled.
   settled-bar: ▌
-  # What opens a turn's Done header while its section is closed, such as
-  # `▸ Done (2)`.
+  # What opens a toggle while what it folds is collapsed: a branch's
+  # header, such as `▸ Done (2)`, or a turn's, such as
+  # `▸ ── 9efb08a1 ₋₂ (2) ──`.
   collapsed: ▸
-  # What opens it while the section is open, such as `▾ Done (2)`.
+  # What opens a toggle while what it folds is expanded, such as
+  # `▾ Open (3)`.
   expanded: ▾
   # The glyph each of the pane's buttons is drawn with, before its label,
   # and beside its key in the panel ? Keys opens; a keyed button's by the
@@ -136,7 +138,7 @@ colors:
   hover: suggestion
   # The bar in the same column beside each of a Done item's option, ➕
   # and ➖ lines, which stays lit, and marks.settled-bar, which opens a
-  # Done item's line in its turn's Done section; a Done item lights no
+  # Done item's line under the Done branch; a Done item lights no
   # hover bar.
   settled: ide
   # marks.buttons.dismiss, the glyph of the ✖ Close button that closes
