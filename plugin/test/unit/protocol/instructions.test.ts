@@ -70,6 +70,12 @@ describe("the instructions", () => {
     expect(opening).toContain("needn't be loaded");
     expect(INSTRUCTION_FRAGMENTS[0]).toBe("block");
   });
+
+  test("govern alone, deferring to no copy of the skill installed apart from the plugin", () => {
+    ["installed apart from the plugin", "that copy governs", "governs"].forEach((phrase) =>
+      expect(INSTRUCTIONS).not.toContain(phrase),
+    );
+  });
 });
 
 describe("PLUGIN_SKILL", () => {

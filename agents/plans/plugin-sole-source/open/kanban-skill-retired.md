@@ -4,7 +4,7 @@ state: approved
 kind: implementation
 part-of: plugin-sole-source
 needs: [protocol-spec-data, protocol-prose-fragments, protocol-golden-cases, neutral-turn-stream, kanban-cli-adapter, plugin-tools-replace-skill-scripts, derived-skill-package, instructions-once-with-skill, prompt-context-hook-runs]
-touches: [AGENTS.md, nix/skills-devshell/flake.nix, nix/skills-devshell/flake.lock, plugin/spec/fragments/block.md]
+touches: [AGENTS.md, nix/skills-devshell/flake.nix, nix/skills-devshell/flake.lock]
 ---
 
 # The coding-agent-kanban-turn-responses skill is retired, and no repository or session installs it
@@ -15,7 +15,7 @@ Done once the plugin carries its own skill ([derived-skill-package](../closed/de
 - **The project-level install is gone.** This repository's skills-devshell no longer installs `coding-agent-kanban-turn-responses`, so `.agents/skills/` holds no copy.
 - **The user-level install is gone.** `~/.claude/skills/coding-agent-kanban-turn-responses` is removed, through the MyNixOS configuration that installs it. A user-level instruction to load the skill at every turn, such as one in `~/.claude/CLAUDE.md`, names the plugin's `coding-agent-kanban-turns:coding-agent-kanban-turn-responses` or is dropped.
 - **MyNixOS's sessions** get the format from the plugin's hooks, or from the plugin's skill where the hooks don't load. A harness that loads skills but not Claude Code plugins installs `packages.skill-standalone`.
-- **The block governs.** The instructions block's opening line, `plugin/spec/fragments/block.md`, drops its sentence saying a copy of the `coding-agent-kanban-turn-responses` skill installed apart from the plugin governs where the two differ: with no such copy left, the plugin's block is the protocol's only statement in a session.
+- **The block already governs.** The instructions block's opening line, `plugin/spec/fragments/block.md`, says nothing of a copy of the `coding-agent-kanban-turn-responses` skill installed apart from the plugin governing it, since the `block-governs` branch: the plugin's block is the protocol's only authority in a session ahead of the retirement, even while such a copy is installed, and the retirement leaves the block as it is.
 - **`coding-agent-skills`** marks the skill retired, naming this repository's plugin, and its skill, as the replacement, in a pull request there.
 
 Checks:
@@ -23,5 +23,5 @@ Checks:
 - `nix/skills-devshell/flake.nix` names no `coding-agent-kanban-turn-responses`, and `.agents/skills/` has no copy;
 - `~/.claude/skills/` has no `coding-agent-kanban-turn-responses` on a machine MyNixOS configures;
 - `AGENTS.md` has no section about rules shared with the kanban skill;
-- the instructions block says nothing of a copy of the skill installed apart from the plugin governing it;
+- the instructions block still says nothing of a copy of the skill installed apart from the plugin governing it, which `plugin/test/unit/protocol/instructions.test.ts` holds it to since the `block-governs` branch;
 - a session in a repository with the plugin and without the old skill writes replies in the kanban shape.
