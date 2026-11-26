@@ -20,6 +20,7 @@ import {
 import type { Event, Found, Stepped } from "../../../src/pane/pane-state.ts";
 import type { Loaded, PaneState } from "../../../types/index.d.ts";
 import { BOXES, START, startArb } from "../../fixtures/submit.ts";
+import { settledRefsOf } from "../../fixtures/raised.ts";
 import { GONE, TRANSCRIPTS, paneCommandsArb, walkPane } from "../../fixtures/refresh.ts";
 import { BAD_KEY, BROKEN, MISSING, SETTINGS, usable } from "../../fixtures/settings.ts";
 
@@ -197,8 +198,8 @@ describe("a refresh's transcript read", () => {
     const reading = after([ASK, loads(1, CLEAN), ALONE, loads(2, WARNED)]);
     const last = after([read(1, ANSWERED)], reading);
 
-    expect(last.raised.settledRefs).toEqual(["9efb08a1.Decide.1"]);
-    expect(last.raised.warnings).toEqual([BAD_KEY]);
+    expect(settledRefsOf(last.raised)).toEqual(["9efb08a1.Decide.1"]);
+    expect(last.raised.settingsProblems).toEqual([BAD_KEY]);
   });
 
   test("that lands while the settings are broken settles nothing, says why, shows no read, and still lets go of the answers it read", () => {
@@ -206,7 +207,7 @@ describe("a refresh's transcript read", () => {
     const last = after([read(1, ANSWERED)], reading);
 
     expect(reading.sent).not.toEqual([]);
-    expect(last.raised.settledRefs).toEqual([]);
+    expect(settledRefsOf(last.raised)).toEqual([]);
     expect(last.counts).toBe(reading.counts);
     expect(problemsOf(last.raised)).toBe(MISSING);
     expect(last.refresh).toEqual({ asked: 1, shown: 0, reads: [] });
@@ -258,7 +259,7 @@ describe("a turn's end that holds answers", () => {
     expect(newerFirst.reading.refresh.reads).toMatchObject([{ refresh: 1, on: { at: "transcript" } }]);
     [newerFirst, ownFirst].forEach(({ last }) => {
       expect(last.sent).toEqual([]);
-      expect(last.raised.settledRefs).toEqual([]);
+      expect(settledRefsOf(last.raised)).toEqual([]);
       expect(problemsOf(last.raised)).toBe(MISSING);
       expect(last.refresh).toEqual({ asked: 1, shown: 0, reads: [] });
     });
@@ -271,7 +272,7 @@ describe("a turn's end that holds answers", () => {
 
     [newerFirst, ownFirst].forEach(({ last }) => {
       expect(last.sent).toEqual([]);
-      expect(last.raised.settledRefs).toEqual(["9efb08a1.Decide.1"]);
+      expect(settledRefsOf(last.raised)).toEqual(["9efb08a1.Decide.1"]);
       expect(problemsOf(last.raised)).toBe("");
       expect(last.refresh).toMatchObject({ asked: 1, shown: 1, reads: [] });
     });
@@ -433,7 +434,7 @@ describe("the settings' invariants over random event sequences", () => {
     holds(({ before, event, stepped: { state } }) =>
       event.type !== "transcript-read" ||
       before.settings.tag === "loaded" ||
-      (state.raised.settledRefs === before.raised.settledRefs &&
+      (state.raised.items === before.raised.items &&
         state.refresh.shown === before.refresh.shown &&
         state.counts === before.counts),
     );
