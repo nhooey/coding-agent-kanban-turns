@@ -27,16 +27,20 @@ import { answersOfLine } from "./answer-lines.ts";
 import type { LineAnswer } from "./answer-lines.ts";
 import { freesOfLine, isFreesLine, refText, resolvedRefs } from "./frees.ts";
 import { decideRefOf, isSameTurn, refOf } from "./items.ts";
+import { latestWord, wordAnsweredIn } from "./word-answers.ts";
+import type { HeldWordAnswer } from "./word-answers.ts";
 import { branchSpans, reportNamesItem } from "../transcript/reports.ts";
 import { isObject, parsedJson } from "../json/fields.ts";
 import { escaped } from "../text/patterns.ts";
 import {
   isOwn,
+  ownLinesOf,
   reassessStart,
   reassessStarts,
-  withoutDraftHeader,
+  textsOf,
 } from "../transcript/turns.ts";
-import { parseReply, sectionsIn } from "../transcript/reply.ts";
+import type { OwnLine } from "../transcript/turns.ts";
+import { isFenceLine, parseReply, sectionsIn } from "../transcript/reply.ts";
 import type {
   Block,
   BodyLine,
@@ -52,7 +56,7 @@ import {
   namesOf,
 } from "../protocol/rules.ts";
 import { SPEC } from "../protocol/spec.ts";
-import type { DecideItem, Message, Settlement, Turn } from "../../types/index.d.ts";
+import type { DecideItem, Settlement, Turn } from "../../types/index.d.ts";
 
 type Lists = typeof SPEC.lists;
 
@@ -91,7 +95,10 @@ const BOLD = /\*\*(.+?)\*\*/;
  * by reference: those its last line, a `Frees:` line, names. Read from one
  * reply's text, they are the references as written; read from the turns,
  * each names an item of its turn or an earlier one, by the turn's whole id.
- * `tagged` is the turn id its 🔖 tag named, where it had one.
+ * `tagged` is the turn id its 🔖 tag named, where it had one. `body`, for a
+ * numbered item of a list with settling words in the reply's own list, is
+ * what it prints under its summary, which the pane draws, where it prints
+ * any.
  */
 export type ListItem = Readonly<{
   list: ListKey;
@@ -101,6 +108,7 @@ export type ListItem = Readonly<{
   line: string;
   frees: readonly string[];
   tagged?: string;
+  body?: readonly string[];
 }>;
 
 /** The item's summary: its bold text without a trailing colon, else its line. */
@@ -151,11 +159,47 @@ export const subjectKey = (summary: string): string => {
         : normal(summary);
 };
 
+/** The bold markers either side of a summary. */
+const BOLD_MARKS = "****".length;
+
+/** The text of an item's own line after the bold summary it opens on, a colon or a dash that opens it aside: the start of its body, where the summary isn't alone. */
+const restOfHead = (head: ItemHead): string =>
+  head.summary === undefined || head.isAlone
+    ? ""
+    : head.text
+        .slice(head.summary.length + BOLD_MARKS)
+        .replace(/^[\s:–—-]+/, "")
+        .trim();
+
+/** A line of code under an item, the item's indent aside, as a code span the pane draws in the code colour; one that holds a backtick of its own as written. */
+const codeLineOf = (head: ItemHead, line: string): string => {
+  const code = line.slice(Math.min(head.lead.length, line.length - line.trimStart().length)).trimEnd();
+
+  return code.includes("`") ? code : `\`${code}\``;
+};
+
+/** What an item prints under its summary: the rest of its own line, then each line under it but blank ones, its fences and its `Frees:` line, a line of code as a code span. */
+const bodyOf = (head: ItemHead, body: readonly BodyLine[]): readonly string[] =>
+  [
+    restOfHead(head),
+    ...body.flatMap((under) =>
+      under.isCode
+        ? isFenceLine(under.line) || under.line.trim() === ""
+          ? []
+          : [codeLineOf(head, under.line)]
+        : isFreesLine(under.line)
+          ? []
+          : [under.line.trim()],
+    ),
+  ].filter((line) => line !== "");
+
 /**
  * An item of a list that rolls up, read from its block: its own line, and,
  * where that line is its bold summary alone, the line beneath joined to it,
  * unless that's the `Frees:` line, which is no body; with any 🔖 tag cut off,
- * and what its last line, a `Frees:` line, frees, as written.
+ * and what its last line, a `Frees:` line, frees, as written; and, for a
+ * numbered item of a list with settling words in the reply's own list, its
+ * body, where it prints one.
  */
 const listItemOf = (
   list: ListKey,
@@ -170,6 +214,12 @@ const listItemOf = (
       ? `${own} ${beneath}`
       : own;
   const tagged = SUFFIX.exec(line)?.[1];
+  const printed =
+    !isPinned &&
+    head.number !== undefined &&
+    Object.keys(SPEC.lists[list]["settling-words"]).length > 0
+      ? bodyOf(head, body)
+      : [];
 
   return {
     list,
@@ -178,6 +228,7 @@ const listItemOf = (
     line: line.replace(SUFFIX, ""),
     frees: freesOfLine(body.at(-1)?.line ?? "") ?? [],
     ...(tagged === undefined ? {} : { tagged }),
+    ...(printed.length > 0 ? { body: printed } : {}),
   };
 };
 
@@ -332,14 +383,14 @@ export const withRepliedFrees = (
 export { answersOfLine } from "./answer-lines.ts";
 export type { LineAnswer } from "./answer-lines.ts";
 
-/** A turn's prompt, then the messages sent while it ran. */
-export const textsOf = (turn: Turn): readonly Message[] => [
-  turn.prompt,
-  ...turn.messages,
-];
-
 /** An answer as the turns hold it: the line's, with the place `at` of the turn a bare one answers and the id of the turn it was `sent` in. */
 export type Answer = LineAnswer & Readonly<{ at: number; sent: string }>;
+
+/** Every answer the user's own lines give, oldest first, a bare one answering the turn before its own. */
+const answeredIn = (lines: readonly OwnLine[]): readonly Answer[] =>
+  lines.flatMap(({ line, at, sent }) =>
+    answersOfLine(line).map((answer) => ({ ...answer, at, sent })),
+  );
 
 /**
  * Every answer the user gave: in a turn's prompt where it's the user's own
@@ -348,15 +399,7 @@ export type Answer = LineAnswer & Readonly<{ at: number; sent: string }>;
  * means the turn before the one it's in. The first turn answers nothing.
  */
 export const answered = (turns: readonly Turn[]): readonly Answer[] =>
-  turns.flatMap((turn, n) =>
-    n === 0
-      ? []
-      : textsOf(turn)
-          .filter((message) => isOwn(message.owner))
-          .flatMap((message) => withoutDraftHeader(message.text).split("\n"))
-          .flatMap(answersOfLine)
-          .map((answer) => ({ ...answer, at: n - 1, sent: turn.id })),
-  );
+  answeredIn(ownLinesOf(turns));
 
 /** The latest answer that settles item `number` of the turn at `at`, whose id is `id`, if one does. */
 export const answerFor = (
@@ -689,13 +732,15 @@ export type Report = Readonly<{
 
 /**
  * What the turns hold that settles an item: the pull requests that merged,
- * the subject keys of the Decide items the user answered, the reports, and
- * the place of the last turn whose own list printed each item since the
- * latest `reassess` turn, by the item's key.
+ * the subject keys of the Decide items the user answered and of the Todo
+ * items a settling word settled, the reports, and the place of the last
+ * turn whose own list printed each item since the latest `reassess` turn,
+ * by the item's key.
  */
 export type Settling = Readonly<{
   merged: ReadonlySet<string>;
   decided: ReadonlySet<string>;
+  worded: ReadonlySet<string>;
   reports: readonly Report[];
   lastOwn: ReadonlyMap<string, number>;
 }>;
@@ -742,6 +787,10 @@ export const SETTLERS: Readonly<Record<SettledBy, Settler>> = {
     },
     pullRequests: askNothing,
   },
+  "settling-word": {
+    settles: (item, { worded }) => worded.has(subjectKey(summaryOf(item.line))),
+    pullRequests: askNothing,
+  },
   none: { settles: () => false, pullRequests: askNothing },
 };
 
@@ -759,9 +808,33 @@ export const settlingOf = (
 const settlingIn = (facts: Facts, merged: ReadonlySet<string>): Settling => ({
   merged,
   decided: decidedOf(facts.answers, latestDecideItems(facts.turns, facts.start)),
+  worded: wordedIn(facts),
   reports: reportsOf(facts.turns),
   lastOwn: new Map([...facts.latestOwn].map(([key, item]) => [key, item.at])),
 });
+
+/**
+ * The subject keys of the items of a list settled by a settling word whose
+ * latest printing in their own list since the latest `reassess` turn the
+ * user's own text gives one, read from the facts' printings and word
+ * answers.
+ */
+const wordedIn = (facts: Facts): ReadonlySet<string> =>
+  new Set(
+    [...facts.latestOwn.values()].flatMap((item) =>
+      SPEC.lists[item.list]["settled-by"] === "settling-word" &&
+      item.number !== undefined &&
+      latestWord(
+        facts.words,
+        SPEC.lists[item.list].header,
+        facts.turns[item.at]?.id ?? "",
+        item.at,
+        item.number,
+      ) !== undefined
+        ? [subjectKey(summaryOf(item.line))]
+        : [],
+    ),
+  );
 
 /** The reports the turns hold: each text of a turn, not the user's own, that goes by names. */
 const reportsOf = (turns: readonly Turn[]): readonly Report[] =>
@@ -1002,8 +1075,14 @@ export const openOf = (
   turns: readonly Turn[],
   window: number,
   merged: ReadonlySet<string> = new Set(),
+): Open => openIn(factsOf(turns), window, merged);
+
+/** openOf, over the facts the turns hold, which a caller that reads more of them gathers once. */
+export const openIn = (
+  facts: Facts,
+  window: number,
+  merged: ReadonlySet<string> = new Set(),
 ): Open => {
-  const facts = factsOf(turns);
   const states = decideStatesIn(facts);
 
   return {
@@ -1018,28 +1097,32 @@ export const openOf = (
 /**
  * What two or more of the Decide items' states, the roll-up and the
  * settling read, gathered once: the turns, the place of the latest
- * `reassess` turn, the user's answers, every item, and each item's latest
- * printing in its own list since that turn, by the item's key.
+ * `reassess` turn, the user's answers, those with a settling word among
+ * them, every item, and each item's latest printing in its own list since
+ * that turn, by the item's key.
  */
 export type Facts = Readonly<{
   turns: readonly Turn[];
   start: number;
   answers: readonly Answer[];
+  words: readonly HeldWordAnswer[];
   items: readonly ListItem[];
   latestOwn: ReadonlyMap<string, ListItem>;
 }>;
 
-/** The facts the turns hold, each worked out once. */
+/** The facts the turns hold, each worked out once, the user's own lines read once for both kinds of answer. */
 export const factsOf = (turns: readonly Turn[]): Facts => {
   const starts = reassessStarts(turns);
   // The latest `reassess` turn at or before the last turn: reassessStart.
   const start = starts.at(-1) ?? 0;
   const items = itemsIn(turns, starts);
+  const lines = ownLinesOf(turns);
 
   return {
     turns,
     start,
-    answers: answered(turns),
+    answers: answeredIn(lines),
+    words: wordAnsweredIn(lines),
     items,
     latestOwn: new Map(
       items

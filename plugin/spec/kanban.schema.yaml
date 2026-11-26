@@ -54,7 +54,7 @@ definitions:
         uniqueItems: true
       rolls-up: { type: boolean }
       # Each way has its settler in src/items/outstanding.ts's SETTLERS.
-      settled-by: { enum: [answer, merged-pull-request, report, none] }
+      settled-by: { enum: [answer, merged-pull-request, report, settling-word, none] }
       settling-words:
         type: object
         propertyNames: { $ref: "#/definitions/word" }
@@ -131,11 +131,16 @@ properties:
   reference:
     type: object
     additionalProperties: false
-    required: [turn-id, letters, turn-after]
+    required: [turn-id, letters, turn-after, separators]
     properties:
       turn-after:
         type: array
         items: { $ref: "#/definitions/word" }
+        minItems: 1
+        uniqueItems: true
+      separators:
+        type: array
+        items: { type: string, pattern: "^[^\\sA-Za-z0-9.:]$" }
         minItems: 1
         uniqueItems: true
       turn-id:

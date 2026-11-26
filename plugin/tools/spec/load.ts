@@ -82,10 +82,15 @@ const SETTLED_BY_NOTHING = "none";
 const SETTLED_BY_ANSWER = "answer";
 const ANSWERED_LIST = "decide";
 
+/** The way a settling word settles, and the one list whose items the core reads settling words to: Todo's. */
+const SETTLED_BY_WORD = "settling-word";
+const WORDED_LIST = "todo";
+
 /**
  * Each list settled by a way it can't be: one that doesn't roll up, so none
- * of its items stays open to settle, by a way that settles something; and
- * a list other than Decide by an answer.
+ * of its items stays open to settle, by a way that settles something; a
+ * list other than Decide by an answer; and a list other than Todo, or one
+ * with no settling words, by a settling word.
  */
 const settledByProblems = (spec: SpecShape): readonly string[] =>
   Object.entries(spec.lists).flatMap(([key, list]) => [
@@ -98,6 +103,15 @@ const settledByProblems = (spec: SpecShape): readonly string[] =>
       ? [
           `${key} is settled by ${SETTLED_BY_ANSWER}, which reads only the ${ANSWERED_LIST} list's items`,
         ]
+      : []),
+    ...(key !== WORDED_LIST && list["settled-by"] === SETTLED_BY_WORD
+      ? [
+          `${key} is settled by ${SETTLED_BY_WORD}, which reads only the ${WORDED_LIST} list's items`,
+        ]
+      : []),
+    ...(list["settled-by"] === SETTLED_BY_WORD &&
+    Object.keys(list["settling-words"]).length === 0
+      ? [`${key} is settled by ${SETTLED_BY_WORD}, yet it has no settling-words`]
       : []),
   ]);
 

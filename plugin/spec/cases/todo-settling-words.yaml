@@ -1,0 +1,35 @@
+title: >-
+  Todo's settling words after an item's reference, `done` and `skip`, settle
+  their items, and the 📌 roll-up and the count line drop them; a note alone
+  settles nothing, so its item stays
+turns:
+  - id: 9efb08a1
+    prompt: What's left for the release?
+    replies:
+      - text: "\
+          The release builds; 3 things are yours to do.\n\
+          \n\
+          👉 **Todo:**  \n\
+          ▔▔▔▔▔▔▔▔\n\
+          1. **Rotate the deploy token**  \n\
+          \   It expires on Friday.\n\
+          \   ⠀\n\
+          2. **Announce the release in the channel**\n\
+          3. **Check the staging dashboard**\n"
+        lint: []
+  - id: b2c3d4e5
+    prompt: |-
+      9efb08a1.Todo.1: done
+      Todo.2: skip
+      Todo.3: the staging one first
+    replies:
+      - text: "\
+          Noted: the token is rotated and the announcement is off.\n\
+          \n\
+          📌 Outstanding: 👉 1\n"
+        lint: []
+expect:
+  open: []
+  outstanding:
+    - "Todo: Check the staging dashboard"
+  counts: "📌 Outstanding: 👉 1"

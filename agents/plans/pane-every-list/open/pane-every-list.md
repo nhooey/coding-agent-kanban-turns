@@ -42,6 +42,17 @@ With the coding-agent-kanban-turns plugin loaded:
   The plugin, and the skill derived from it, read the settling words and this syntax from the spec, `plugin/spec/kanban.yaml`, and a plain reference, such as `9efb08a1.Decide.2.B` or `Todo.3: done`, still settles its item.
 - **The spec is the only statement of the rules.** The settling words and the grouped syntax are written in the spec alone ([kanban-skill-list-answers](kanban-skill-list-answers.md)), and no other repository states them.
 
+## Already true for Todo items
+
+The pane holds 👉 Todo items beside 🧠 Decide items, end to end:
+
+- each Todo item sits in its turn under Open, Queued or Done, the turn's Todo items before its Decide items, each list under a faint header;
+- its box carries `👉 Todo.3` and its summary on the title line, its body, **Done** and **Skip**, and a notes field;
+- Done and Skip write plain references, `9efb08a1.Todo.3: done`, a line each, and a note goes after the word or stands alone, settling nothing;
+- a word settles a Todo item in the 📌 roll-up and the count line too, as Todo's `settled-by`, `settling-word`, says, and a note alone settles it nowhere.
+
+Still to come: the boxes under a reply, which hold Decide items alone; the other 7 lists; the grouped answers; the filters; turn navigation; and the windowed rendering.
+
 Checks:
 
 - the repository's checks pass, `typecheck-plugin` and `plugin-test` among them, with an engine test in `plugin/test/engine/` for each bullet above;

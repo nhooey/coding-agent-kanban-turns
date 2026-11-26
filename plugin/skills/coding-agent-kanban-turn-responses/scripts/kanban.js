@@ -6767,8 +6767,11 @@ var SPEC = {
         "To do"
       ],
       "rolls-up": true,
-      "settled-by": "none",
-      "settling-words": {}
+      "settled-by": "settling-word",
+      "settling-words": {
+        "done": "settles it, the person having done it",
+        "skip": "settles it, the person not doing it"
+      }
     },
     "decide": {
       "header": "Decide",
@@ -6850,6 +6853,11 @@ var SPEC = {
     "turn-after": [
       "of",
       "from"
+    ],
+    "separators": [
+      ",",
+      ";",
+      "/"
     ]
   },
   "frees": {
@@ -6960,12 +6968,17 @@ var inClass = (chars) => chars.replace(/[\\\]^-]/g, "\\$&");
 var classOf = (chars) => `[${inClass(chars)}]`;
 var SUBJECT_WORD = `${classOf(SPEC.subject.alphabet)}+`;
 var DECIDE = SPEC.lists.decide;
+var TODO = SPEC.lists.todo;
 var DONE = SPEC.lists.done;
 var REASSESS = "reassess";
 var DEFAULT_KIND = "radio";
 var namesOf = (list) => [list.header, ...list.aliases];
 var SECTION_NAMES = Object.values(SPEC.lists).flatMap(namesOf);
 var DECISIONS = namesOf(DECIDE);
+var DRAWN = ["todo", "decide"];
+var PANE_LISTS = Object.keys(SPEC.lists).filter((key) => DRAWN.includes(key)).map((key) => SPEC.lists[key]);
+var paneListOf = (header) => PANE_LISTS.find((list) => list.header === header);
+var settlingWordsOf = (list) => Object.keys(list["settling-words"]);
 var TURN2 = SPEC.reference["turn-id"];
 var TURN_ID_CHAR = classOf(TURN2.alphabet);
 var TURN_ID = `${TURN_ID_CHAR}{${TURN2.length}}`;
@@ -6978,7 +6991,9 @@ var SUBSCRIPT_CHAR = classOf(SPEC.tag.digits + SPEC.tag.minus);
 var isLineOf = (char, line) => line.trim() !== "" && [...line.trim()].every((c) => c === char);
 
 // src/items/items.ts
-var refOf = (item) => item.ref || `${item.turn}.${DECIDE.header}.${item.number}`;
+var refOf = (item) => item.ref || `${item.turn}.${listOf(item).header}.${item.number}`;
+var listOf = (item) => paneListOf(item.list) ?? DECIDE;
+var isSameTurn = (a, b) => a !== "" && b !== "" && (a.startsWith(b) || b.startsWith(a));
 var isOption = (value) => isObject(value) && typeof value.letter === "string" && typeof value.name === "string";
 var isItem = (value) => isObject(value) && typeof value.turn === "string" && typeof value.number === "number" && typeof value.summary === "string" && Array.isArray(value.options) && value.options.every(isOption);
 var kindOf = (kind) => typeof kind === "string" && Object.hasOwn(SPEC.options.kinds, kind) ? kind : DEFAULT_KIND;
@@ -7003,7 +7018,7 @@ var withRef = ({ frees, supersedes, ...item }) => ({
   ...item,
   list: DECIDE.header,
   kind: kindOf(item.kind),
-  ref: refOf(item),
+  ref: refOf({ ...item, list: DECIDE.header }),
   ...freesField(frees),
   ...supersedesField(supersedes)
 });
@@ -7022,7 +7037,7 @@ var FRAGMENTS = {
   "decide-items": '## A {{lists.decide.header}} item\n\n- **Options:** they follow the item\'s summary and its note, recommended first, each on one line, as `glyph letter. **name**: consequence`. The letter is a capital, {{letters.example}}, never a number or a lower-case letter: an answer like `1.B` then cannot be misread, since the number always names the item and the capital the option, and a typo lands on no option instead of the wrong one. The AskUserQuestion picker, when it opens, lists the same options in the same order.\n- **Pros and cons:** every option carries, indented under it, a {{options.pro}} line for what it gains and a {{options.con}} line for what it costs; the recommended option\'s {{options.pro}} says why. {{lists.done.glyph}} and \u274C are kept for the {{lists.done.header}} header and the done and failed states, so a pro line never reads as finished work.\n- **Notes:** a note on the whole item is the line under its summary, and a note on one option goes under that option, in plain lines at its {{options.pro}} and {{options.con}} lines\' indent. A note among the options is never a `-` or `1.` list: the option lines are plain lines of the item\'s paragraph, so a list there captures every line after it, the later options among them, and prints them at its own indent.\n- **Each item and option stands alone.** Read with nothing above it, the summary names the thing decided and each option names what it acts on and what it does to it: the entry number and its title in a few words, the file, branch, table or step, the count. A label that only points back, "the 4 gate bugs", "the fix above", "part S", says what it points at in the same line, "entries 0819, 1375, 0988 and 1374, the stale-database and stale-render bugs".\n\nAn item\'s kind is the glyph its options open with:\n\n| Glyph | Kind | Options chosen | Letters |\n| --- | --- | --- | --- |\n| {{options.kinds.radio.glyph}} | {{kind.radio.name}} | {{options.kinds.radio.picks}} | {{letters.radio}} |\n| {{options.kinds.checkbox.glyph}} | {{kind.checkbox.name}} | {{options.kinds.checkbox.picks}}, none included | {{letters.checkbox}} |\n\nA pair of courses answered with a label is a {{kind.radio}} item. A yes-or-no question is a {{kind.radio}} item too, with both answers written as options, {{letters.pair}}, the recommended one first, each naming what it does, never a bare "yes" or "no": with one answer form for every item, `{{lists.decide.header}}.2: B` names an option the same way whatever the question.\n\nA {{lists.decide.header}} list in this shape, a {{kind.checkbox.name}} item and a yes-or-no question as a {{kind.radio.name}} item, its recommended answer first as `A`:\n\n```text\n{{header.decide}}  \n{{rule.decide}}\n1. **Backlog cleanups to start, of 260 entries in the backlog**  \n   Any of 2. Note on the whole decision: the figures, the words at issue.\n   {{options.kinds.checkbox.glyph}} A. **Entry 1411, the 4 quotation matchers made one**: one matcher for the loader, the render and the checks.\n      {{options.pro}} A citation lands or fails the same way everywhere.\n      {{options.con}} About 1M tokens, and it waits for `case-law-load`, which edits the same code.\n   {{options.kinds.checkbox.glyph}} B. **Entries 0550 and 0455, dead code**: delete `findings_sources.py`.\n      {{options.pro}} About 0.1M tokens.\n      {{options.con}} Nothing gained but tidiness.\n   {{characters.separator}}\n2. **Ship the 2.4 release tonight?**  \n   The release notes are written and the checks pass.\n   {{options.kinds.radio.glyph}} A. **Ship it tonight**: tag `v2.4` and publish.\n      {{options.pro}} Users get the tokenizer fix a day sooner.\n      {{options.con}} Nobody watches the rollout overnight.\n   {{options.kinds.radio.glyph}} B. **Hold it for the morning**: tag and publish at 9.\n      {{options.pro}} The rollout is watched.\n      {{options.con}} The fix waits a day.\n```',
   "examples": "## Worked examples\n\nEach file in this skill's `examples/` folder is one of the {{plugin}} plugin's golden cases: a transcript of turns, each prompt and response as written, then what the plugin's core gives for it: what is still outstanding under {{roll-up.glyph}}, the count line, and what each item's `{{frees.label}}:` line frees. The plugin's tests run every case through its core and its lint, so each response holds the format as this skill gives it.",
   "frees": "## What an item frees\n\nAn item that blocks other work ends on a line naming, by reference, the items it frees, in place of saying in words what it frees: `{{frees.label}}:`, then each item's reference, parted by `{{frees.separator}}` and a space, `{{example.frees}}`.\n\n- **Which items:** each is an item of the {{names.rolled-up}} lists, of this turn or an earlier one, that can't go ahead until this item settles, never the item itself. Work that no listed item names is said in words in the item's body.\n- **After {{command.reassess.name}}:** a turn that ran {{command.reassess.name}} replaced every earlier item, so name the item that took an earlier one in, never the earlier one, which frees nothing.\n- **Each reference** is `<turn>.<List>.<n>`, the turn id always written, this turn's included, in full or as its first {{reference.turn-id.shortest}} characters or more, with no letters and no note.\n- **Where:** the line is the item's last, at the column its summary starts at, under its body, a {{lists.decide.header}} item's under its last option, and directly above its separator line. An item that frees no listed item has no such line.\n\nA {{lists.todo.header}} item that frees a {{lists.decide.header}} item and a {{lists.review.header}} item:\n\n```text\n{{header.todo}}  \n{{rule.todo}}\n1. **Paste the release prompt into the deploy session**  \n   It is in `prompts/release.md`.\n   {{example.frees}}\n```",
-  "lists": "## The final response's lists\n\nThe final response's lists, in the order it prints them: {{names.lists}}.\n\n| Header, written exactly so | Holds, from this turn only | Waits on |\n| --- | --- | --- |\n| {{header.done}} | one item per change, with its file and commit; a clean check, with what it checked and the count | nobody |\n| {{header.pending}} | the agent's own work started and not finished, scope left out, a hold that will not announce itself when it lifts | the agent |\n| {{header.logged}} | one item per entry written into the project's backlog, by index and title | the next agent |\n| {{header.waiting}} | a background shell, subagent, hand-off or expected message, and what the session does with its result | the thing itself |\n| {{header.answers}} | one item per question the user asked that names no listed item, the question as the summary, shortened or reworded where that reads better, the answer under it | nobody |\n| {{header.authorizations}} | one item per grant only the user can give: a 1Password, SecretSpec or SSH signing prompt, an approval for actions the harness or a classifier refused, a `sudo` password | the user |\n| {{header.review}} | one item per thing put in front of the user to read, listen to or look at, a pull request to review or merge among them, with where to open it and what to look for | the user |\n| {{header.todo}} | one item per action asked of the user that is not a choice, reading or grant: a file to mark up, a prompt to paste, a command to run; each says what to do and where, by its path, and ends on its `{{frees.label}}:` line where it frees a listed item | the user |\n| {{header.decide}} | one item per decision raised, and per judgement call taken instead of asked, its reversal an option | the user |\n\nThe {{names.rolled-up}} lists' items roll up into {{roll-up.glyph}} until something settles them: an {{lists.authorizations.header}} item until it is granted or withdrawn, and a {{lists.review.header}} item until the user's reply shows they reviewed it. The {{names.not-rolled-up}} lists' items never roll up.\n\nAn empty list is left out, and the final response opens on a line of prose. An answer takes the shape its information has: a comparison is a table, a sequence is numbered steps, parallel items are a list. A table never goes inside an item, where it prints as raw pipe rows: it goes after its list's last line and blank line, under a line naming the item, such as `{{lists.answers.header}}.3:`, then a blank line, the table, and a blank line before the next list's header. A table always has a blank line above and below it, since a line directly under its last row is drawn as one more row.\n\n**A list holds only what is new this turn.** An item an earlier turn printed, unchanged since, is not printed in its list again; it rolls up into {{roll-up.glyph}}. An item whose state changed this turn, a {{lists.waiting.header}} agent that reported, a {{lists.todo.header}} item whose prompt is now ready or an item whose question was answered, is new again and is printed in its list with the change.\n\n**Which list.** A review that is itself a choice goes in {{list.decide}}, a task that is not a reading goes in {{list.todo}}, and a grant only the user can give goes in {{list.authorizations}}.\n\n**An authorization is a grant, not a task or a choice.** A {{list.todo}} item asks the user to do something, a command to run or a file to mark up, and a {{list.decide}} item asks them to choose. A {{list.authorizations}} item asks for what only the user can give, a password, a touch or an approval, often against a prompt that times out, and the work behind it stops until they give it. A `sudo` command or a system switch the user runs for their password is an authorization, since what it waits on is the password, and the command goes on a line of its own after `\u{1F4BB} \u276F`. The summary leads with what the grant unblocks, the tag, branch, token or command, never only the kind of prompt, so two grants of one kind stay two items in the {{roll-up.glyph}} roll-up. Each item says where to grant it, the prompt's window or the approval message to send, how long the prompt stays open and what granting it frees, and lists what it covers, such as the pull requests or commands one grant covers, as a nested list under its summary; the prompt's state goes in the item's body, never its summary, which the roll-up reprints. The {{lists.authorizations.header}} list leads the lists that wait on the user, since what it holds blocks running agents.\n\n**A pull request is a {{lists.review.header}} item.** A pull request the user is asked to review or merge goes in {{list.review}}, by its canonical label, its number and title, linked, with what to check in it. When this turn's work opened it, the {{list.done}} item for that work names the change in a line and points at the {{lists.review.header}} item by reference, `see {{lists.review.header}}.1`, without repeating the pull request's label, link or contents, so the pull request is described once.\n\n**A turn reply is a delta.** Each {{list.done}} item states the state reached, such as \"`retries`: 3 \u2192 5 in `config.toml`\", never the actions taken to reach it.\n\n**An item that reports on many things is grouped and layered.** The result of a run over many repositories, files or checks opens on its totals and names what needs action, then gives the groups with their counts, the groups that need the user first. A group that needs nothing from the user is its count and the file or command that lists it, and its items are printed when the user asks for them.",
+  "lists": "## The final response's lists\n\nThe final response's lists, in the order it prints them: {{names.lists}}.\n\n| Header, written exactly so | Holds, from this turn only | Waits on |\n| --- | --- | --- |\n| {{header.done}} | one item per change, with its file and commit; a clean check, with what it checked and the count | nobody |\n| {{header.pending}} | the agent's own work started and not finished, scope left out, a hold that will not announce itself when it lifts | the agent |\n| {{header.logged}} | one item per entry written into the project's backlog, by index and title | the next agent |\n| {{header.waiting}} | a background shell, subagent, hand-off or expected message, and what the session does with its result | the thing itself |\n| {{header.answers}} | one item per question the user asked that names no listed item, the question as the summary, shortened or reworded where that reads better, the answer under it | nobody |\n| {{header.authorizations}} | one item per grant only the user can give: a 1Password, SecretSpec or SSH signing prompt, an approval for actions the harness or a classifier refused, a `sudo` password | the user |\n| {{header.review}} | one item per thing put in front of the user to read, listen to or look at, a pull request to review or merge among them, with where to open it and what to look for | the user |\n| {{header.todo}} | one item per action asked of the user that is not a choice, reading or grant: a file to mark up, a prompt to paste, a command to run; each says what to do and where, by its path, and ends on its `{{frees.label}}:` line where it frees a listed item | the user |\n| {{header.decide}} | one item per decision raised, and per judgement call taken instead of asked, its reversal an option | the user |\n\nThe {{names.rolled-up}} lists' items roll up into {{roll-up.glyph}} until something settles them: an {{lists.authorizations.header}} item until it is granted or withdrawn, a {{lists.review.header}} item until the user's reply shows they reviewed it, and a {{lists.todo.header}} item until the user's reply writes its reference, a colon and {{words.todo}}, a note after the word or not; a note alone settles nothing. The {{names.not-rolled-up}} lists' items never roll up.\n\nAn empty list is left out, and the final response opens on a line of prose. An answer takes the shape its information has: a comparison is a table, a sequence is numbered steps, parallel items are a list. A table never goes inside an item, where it prints as raw pipe rows: it goes after its list's last line and blank line, under a line naming the item, such as `{{lists.answers.header}}.3:`, then a blank line, the table, and a blank line before the next list's header. A table always has a blank line above and below it, since a line directly under its last row is drawn as one more row.\n\n**A list holds only what is new this turn.** An item an earlier turn printed, unchanged since, is not printed in its list again; it rolls up into {{roll-up.glyph}}. An item whose state changed this turn, a {{lists.waiting.header}} agent that reported, a {{lists.todo.header}} item whose prompt is now ready or an item whose question was answered, is new again and is printed in its list with the change.\n\n**Which list.** A review that is itself a choice goes in {{list.decide}}, a task that is not a reading goes in {{list.todo}}, and a grant only the user can give goes in {{list.authorizations}}.\n\n**An authorization is a grant, not a task or a choice.** A {{list.todo}} item asks the user to do something, a command to run or a file to mark up, and a {{list.decide}} item asks them to choose. A {{list.authorizations}} item asks for what only the user can give, a password, a touch or an approval, often against a prompt that times out, and the work behind it stops until they give it. A `sudo` command or a system switch the user runs for their password is an authorization, since what it waits on is the password, and the command goes on a line of its own after `\u{1F4BB} \u276F`. The summary leads with what the grant unblocks, the tag, branch, token or command, never only the kind of prompt, so two grants of one kind stay two items in the {{roll-up.glyph}} roll-up. Each item says where to grant it, the prompt's window or the approval message to send, how long the prompt stays open and what granting it frees, and lists what it covers, such as the pull requests or commands one grant covers, as a nested list under its summary; the prompt's state goes in the item's body, never its summary, which the roll-up reprints. The {{lists.authorizations.header}} list leads the lists that wait on the user, since what it holds blocks running agents.\n\n**A pull request is a {{lists.review.header}} item.** A pull request the user is asked to review or merge goes in {{list.review}}, by its canonical label, its number and title, linked, with what to check in it. When this turn's work opened it, the {{list.done}} item for that work names the change in a line and points at the {{lists.review.header}} item by reference, `see {{lists.review.header}}.1`, without repeating the pull request's label, link or contents, so the pull request is described once.\n\n**A turn reply is a delta.** Each {{list.done}} item states the state reached, such as \"`retries`: 3 \u2192 5 in `config.toml`\", never the actions taken to reach it.\n\n**An item that reports on many things is grouped and layered.** The result of a run over many repositories, files or checks opens on its totals and names what needs action, then gives the groups with their counts, the groups that need the user first. A group that needs nothing from the user is its count and the file or command that lists it, and its items are printed when the user asks for them.",
   "overview": `A project may extend the format with a skill of its own, or with its preferences file for this skill, adding its own backlog path or link rules; the project's wins where the two differ.
 
 Every response in a turn shows what is done, what is still open and what the user must do: a one-line progress update between tool calls, and in the final response up to {{count.lists}} lists in a fixed order, then what earlier turns left open, under {{roll-up.glyph}} in full or as one count line. Follow these rules for every response in the turn, each progress update and the final response.
@@ -7161,6 +7176,7 @@ var leaves2 = (value, path) => typeof value === "string" || typeof value === "nu
 ) : [];
 var listValues = (spec) => Object.entries(spec.lists).flatMap(([key, list]) => {
   const width = headerWidth(list.glyph, list.header);
+  const words = Object.keys(list["settling-words"]);
   return [
     [`header.${key}`, written(list.glyph, list.header)],
     [`list.${key}`, `${list.glyph} ${list.header}`],
@@ -7168,7 +7184,8 @@ var listValues = (spec) => Object.entries(spec.lists).flatMap(([key, list]) => {
     [
       `rule.${key}`,
       (spec.characters["header-underline"] ?? "").repeat(width)
-    ]
+    ],
+    ...words.length === 0 ? [] : [[`words.${key}`, inWords(words.map((word) => `\`${word}\``), "or")]]
   ];
 });
 var listsValues = (spec) => {
@@ -7683,14 +7700,14 @@ var mergeRepeats = (turns) => {
   return turns.filter((opened2, n) => first.get(opened2.promptId) === n).map(({ promptId, turn }) => {
     const repeats = turns.filter((other) => other.promptId === promptId);
     const last = repeats.findLast((other) => other.answered !== void 0);
-    const answered2 = last?.answered;
+    const answered = last?.answered;
     return {
       ...unanswered(turn),
       ...last?.turn.answeredAt === void 0 ? {} : { answeredAt: last.turn.answeredAt },
       replies: repeats.flatMap((other) => other.turn.replies),
       decide: repeats.flatMap((other) => other.turn.decide),
       messages: repeats.flatMap((other) => other.turn.messages),
-      ...answered2 === true ? {} : { unanswered: true }
+      ...answered === true ? {} : { unanswered: true }
     };
   });
 };
@@ -7767,12 +7784,69 @@ var answersOfLine = (line) => {
   );
 };
 
+// src/items/said.ts
+var saidOf = (text, words) => {
+  const said2 = text.trim();
+  const colon = said2.indexOf(":");
+  const head = (colon < 0 ? said2 : said2.slice(0, colon)).trim().toLowerCase();
+  const word = words.find((each) => each === head);
+  return word === void 0 ? { word: "", note: said2 } : { word, note: colon < 0 ? "" : said2.slice(colon + 1).trim() };
+};
+
+// src/items/word-answers.ts
+var REFERENCE = new RegExp(
+  String.raw`(?<![\w.])(?:(${TURN_ID_PREFIX})\.)?(${PANE_LISTS.map((list) => escaped(list.header)).join("|")})\.(\d+)(?:\.(${LETTER}(?:,${LETTER})*)(?!\w))?(:[ \t]*)?`,
+  "g"
+);
+var TRAILING_PARTS = new RegExp(
+  String.raw`(?:\s|${SPEC.reference.separators.map(escaped).join("|")})+$`
+);
+var referencesOfLine = (line) => {
+  const found2 = [...line.matchAll(REFERENCE)];
+  return found2.map((m, n) => {
+    const start = m.index ?? 0;
+    const after = start + m[0].length;
+    const hasColon = m[5] !== void 0;
+    const text = hasColon ? line.slice(after, found2[n + 1]?.index ?? line.length).replace(TRAILING_PARTS, "") : "";
+    return {
+      start,
+      end: after + text.length,
+      turn: m[1] ?? "",
+      list: m[2] ?? DECIDE.header,
+      number: Number(m[3]),
+      dotted: m[4],
+      said: hasColon ? text.trim() : void 0
+    };
+  });
+};
+var wordsOf = (header) => {
+  const list = paneListOf(header);
+  return list === void 0 ? [] : settlingWordsOf(list);
+};
+var wordAnswersOfLine = (line) => asksQuestion(line) ? [] : referencesOfLine(line).flatMap((ref) => {
+  const words = wordsOf(ref.list);
+  return ref.said === void 0 || words.length === 0 ? [] : [{ turn: ref.turn, list: ref.list, number: ref.number, ...saidOf(ref.said, words) }];
+});
+var wordAnsweredIn = (lines) => lines.flatMap(
+  ({ line, at: at2, sent }) => wordAnswersOfLine(line).map((answer2) => ({ ...answer2, at: at2, sent }))
+);
+var latestWord = (answers2, list, id, at2, number) => answers2.findLast(
+  (answer2) => answer2.word !== "" && answer2.list === list && answer2.number === number && (answer2.turn === "" ? answer2.at === at2 : isSameTurn(answer2.turn, id))
+);
+
 // src/transcript/turns.ts
 var isOwn = (owner) => owner === "user" || owner === "this-plugin";
 var DRAFT_HEADER = new RegExp(
   String.raw`^${escaped(PLUGIN)}(?:@[\w.-]+)?:\r?\n`
 );
 var withoutDraftHeader = (text) => text.replace(DRAFT_HEADER, "");
+var textsOf = (turn) => [
+  turn.prompt,
+  ...turn.messages
+];
+var ownLinesOf = (turns) => turns.flatMap(
+  (turn, n) => n === 0 ? [] : textsOf(turn).filter((message) => isOwn(message.owner)).flatMap((message) => withoutDraftHeader(message.text).split("\n")).map((line) => ({ line, at: n - 1, sent: turn.id }))
+);
 var UTF8 = new TextDecoder();
 var NOT_DECODED = { text: "", carry: new Uint8Array() };
 var COMMANDS = Object.fromEntries(
@@ -7868,6 +7942,7 @@ var fenceOpening = (line) => {
   const length = char === void 0 ? 0 : runOf(char, body);
   return char !== void 0 && length >= 3 && !(char === "`" && body.slice(length).includes("`")) ? { char, length } : void 0;
 };
+var isFenceLine = (line) => fenceOpening(line) !== void 0;
 var isFenceClosing = (fence, line) => {
   const body = line.trim();
   return body.length >= fence.length && runOf(fence.char, body) === body.length;
@@ -8022,18 +8097,32 @@ var subjectKey = (summary) => {
   );
   return entry !== void 0 ? `${SUBJECT.entry.label} ${entry}` : branch !== void 0 ? `${SUBJECT.branch.label} ${branch}` : words.length > 0 ? words.slice(0, SUBJECT["words-kept"]).join(" ") : normal(summary);
 };
+var BOLD_MARKS = "****".length;
+var restOfHead = (head) => head.summary === void 0 || head.isAlone ? "" : head.text.slice(head.summary.length + BOLD_MARKS).replace(/^[\s:–—-]+/, "").trim();
+var codeLineOf = (head, line) => {
+  const code = line.slice(Math.min(head.lead.length, line.length - line.trimStart().length)).trimEnd();
+  return code.includes("`") ? code : `\`${code}\``;
+};
+var bodyOf = (head, body) => [
+  restOfHead(head),
+  ...body.flatMap(
+    (under) => under.isCode ? isFenceLine(under.line) || under.line.trim() === "" ? [] : [codeLineOf(head, under.line)] : isFreesLine(under.line) ? [] : [under.line.trim()]
+  )
+].filter((line) => line !== "");
 var listItemOf = (list, isPinned, head, body) => {
   const own = head.text.trim();
   const beneath = body[0]?.line.trim();
   const line = head.isAlone && beneath !== void 0 && !isFreesLine(beneath) ? `${own} ${beneath}` : own;
   const tagged = SUFFIX.exec(line)?.[1];
+  const printed = !isPinned && head.number !== void 0 && Object.keys(SPEC.lists[list]["settling-words"]).length > 0 ? bodyOf(head, body) : [];
   return {
     list,
     number: head.number,
     isPinned,
     line: line.replace(SUFFIX, ""),
     frees: freesOfLine(body.at(-1)?.line ?? "") ?? [],
-    ...tagged === void 0 ? {} : { tagged }
+    ...tagged === void 0 ? {} : { tagged },
+    ...printed.length > 0 ? { body: printed } : {}
   };
 };
 var readBlock = (state, block) => block.kind === "header" ? { ...state, list: keyOfName(block.name) } : block.kind === "roll-up" ? { ...state, list: void 0, isPinned: true } : block.kind === "topic" ? { ...state, list: void 0 } : block.kind === "item" && state.list !== void 0 ? {
@@ -8084,12 +8173,8 @@ var itemsIn = (turns, starts) => withResolvedFrees(
     )
   )
 );
-var textsOf = (turn) => [
-  turn.prompt,
-  ...turn.messages
-];
-var answered = (turns) => turns.flatMap(
-  (turn, n) => n === 0 ? [] : textsOf(turn).filter((message) => isOwn(message.owner)).flatMap((message) => withoutDraftHeader(message.text).split("\n")).flatMap(answersOfLine).map((answer2) => ({ ...answer2, at: n - 1, sent: turn.id }))
+var answeredIn = (lines) => lines.flatMap(
+  ({ line, at: at2, sent }) => answersOfLine(line).map((answer2) => ({ ...answer2, at: at2, sent }))
 );
 var answerFor = (answers2, id, at2, number) => answers2.findLast(
   (answer2) => answer2.number === number && (answer2.turn === "" ? answer2.at === at2 : id !== "" && id.startsWith(answer2.turn))
@@ -8193,15 +8278,31 @@ var SETTLERS = {
     },
     pullRequests: askNothing
   },
+  "settling-word": {
+    settles: (item, { worded }) => worded.has(subjectKey(summaryOf(item.line))),
+    pullRequests: askNothing
+  },
   none: { settles: () => false, pullRequests: askNothing }
 };
 var settlerOf = (item) => SETTLERS[SPEC.lists[item.list]["settled-by"]];
 var settlingIn = (facts, merged) => ({
   merged,
   decided: decidedOf(facts.answers, latestDecideItems(facts.turns, facts.start)),
+  worded: wordedIn(facts),
   reports: reportsOf(facts.turns),
   lastOwn: new Map([...facts.latestOwn].map(([key, item]) => [key, item.at]))
 });
+var wordedIn = (facts) => new Set(
+  [...facts.latestOwn.values()].flatMap(
+    (item) => SPEC.lists[item.list]["settled-by"] === "settling-word" && item.number !== void 0 && latestWord(
+      facts.words,
+      SPEC.lists[item.list].header,
+      facts.turns[item.at]?.id ?? "",
+      item.at,
+      item.number
+    ) !== void 0 ? [subjectKey(summaryOf(item.line))] : []
+  )
+);
 var reportsOf = (turns) => turns.flatMap(
   (turn, n) => textsOf(turn).flatMap(
     ({ owner, text, reportNames: reportNames2 }) => isOwn(owner) || reportNames2 === void 0 ? [] : [{ n, names: reportNames2, report: text }]
@@ -8227,10 +8328,12 @@ var factsOf2 = (turns) => {
   const starts = reassessStarts(turns);
   const start = starts.at(-1) ?? 0;
   const items = itemsIn(turns, starts);
+  const lines = ownLinesOf(turns);
   return {
     turns,
     start,
-    answers: answered(turns),
+    answers: answeredIn(lines),
+    words: wordAnsweredIn(lines),
     items,
     latestOwn: new Map(
       items.filter((item) => !item.isPinned && item.at >= start).map((item) => [keyOf2(item), item])
@@ -8267,10 +8370,6 @@ var rollUpDue = (turns, now) => {
 };
 
 // src/items/answers.ts
-var ANSWER = new RegExp(
-  String.raw`(?<![\w.])(${TURN_ID_PREFIX})\.${escaped(DECIDE.header)}\.(\d+)(?:\.(${LETTER}(?:,${LETTER})*)(?!\w))?(?:: ([^\n]*))?`,
-  "g"
-);
 var LETTERS_ONLY = new RegExp(
   String.raw`^(${LETTER}(?:\s*,\s*${LETTER})*)\s*$`
 );
@@ -8292,15 +8391,15 @@ var subscriptOf = (index) => [...String(index)].map((c) => SUBSCRIPT[c] ?? c).jo
 // src/items/roll-up.ts
 var ROLL_UP4 = SPEC["roll-up"];
 var BOLD3 = /\*\*.+?\*\*/;
-var bodyOf = (line) => {
+var bodyOf2 = (line) => {
   const bold = BOLD3.exec(line);
   return bold === null ? line : line.slice(bold.index + bold[0].length);
 };
 var normal2 = (text) => text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
 var raisedAt = (turns, occurrences) => {
   const own = occurrences.filter((item) => !item.isPinned);
-  const latest = normal2(bodyOf(own.at(-1)?.line ?? ""));
-  const runStart = own.findLastIndex((item) => normal2(bodyOf(item.line)) !== latest) + 1;
+  const latest = normal2(bodyOf2(own.at(-1)?.line ?? ""));
+  const runStart = own.findLastIndex((item) => normal2(bodyOf2(item.line)) !== latest) + 1;
   const tagged = occurrences.map((item) => turns.findIndex((turn) => turn.id === item.tagged)).find((at2) => at2 >= 0);
   return own[runStart]?.at ?? tagged ?? occurrences[0]?.at ?? 0;
 };
@@ -9129,7 +9228,7 @@ var textAt = (path) => {
 };
 var defaultsFile = () => {
   const path = new URL(`../${DEFAULTS_FILE}`, import.meta.url);
-  const read = true ? { text: "# The defaults of the coding-agent-kanban-turns plugin: every setting it\n# reads, with the value it uses when no file of yours sets it.\n#\n# The plugin reads this file from its own folder each session, and nothing\n# else holds these values. To change a setting, write only that key in\n# your own file, $XDG_CONFIG_HOME/coding-agent-kanban-turns/config.yaml\n# (~/.config/coding-agent-kanban-turns/config.yaml when XDG_CONFIG_HOME\n# is unset), such as\n#\n#   keys:\n#     dismiss: x\n#\n# Both files are YAML 1.2, read under its core schema: `on` and `yes` are\n# strings, a key written twice refuses the file, and quoting a value keeps\n# it a string. Sections merge key by key, so every key you leave out comes\n# from here and follows this file as it changes. A key that's no setting\n# here, or a value of the wrong type, refuses your whole file: the plugin\n# uses these defaults and says why in the pane and in /answers-config,\n# which lists every setting in effect and the file it came from. An\n# `outstanding` section, or a `pane.hints`, `colors.title`,\n# `colors.expand` or `colors.close-x` setting, which the plugin no longer\n# reads, is left out with a warning instead, and the rest of your file is\n# used. Your own file is `config.yaml`; no other name is read.\n\n# The count line above the prompt, such as `\u{1F4CC} Outstanding: \u{1F6A7} 2 \xB7 \u{1F9E0} 3`,\n# which the plugin works out from this session's transcript.\ncounts:\n  # How many of the latest turns it reads the open items from, as the\n  # kanban skill's `outstanding.py render --counts` does; never further\n  # back than the latest `reassess` turn, whose lists replace the rest.\n  # 0 or less reads every turn since that `reassess` turn, or since the\n  # session began when there is none.\n  turns: 20\n  # How long the one `gh api graphql` call that asks which of the Review\n  # items' pull requests merged may take, in milliseconds. A `gh` that\n  # takes longer, fails or is missing settles no Review item.\n  gh-timeout-ms: 20000\n\n# The pane's keys, pressed while the pane holds the keyboard (as it\n# opens from /answers or the line above the prompt, or after a click).\n# Each is one lowercase letter or one digit, the only keys the engine\n# takes, drawn before its button, such as `s: \u{1F4E4} Submit`, and listed in\n# the panel `? Keys` opens. Options take no key of their own.\nkeys:\n  # \u2716 Close: close the pane.\n  dismiss: q\n  # \u2193 Next: move the focus ring to the next item, or header.\n  next: j\n  # \u2191 Previous: move the focus ring to the item before.\n  previous: k\n  # \u{1F4E4} Submit: send the draft.\n  submit: s\n  # \u{1F504} Reassess: add the `reassess` line to the draft, or take it out.\n  reassess: r\n  # ? Keys: open the panel under the pane's header that lists every\n  # key and what it does, or close it. `?` itself can't be one: the\n  # engine takes only a lowercase letter or a digit.\n  help: h\n\n# The pane itself.\npane:\n  # Whether \u{1F4E4} Submit closes the pane once, counting the answers it\n  # sends, no item is left open. A Submit the engine refuses, or that\n  # sends nothing, leaves it open; so does false.\n  close-when-all-submitted: true\n\n# The \u270F\uFE0F notes field under each open item in the pane.\nnotes:\n  # How many lines tall the field is, so a long note wraps inside it\n  # and stays in sight; a longer one scrolls within. Less than 1 is\n  # drawn as 1.\n  rows: 3\n\n# The marks the pane draws, each a short string, such as an emoji or one\n# character, drawn as it is on one line: an empty one, or one holding a\n# control character or a line break, refuses your file. Quote a mark YAML\n# would read as something else, such as \">\" or \"-\". An option's mark is\n# padded to the widest of `chosen`, `sent` and its item's glyphs, and a\n# toggle's, each branch's header and each turn's, to the wider of\n# `collapsed` and `expanded`, so a pick or a toggle moves no text.\nmarks:\n  # A Done item's options that the answer which made it Done picked,\n  # drawn at full strength in the dimmed item, with no underline, beside\n  # its letter: the draft's own picks keep `chosen` underlined. The same\n  # as `chosen`, so an answered option reads as a picked one; \u2611\uFE0F, which\n  # common terminals draw grey, sets it apart.\n  sent: \u2705\n  # An option the draft picks, in place of its glyph beside its letter,\n  # the option's line underlined; also the glyph of \u{1F504} Reassess while the\n  # draft ends on the `reassess` line.\n  chosen: \u2705\n  # The label of the notes field under each open item in the pane, the\n  # glyph of the \u270F\uFE0F Add a note button under a reply, and what opens the\n  # count of picks above the prompt, `\u270F\uFE0F 2 picked`.\n  note: \u270F\uFE0F\n  # The bar that opens a Done item's line under the Done branch, drawn\n  # in colors.settled.\n  settled-bar: \u258C\n  # What opens a toggle while what it folds is collapsed: a branch's\n  # header, such as `\u25B8 Done (2)`, or a turn's, such as\n  # `\u25B8 \u2500\u2500 9efb08a1 \u208B\u2082 (2) \u2500\u2500`.\n  collapsed: \u25B8\n  # What opens a toggle while what it folds is expanded, such as\n  # `\u25BE Open (3)`.\n  expanded: \u25BE\n  # The glyph each of the pane's buttons is drawn with, before its label,\n  # and beside its key in the panel ? Keys opens; a keyed button's by the\n  # name of its key in `keys`.\n  buttons:\n    # \u2716 Close.\n    dismiss: \u2716\n    # \u2193 Next.\n    next: \u2193\n    # \u2191 Previous.\n    previous: \u2191\n    # \u{1F4E4} Submit.\n    submit: \u{1F4E4}\n    # \u{1F504} Reassess, while the draft doesn't end on the `reassess` line.\n    reassess: \u{1F504}\n    # ? Keys. Quoted, since YAML reads a bare `?` as the start of a key.\n    help: \"?\"\n    # \u{1F5A5}\uFE0F Kanban, above the prompt and atop the pane, which opens the pane.\n    kanban: \u{1F5A5}\uFE0F\n\n# The colours each part is drawn in, by the name of a colour in Claude\n# Code's theme, so each keeps its contrast in light and dark themes.\ncolors:\n  # The rounded border round an item.\n  border: promptBorder\n  # The label that opens an item's title line, `\u{1F9E0} Decide.1`, drawn bold\n  # on title-background; the summary after it is plain text.\n  title-label: inverseText\n  # The background of that label, while the item is open; a Done item's\n  # label is dimmed, on no background.\n  title-background: claude\n  # Code spans in a summary, note or option.\n  code: permission\n  # The bar in the column left of an option, lit down the option's\n  # full height while the pointer is over any of its lines.\n  hover: suggestion\n  # The bar in the same column beside each of a Done item's option, \u2795\n  # and \u2796 lines, which stays lit, and marks.settled-bar, which opens a\n  # Done item's line under the Done branch; a Done item lights no\n  # hover bar.\n  settled: ide\n  # marks.buttons.dismiss, the glyph of the \u2716 Close button that closes\n  # the pane.\n  close: error\n  # The word Kanban in \u{1F5A5}\uFE0F Kanban, above the prompt and atop the pane.\n  kanban: claude\n\n# The draft of the full \u{1F4CC} roll-up the `kanban_outstanding` tool gives.\nroll-up:\n  # How long an item's summary may be, a whole number of Unicode code\n  # points, a Markdown link counting its label alone, as the kanban\n  # skill's `outstanding.py --width` counts them; a longer one is cut,\n  # ending on `\u2026`, a link kept whole. 0 or less keeps summaries whole.\n  summary-width: 100\n\n# The reply lint, which checks a final response's layout: its separator\n# lines, its summary lines, its Decide options, its underlines and where\n# its tables go. The `kanban_lint` tool lints a draft whatever this says.\nlint:\n  # Whether the plugin lints each final response as its turn ends: what\n  # it finds shows beneath the response, and reaches the agent with the\n  # next prompt in the same conversation. false lints only the drafts the\n  # agent hands `kanban_lint`.\n  turn-end: true\n" } : textAt(path);
+  const read = true ? { text: "# The defaults of the coding-agent-kanban-turns plugin: every setting it\n# reads, with the value it uses when no file of yours sets it.\n#\n# The plugin reads this file from its own folder each session, and nothing\n# else holds these values. To change a setting, write only that key in\n# your own file, $XDG_CONFIG_HOME/coding-agent-kanban-turns/config.yaml\n# (~/.config/coding-agent-kanban-turns/config.yaml when XDG_CONFIG_HOME\n# is unset), such as\n#\n#   keys:\n#     dismiss: x\n#\n# Both files are YAML 1.2, read under its core schema: `on` and `yes` are\n# strings, a key written twice refuses the file, and quoting a value keeps\n# it a string. Sections merge key by key, so every key you leave out comes\n# from here and follows this file as it changes. A key that's no setting\n# here, or a value of the wrong type, refuses your whole file: the plugin\n# uses these defaults and says why in the pane and in /answers-config,\n# which lists every setting in effect and the file it came from. An\n# `outstanding` section, or a `pane.hints`, `colors.title`,\n# `colors.expand` or `colors.close-x` setting, which the plugin no longer\n# reads, is left out with a warning instead, and the rest of your file is\n# used. Your own file is `config.yaml`; no other name is read.\n\n# The count line above the prompt, such as `\u{1F4CC} Outstanding: \u{1F6A7} 2 \xB7 \u{1F9E0} 3`,\n# which the plugin works out from this session's transcript.\ncounts:\n  # How many of the latest turns it reads the open items from, as the\n  # kanban skill's `outstanding.py render --counts` does; never further\n  # back than the latest `reassess` turn, whose lists replace the rest.\n  # 0 or less reads every turn since that `reassess` turn, or since the\n  # session began when there is none.\n  turns: 20\n  # How long the one `gh api graphql` call that asks which of the Review\n  # items' pull requests merged may take, in milliseconds. A `gh` that\n  # takes longer, fails or is missing settles no Review item.\n  gh-timeout-ms: 20000\n\n# The pane's keys, pressed while the pane holds the keyboard (as it\n# opens from /answers or the line above the prompt, or after a click).\n# Each is one lowercase letter or one digit, the only keys the engine\n# takes, drawn before its button, such as `s: \u{1F4E4} Submit`, and listed in\n# the panel `? Keys` opens. Options take no key of their own.\nkeys:\n  # \u2716 Close: close the pane.\n  dismiss: q\n  # \u2193 Next: move the focus ring to the next item, or header.\n  next: j\n  # \u2191 Previous: move the focus ring to the item before.\n  previous: k\n  # \u{1F4E4} Submit: send the draft.\n  submit: s\n  # \u{1F504} Reassess: add the `reassess` line to the draft, or take it out.\n  reassess: r\n  # ? Keys: open the panel under the pane's header that lists every\n  # key and what it does, or close it. `?` itself can't be one: the\n  # engine takes only a lowercase letter or a digit.\n  help: h\n\n# The pane itself.\npane:\n  # Whether \u{1F4E4} Submit closes the pane once, counting the answers it\n  # sends, no item is left open. A Submit the engine refuses, or that\n  # sends nothing, leaves it open; so does false.\n  close-when-all-submitted: true\n\n# The \u270F\uFE0F notes field under each open item in the pane.\nnotes:\n  # How many lines tall the field is, so a long note wraps inside it\n  # and stays in sight; a longer one scrolls within. Less than 1 is\n  # drawn as 1.\n  rows: 3\n\n# The buttons an item's box carries, by its list, each named by the word\n# it writes after the item's reference, `9efb08a1.Todo.3: done`, which\n# settles the item; a second press takes the word out again. The words\n# are the protocol's, so only what each button says is a setting.\nactions:\n  # A \u{1F449} Todo item's buttons.\n  todo:\n    # The item done.\n    done:\n      # The button's text.\n      label: Done\n      # What the item's Done row says once the word settled it, such as\n      # `Done: done`.\n      settled: done\n    # The item not to be done.\n    skip:\n      # The button's text.\n      label: Skip\n      # What the item's Done row says, such as `Done: skipped`.\n      settled: skipped\n\n# The marks the pane draws, each a short string, such as an emoji or one\n# character, drawn as it is on one line: an empty one, or one holding a\n# control character or a line break, refuses your file. Quote a mark YAML\n# would read as something else, such as \">\" or \"-\". An option's mark is\n# padded to the widest of `chosen`, `sent` and its item's glyphs, and a\n# toggle's, each branch's header and each turn's, to the wider of\n# `collapsed` and `expanded`, so a pick or a toggle moves no text.\nmarks:\n  # A Done item's options that the answer which made it Done picked,\n  # drawn at full strength in the dimmed item, with no underline, beside\n  # its letter: the draft's own picks keep `chosen` underlined. The same\n  # as `chosen`, so an answered option reads as a picked one; \u2611\uFE0F, which\n  # common terminals draw grey, sets it apart.\n  sent: \u2705\n  # An option the draft picks, in place of its glyph beside its letter,\n  # the option's line underlined; also the glyph of \u{1F504} Reassess while the\n  # draft ends on the `reassess` line.\n  chosen: \u2705\n  # The label of the notes field under each open item in the pane, the\n  # glyph of the \u270F\uFE0F Add a note button under a reply, and what opens the\n  # count of picks above the prompt, `\u270F\uFE0F 2 picked`.\n  note: \u270F\uFE0F\n  # The bar that opens a Done item's line under the Done branch, drawn\n  # in colors.settled.\n  settled-bar: \u258C\n  # What opens a toggle while what it folds is collapsed: a branch's\n  # header, such as `\u25B8 Done (2)`, or a turn's, such as\n  # `\u25B8 \u2500\u2500 9efb08a1 \u208B\u2082 (2) \u2500\u2500`.\n  collapsed: \u25B8\n  # What opens a toggle while what it folds is expanded, such as\n  # `\u25BE Open (3)`.\n  expanded: \u25BE\n  # The glyph each of the pane's buttons is drawn with, before its label,\n  # and beside its key in the panel ? Keys opens; a keyed button's by the\n  # name of its key in `keys`.\n  buttons:\n    # \u2716 Close.\n    dismiss: \u2716\n    # \u2193 Next.\n    next: \u2193\n    # \u2191 Previous.\n    previous: \u2191\n    # \u{1F4E4} Submit.\n    submit: \u{1F4E4}\n    # \u{1F504} Reassess, while the draft doesn't end on the `reassess` line.\n    reassess: \u{1F504}\n    # ? Keys. Quoted, since YAML reads a bare `?` as the start of a key.\n    help: \"?\"\n    # \u{1F5A5}\uFE0F Kanban, above the prompt and atop the pane, which opens the pane.\n    kanban: \u{1F5A5}\uFE0F\n\n# The colours each part is drawn in, by the name of a colour in Claude\n# Code's theme, so each keeps its contrast in light and dark themes.\ncolors:\n  # The rounded border round an item.\n  border: promptBorder\n  # The label that opens an item's title line, `\u{1F9E0} Decide.1`, drawn bold\n  # on title-background; the summary after it is plain text.\n  title-label: inverseText\n  # The background of that label, while the item is open; a Done item's\n  # label is dimmed, on no background.\n  title-background: claude\n  # Code spans in a summary, note or option.\n  code: permission\n  # The bar in the column left of an option, lit down the option's\n  # full height while the pointer is over any of its lines.\n  hover: suggestion\n  # The bar in the same column beside each of a Done item's option, \u2795\n  # and \u2796 lines, which stays lit, and marks.settled-bar, which opens a\n  # Done item's line under the Done branch; a Done item lights no\n  # hover bar.\n  settled: ide\n  # marks.buttons.dismiss, the glyph of the \u2716 Close button that closes\n  # the pane.\n  close: error\n  # The word Kanban in \u{1F5A5}\uFE0F Kanban, above the prompt and atop the pane.\n  kanban: claude\n\n# The draft of the full \u{1F4CC} roll-up the `kanban_outstanding` tool gives.\nroll-up:\n  # How long an item's summary may be, a whole number of Unicode code\n  # points, a Markdown link counting its label alone, as the kanban\n  # skill's `outstanding.py --width` counts them; a longer one is cut,\n  # ending on `\u2026`, a link kept whole. 0 or less keeps summaries whole.\n  summary-width: 100\n\n# The reply lint, which checks a final response's layout: its separator\n# lines, its summary lines, its Decide options, its underlines and where\n# its tables go. The `kanban_lint` tool lints a draft whatever this says.\nlint:\n  # Whether the plugin lints each final response as its turn ends: what\n  # it finds shows beneath the response, and reaches the agent with the\n  # next prompt in the same conversation. false lints only the drafts the\n  # agent hands `kanban_lint`.\n  turn-end: true\n" } : textAt(path);
   return { path: DEFAULTS_FILE, text: "text" in read ? read.text : void 0 };
 };
 var settings = () => {

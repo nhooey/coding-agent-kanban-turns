@@ -38,7 +38,7 @@ import {
   supersedesLinks,
 } from "../../../src/pane/view.ts";
 import type { SettledTexts } from "../../../src/pane/view.ts";
-import type { DecideItem, Raised, Settlement } from "../../../types/index.d.ts";
+import type { DecideItem, Raised, Settlement, TodoItem } from "../../../types/index.d.ts";
 import { SETTINGS } from "../../fixtures/settings.ts";
 import { openItems } from "../../fixtures/raised.ts";
 
@@ -82,6 +82,23 @@ describe("/answers's reply", () => {
       answersText({ ...raised, items: [{ item: radio, state: SETTLED }, { item: binary, state: OPEN }] }),
     ).toBe(
       "Decide pane opened: 1 open Decide items.",
+    );
+  });
+
+  test("counts every open item, a Todo item's too, list by list in the pane's order, a list with none left out", () => {
+    const todo: TodoItem = {
+      turn: "9efb08a1",
+      list: "Todo",
+      number: 1,
+      summary: "Rotate the deploy token",
+      ref: "9efb08a1.Todo.1",
+    };
+
+    expect(answersText({ ...emptyRaised, items: openItems([todo]) })).toBe(
+      "Decide pane opened: 1 open Todo items.",
+    );
+    expect(answersText({ ...raised, items: openItems([radio, binary, todo]) })).toBe(
+      "Decide pane opened: 1 open Todo items, 2 open Decide items.",
     );
   });
 
@@ -204,6 +221,8 @@ describe("what made an item Done", () => {
       answered: () => "",
       sent: () => "",
       reassessed: () => "",
+      worded: () => "",
+      "sent-word": () => "",
     };
     // @ts-expect-error `superseded` has no text.
     const missing: SettledTexts = lacking;
@@ -212,15 +231,32 @@ describe("what made an item Done", () => {
       sent: true,
       reassessed: true,
       superseded: true,
+      worded: true,
+      "sent-word": true,
     };
     const hows = Object.keys(every) as readonly Settlement["how"][];
 
     expect(missing).toBe(lacking);
     expect(
       hows.map((how) =>
-        settledText({ ref: "r", how, turn: "4a2206b0", letters: [], note: "", by: "5b4b0642.Decide.1" } as Settlement),
+        settledText({
+          ref: "r",
+          how,
+          turn: "4a2206b0",
+          letters: [],
+          word: "done",
+          note: "",
+          by: "5b4b0642.Decide.1",
+        } as Settlement),
       ),
-    ).toEqual(["Answered in 4a2206b0: ", "Sent: ", "Done: reassessed", "Superseded by 5b4b0642.Decide.1"]);
+    ).toEqual([
+      "Answered in 4a2206b0: ",
+      "Sent: ",
+      "Done: reassessed",
+      "Superseded by 5b4b0642.Decide.1",
+      "Done: done",
+      "Sent: done",
+    ]);
   });
 });
 

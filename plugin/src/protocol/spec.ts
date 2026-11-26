@@ -72,8 +72,11 @@ export const SPEC = {
         "To do"
       ],
       "rolls-up": true,
-      "settled-by": "none",
-      "settling-words": {}
+      "settled-by": "settling-word",
+      "settling-words": {
+        "done": "settles it, the person having done it",
+        "skip": "settles it, the person not doing it"
+      }
     },
     "decide": {
       "header": "Decide",
@@ -155,6 +158,11 @@ export const SPEC = {
     "turn-after": [
       "of",
       "from"
+    ],
+    "separators": [
+      ",",
+      ";",
+      "/"
     ]
   },
   "frees": {

@@ -18,6 +18,9 @@ export const SUBJECT_WORD = `${classOf(SPEC.subject.alphabet)}+`;
 /** The Decide list, whose items the plugin draws. */
 export const DECIDE = SPEC.lists.decide;
 
+/** The Todo list, whose items the pane draws beside Decide's, each settled by a word. */
+export const TODO = SPEC.lists.todo;
+
 /** The Done list, whose name the pane gives the items settled. */
 export const DONE = SPEC.lists.done;
 
@@ -39,9 +42,33 @@ export const SECTION_NAMES: readonly string[] =
 /** The Decide list's names, the first its own. */
 export const DECISIONS: readonly string[] = namesOf(DECIDE);
 
-/** A Decide item's label, its list's glyph and its reference without the turn: `🧠 Decide.2`. */
-export const itemLabel = (number: number): string =>
-  `${DECIDE.glyph} ${DECIDE.header}.${number}`;
+/** A list as an item's label and reference name it: its glyph and its header. */
+export type ListName = Readonly<{ glyph: string; header: string }>;
+
+/** An item's label, its list's glyph and its reference without the turn: `🧠 Decide.2`, or, of `list`, `👉 Todo.3`. */
+export const itemLabel = (number: number, list: ListName = DECIDE): string =>
+  `${list.glyph} ${list.header}.${number}`;
+
+type List = (typeof SPEC.lists)[keyof typeof SPEC.lists];
+
+/** The lists whose items the pane draws, by their names in code. */
+const DRAWN: readonly (keyof typeof SPEC.lists)[] = ["todo", "decide"];
+
+/** The lists whose items the pane draws, in the spec's order: what a turn's group in the pane orders its items by. */
+export const PANE_LISTS: readonly List[] = (
+  Object.keys(SPEC.lists) as readonly (keyof typeof SPEC.lists)[]
+)
+  .filter((key) => DRAWN.includes(key))
+  .map((key) => SPEC.lists[key]);
+
+/** The list the pane draws whose header is `header`, as an item's `list` names it; undefined for any other. */
+export const paneListOf = (header: string): List | undefined =>
+  PANE_LISTS.find((list) => list.header === header);
+
+/** The words that, after an item's reference, settle an item of `list`, in the spec's order; none for a list without them. */
+export const settlingWordsOf = (
+  list: Readonly<{ "settling-words": Readonly<Record<string, string>> }>,
+): readonly string[] => Object.keys(list["settling-words"]);
 
 const TURN = SPEC.reference["turn-id"];
 

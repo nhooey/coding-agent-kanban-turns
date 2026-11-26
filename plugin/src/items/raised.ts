@@ -1,16 +1,17 @@
-// The Decide items raised in this session, oldest first: every item a
-// `kanban_options` call drew or a refresh found open, kept once raised,
-// each holding where it stands, and which the pane has been opened over.
-// Each function takes the items and returns new ones, or a part of them;
-// none changes what it's given.
+// The items raised in this session, oldest first, Decide's and Todo's:
+// every item a `kanban_options` call drew or a refresh found open, kept
+// once raised, each holding where it stands, and which the pane has been
+// opened over. Each function takes the items and returns new ones, or a
+// part of them; none changes what it's given.
 
-import { choiceTo } from "./answers.ts";
-import { refOf } from "./items.ts";
+import { choiceTo, settles } from "./answers.ts";
+import { isDecide, refOf } from "./items.ts";
 import type {
   DecideItem,
   Held,
   HowSettled,
   ItemState,
+  ListedItem,
   Raised,
   RaisedItem,
   Settlement,
@@ -31,9 +32,13 @@ export const emptyRaised: Raised = {
 export const forSession = (raised: Raised, session: string): Raised =>
   raised.session === session ? raised : { ...emptyRaised, session };
 
-/** The raised Decide items, oldest first, settled or open. */
-export const decideItemsOf = (raised: Raised): readonly DecideItem[] =>
+/** The raised items of every list, oldest first, settled or open. */
+export const listedItemsOf = (raised: Raised): readonly ListedItem[] =>
   raised.items.map((each) => each.item);
+
+/** The raised Decide items, oldest first, settled or open: those a reply draws under its text. */
+export const decideItemsOf = (raised: Raised): readonly DecideItem[] =>
+  listedItemsOf(raised).filter(isDecide);
 
 /** Each of `all` by its ref, the last one for a ref given twice. */
 const lastByRef = <T>(
@@ -53,7 +58,7 @@ const settledBy = (settled: Settlement | undefined): ItemState =>
 /** A raised item holding `item`'s newer content, where `latest` has one for its ref, standing where it stood. */
 const withContent = (
   each: RaisedItem,
-  latest: ReadonlyMap<string, DecideItem>,
+  latest: ReadonlyMap<string, ListedItem>,
 ): RaisedItem => {
   const item = latest.get(refOf(each.item));
 
@@ -63,10 +68,10 @@ const withContent = (
 /** The items once `items` are merged in: one raised before keeps its place and where it stands, and takes the newer content; a new one goes at the end, open. */
 export const withItems = (
   raised: Raised,
-  items: readonly DecideItem[],
+  items: readonly ListedItem[],
 ): Raised => {
   const latest = lastByRef(items, refOf);
-  const known = new Set(decideItemsOf(raised).map(refOf));
+  const known = new Set(listedItemsOf(raised).map(refOf));
 
   return {
     ...raised,
@@ -87,7 +92,7 @@ export const withItems = (
  */
 export const refreshed = (
   raised: Raised,
-  open: readonly DecideItem[],
+  open: readonly ListedItem[],
   settlements: readonly Settlement[],
   settingsProblems: readonly string[],
   turns: readonly string[] = [],
@@ -110,13 +115,13 @@ export const refreshed = (
 };
 
 /** Where the raised item with the item's ref stands; undefined when none is raised. */
-const stateOf = (raised: Raised, item: DecideItem): ItemState | undefined =>
+const stateOf = (raised: Raised, item: ListedItem): ItemState | undefined =>
   raised.items.find((each) => refOf(each.item) === refOf(item))?.state;
 
 /** How the item settled, as the last refresh found or Submit sent, naming the item by its ref; undefined when it's open, or settled in a way the transcript doesn't say. */
 export const settlementOf = (
   raised: Raised,
-  item: DecideItem,
+  item: ListedItem,
 ): Settlement | undefined => {
   const state = stateOf(raised, item);
 
@@ -128,7 +133,7 @@ export const settlementOf = (
 /** The refs of the raised items the item supersedes, oldest first: those settled as superseded by it, the inverse of each one's `by`; never its own, which an earlier raising of it settles by. */
 export const supersedesOf = (
   raised: Raised,
-  item: DecideItem,
+  item: ListedItem,
 ): readonly string[] =>
   raised.items.flatMap((each) =>
     refOf(each.item) !== refOf(item) &&
@@ -153,47 +158,52 @@ export const problemsOf = (raised: Raised): string =>
     .join("; ");
 
 /** Whether the last refresh found the item no longer open, or Submit sent an answer to it. */
-export const isSettled = (raised: Raised, item: DecideItem): boolean =>
+export const isSettled = (raised: Raised, item: ListedItem): boolean =>
   stateOf(raised, item)?.tag === "settled";
 
-/** The raised items not settled, oldest first. */
-export const stillOpen = (raised: Raised): readonly DecideItem[] =>
+/** The raised items not settled, of every list, oldest first. */
+export const stillOpen = (raised: Raised): readonly ListedItem[] =>
   raised.items
     .filter((each) => each.state.tag === "open")
     .map((each) => each.item);
 
-/** The open items raised since the last look: what opens the pane by itself. */
+/** The open Decide items raised since the last look: what opens the pane by itself; a new Todo item doesn't. */
 export const unseen = (raised: Raised): readonly DecideItem[] =>
-  stillOpen(raised).filter((item) => !raised.seenRefs.includes(refOf(item)));
+  stillOpen(raised)
+    .filter(isDecide)
+    .filter((item) => !raised.seenRefs.includes(refOf(item)));
 
 /** The items with every one of them looked at. */
 export const seen = (raised: Raised): Raised => ({
   ...raised,
-  seenRefs: decideItemsOf(raised).map(refOf),
+  seenRefs: listedItemsOf(raised).map(refOf),
 });
+
+/** What Submit sends of the draft's answer to `item`: a Decide item's letters and note, another list's settling word and note; none for an answer that settles nothing, a note alone to a Todo item. */
+const sentFor = (
+  item: ListedItem,
+  draft: string,
+): readonly Settlement[] => {
+  const answer = choiceTo(draft, item);
+  const ref = refOf(item);
+
+  return answer === undefined || !settles(draft, item)
+    ? []
+    : isDecide(item)
+      ? [{ ref, how: "sent", letters: answer.letters, note: answer.note }]
+      : [{ ref, how: "sent-word", word: answer.word, note: answer.note }];
+};
 
 /**
  * What the pane's Submit sends for the items: one `sent` settlement for
  * each raised item the draft answers, open or answered again once Done,
- * with its letters and note; none for an answer whose line asks a
- * question, which leaves its item where it stands, since the turn's end
- * reads it as picking nothing.
+ * with its letters and note, and one `sent-word` for each the draft gives
+ * a settling word, with the word and note; none for an answer whose line
+ * asks a question, which leaves its item where it stands, since the turn's
+ * end reads it as picking nothing.
  */
 export const sentOf = (draft: string, raised: Raised): readonly Settlement[] =>
-  decideItemsOf(raised).flatMap((item) => {
-    const answer = choiceTo(draft, item);
-
-    return answer === undefined
-      ? []
-      : [
-          {
-            ref: refOf(item),
-            how: "sent" as const,
-            letters: answer.letters,
-            note: answer.note,
-          },
-        ];
-  });
+  listedItemsOf(raised).flatMap((item) => sentFor(item, draft));
 
 /** A raised item Done by the answer `lastSent` holds for its ref, where it holds one; else as it stood. */
 const doneBySent = (
@@ -278,6 +288,6 @@ export const closesOnSubmit = (
   isEnabled: boolean,
 ): boolean => isEnabled && stillOpen(withSent(raised, sent)).length === 0;
 
-/** How many open items the draft answers with a choice, as choiceTo reads it: a line that only asks about an item counts for none. */
+/** How many open items the draft answers with a choice that settles them, as `settles` reads it: a line that only asks about an item counts for none, and a note alone to a Todo item isn't one. */
 export const answeredCount = (raised: Raised, draft: string): number =>
-  stillOpen(raised).filter((item) => choiceTo(draft, item) !== undefined).length;
+  stillOpen(raised).filter((item) => settles(draft, item)).length;

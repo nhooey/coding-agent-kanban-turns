@@ -59,7 +59,12 @@ export type ProseSpec = Readonly<{
   lists: Readonly<
     Record<
       string,
-      Readonly<{ header: string; glyph: string; "rolls-up": boolean }>
+      Readonly<{
+        header: string;
+        glyph: string;
+        "rolls-up": boolean;
+        "settling-words": Readonly<Record<string, string>>;
+      }>
     >
   >;
   options: Readonly<{ kinds: Kinds }>;
@@ -169,10 +174,11 @@ const leaves = (value: unknown, path: readonly string[]): Entries =>
         )
       : [];
 
-/** Each list's header, underline and width as drawn. */
+/** Each list's header, underline and width as drawn, and, for a list with settling words, those words as code, either one, `` `done` or `skip` ``. */
 const listValues = (spec: ProseSpec): Entries =>
   Object.entries(spec.lists).flatMap(([key, list]): Entries => {
     const width = headerWidth(list.glyph, list.header);
+    const words = Object.keys(list["settling-words"]);
 
     return [
       [`header.${key}`, written(list.glyph, list.header)],
@@ -182,6 +188,9 @@ const listValues = (spec: ProseSpec): Entries =>
         `rule.${key}`,
         (spec.characters["header-underline"] ?? "").repeat(width),
       ],
+      ...(words.length === 0
+        ? []
+        : [[`words.${key}`, inWords(words.map((word) => `\`${word}\``), "or")] as const]),
     ];
   });
 
