@@ -1,45 +1,79 @@
 // A model of the hooks' interpreter around `step`, for the differential
-// tests: the pane's state, the atoms its effects still write, and the
-// calls waiting for an answer, each answered when the test says. Beside it,
-// what tells the tests where `step` was made to differ from the old
-// handlers, so a difference found anywhere else fails them.
+// tests: the pane's state, the atoms its effects still write, the settings
+// files as they stand, and the calls waiting for an answer, each answered
+// when the test says. Beside it, what tells the tests where `step` was made
+// to differ from the old handlers, so a difference found anywhere else
+// fails them.
 //
 // Temporary: deleted with the oracles once the last of the pane's areas has
 // moved into src/pane/pane-state.ts.
 
+import { isDeepStrictEqual } from "node:util";
+
 import { heldNow, problemsOf } from "../../src/items/raised.ts";
-import { shownOf, step, submitShown } from "../../src/pane/pane-state.ts";
-import type { Effect, Event, Found, Outside } from "../../src/pane/pane-state.ts";
-import type { Held, PaneState, Press } from "../../types/index.d.ts";
+import { loadedOf, shownOf, step, submitShown } from "../../src/pane/pane-state.ts";
+import type { Effect, Event, Found } from "../../src/pane/pane-state.ts";
+import type { Held, Loaded, PaneState, Press } from "../../types/index.d.ts";
 import type { Call, OldLoaded } from "../oracle/submit.ts";
+import { usable } from "./settings.ts";
 import { answerTo } from "./submit.ts";
 import type { Reply } from "./submit.ts";
 
+type ReadSettings = Extract<Effect, { kind: "read-settings" }>;
 type ReadTranscript = Extract<Effect, { kind: "read-transcript" }>;
 type AskMerged = Extract<Effect, { kind: "ask-merged" }>;
 
 /**
  * Where `step` was made to differ from the old handlers, once a run has
- * reached it: a refusal or a turn's end taking out answers by press and
- * item while an answer the old handlers took out by ref stays; an
- * overtaken press ending while the pane says something of a later press,
- * or of none, so what it says stays apart; a transcript read answering no
- * newer than the read shown, or asked before the session changed, which
- * is dropped.
+ * reached it:
+ *
+ * - `holds`: a refusal or a turn's end taking out answers by press and
+ *   item while an answer the old handlers took out by ref stays;
+ * - `aside`: an overtaken press ending while the pane says something of a
+ *   later press, or of none, so what it says stays apart;
+ * - `stale`: a transcript read answering no newer than the read shown, or
+ *   asked before the session changed, which is dropped;
+ * - `older`: a settings read answering no newer than the read the settings
+ *   are, with other files than theirs, which is dropped;
+ * - `drawn`: a refresh's transcript read landing while the settings differ
+ *   from what its own settings read found, which it draws with;
+ * - `freed`: a refresh that holds answers, its settings read answered while
+ *   the settings are broken, which reads the transcript to let go of them.
  */
-export type Diverged = Readonly<{ holds: boolean; aside: boolean; stale: boolean }>;
+export type Diverged = Readonly<{
+  holds: boolean;
+  aside: boolean;
+  stale: boolean;
+  older: boolean;
+  drawn: boolean;
+  freed: boolean;
+}>;
 
-export const NOT_DIVERGED: Diverged = { holds: false, aside: false, stale: false };
+export const NOT_DIVERGED: Diverged = {
+  holds: false,
+  aside: false,
+  stale: false,
+  older: false,
+  drawn: false,
+  freed: false,
+};
 
-/** What the hooks hold around `step`: the pane's state, the atoms its effects write, and the calls waiting. */
+/** A call waiting, with what its hook dispatches once it and the calls it leads to have answered. */
+type Waiting<E> = Readonly<{ effect: E; then: readonly Event[] }>;
+
+/** What the hooks hold around `step`: the pane's state, the atoms its effects write, the settings files, and the calls waiting. */
 export type Model = Readonly<{
   state: PaneState;
-  outside: Outside;
-  loaded: OldLoaded;
+  /** What a read of the settings files finds now. */
+  files: Loaded;
+  /** Whether a settings read waits for the test to answer it, with the files as they were when it was asked; else it answers at once. */
+  holdsLoads: boolean;
   draft: string;
   pending: readonly Effect[];
-  /** Each transcript read waiting, with what its hook dispatches once it answers, and the settings it was asked under. */
-  reads: readonly Readonly<{ effect: ReadTranscript; then: readonly Event[]; loaded: OldLoaded }>[];
+  /** Each settings read waiting, with the files it finds. */
+  loads: readonly (Waiting<ReadSettings> & Readonly<{ files: Loaded }>)[];
+  /** Each transcript read waiting, with what its refresh's own settings read found. */
+  reads: readonly (Waiting<ReadTranscript> & Readonly<{ files: Loaded }>)[];
   asks: readonly AskMerged[];
   submitted: readonly string[];
   closes: number;
@@ -51,12 +85,19 @@ export type Model = Readonly<{
   diverged: Diverged;
 }>;
 
-export const model = (state: PaneState, outside: Outside, loaded: OldLoaded): Model => ({
+/** The settings files as the old handlers' fake gives them, the close setting `isClosed`, merged as the plugin merges them. */
+export const filesOf = (old: OldLoaded, isClosed: boolean): Loaded =>
+  old.counts === null
+    ? { settings: null, effective: [], problems: old.problems }
+    : usable(isClosed, old.problems);
+
+export const model = (state: PaneState, files: Loaded, holdsLoads = false): Model => ({
   state,
-  outside,
-  loaded,
+  files,
+  holdsLoads,
   draft: "",
   pending: [],
+  loads: [],
   reads: [],
   asks: [],
   submitted: [],
@@ -77,14 +118,20 @@ const isLandedLate = (before: PaneState, event: Event, after: PaneState): boolea
     (_, n) => event.refresh + 1 + n,
   ).some((newer) => !before.refresh.reads.some((r) => r.refresh === newer));
 
-/** The model once the settings files change to say `loaded`: what a refresh asked for from now reads. */
-export const withLoaded = (m: Model, loaded: OldLoaded): Model => ({ ...m, loaded });
+/** The model once the settings files change to say `files`: what a settings read asked for from now finds. */
+export const withFiles = (m: Model, files: Loaded): Model => ({ ...m, files });
 
 /** The press `number` names in `state`: the one under way, or one overtaken. */
 const pressIn = (state: PaneState, number: number): Press | undefined =>
   state.submit.tag === "pressed" && state.submit.press.press === number
     ? state.submit.press
     : state.overtaken.find((p) => p.press === number);
+
+/** The refresh's read waiting on the transcript that `event` answers, if any. */
+const transcriptReading = (before: PaneState, event: Event) =>
+  event.type === "transcript-read"
+    ? before.refresh.reads.find((r) => r.refresh === event.refresh && r.on.at === "transcript")
+    : undefined;
 
 /**
  * What `event` takes out of the answers held, judged on the state before
@@ -101,7 +148,7 @@ const takenOut = (
   event: Event,
 ): Readonly<{ holds: readonly Held[]; refs: readonly string[] }> | undefined => {
   if (event.type === "transcript-read") {
-    const reading = before.refresh.reads.find((r) => r.refresh === event.refresh);
+    const reading = transcriptReading(before, event);
 
     return reading !== undefined && "turns" in event.found
       ? { holds: reading.releases, refs: reading.releases.map((h) => h.settled.ref) }
@@ -141,15 +188,50 @@ const isReleaseApart = (before: PaneState, event: Event): boolean => {
   );
 };
 
+/** The read whose answer the settings in `state` are, 0 before any. */
+const readIn = (state: PaneState): number =>
+  state.settings.tag === "unread" ? 0 : state.settings.read;
+
 /**
  * Whether `event` is the answer to a transcript read `step` drops: one no
- * newer than the read shown, or one asked before the session changed,
- * which the old handlers drew whatever came since.
+ * newer than the read shown, or asked before the session changed, which
+ * the old handlers drew whatever came since.
  */
 const isStale = (before: PaneState, event: Event): boolean =>
+  transcriptReading(before, event) !== undefined &&
   event.type === "transcript-read" &&
-  before.refresh.reads.some((r) => r.refresh === event.refresh) &&
   event.refresh <= before.refresh.shown;
+
+/**
+ * Whether `event` answers a settings read no newer than the one the
+ * settings in `before` are, with other files than theirs: `step` drops it,
+ * where the old handlers wrote it over them. An older read that found the
+ * same files leaves the two alike.
+ */
+const isOlder = (before: PaneState, event: Event): boolean =>
+  event.type === "settings-read" &&
+  event.read <= before.settings.asked &&
+  event.read <= readIn(before) &&
+  !isDeepStrictEqual(event.loaded, loadedOf(before.settings));
+
+/**
+ * Whether `event` answers the settings read of a refresh that holds
+ * answers, leaving the settings broken: `step` reads the transcript to let
+ * go of them, where the old handlers, their read finding the settings
+ * broken or drawing with the broken ones, read none and kept them held.
+ */
+const isFreed = (event: Event, before: PaneState, after: PaneState): boolean =>
+  event.type === "settings-read" &&
+  after.settings.tag !== "loaded" &&
+  before.refresh.reads.some(
+    (r) => r.on.at === "settings" && r.on.read === event.read && r.releases.length > 0,
+  );
+
+/** What the old handlers drew a read with, of the settings: the count line's, and the files' problems. */
+const drawnWith = (files: Loaded) => ({
+  counts: files.settings?.counts ?? null,
+  problems: files.problems,
+});
 
 /** Where a run stands once `event` has moved `before` to `after`. */
 export const divergedBy = (
@@ -158,6 +240,7 @@ export const divergedBy = (
   event: Event,
   after: PaneState,
 ): Diverged => ({
+  ...d,
   holds: d.holds || isReleaseApart(before, event),
   aside:
     d.aside ||
@@ -166,18 +249,8 @@ export const divergedBy = (
       !after.overtaken.some((p) => p.press === event.press) &&
       (before.submit.tag === "pressed" || before.submit.tag === "refused")),
   stale: d.stale || isStale(before, event),
-});
-
-/** The event a transcript read answers with, as the hooks build it from what it found and the settings' problems as it was asked. */
-const transcriptRead = (
-  refresh: number,
-  found: Found,
-  loaded: OldLoaded,
-): Event => ({
-  type: "transcript-read",
-  refresh,
-  found,
-  warnings: loaded.problems,
+  older: d.older || isOlder(before, event),
+  freed: d.freed || isFreed(event, before, after),
 });
 
 /** `events` dispatched in turn. */
@@ -186,12 +259,12 @@ const dispatchedAll = (m: Model, events: readonly Event[]): Model =>
 
 /**
  * One effect run as the hooks run it: a prompt call, a transcript read or
- * a `gh` call left waiting for its answer, the rest done at once. A read
- * with settings that can't be used answers at once, as the hooks read no
- * transcript then; `then` are the events the hook dispatches once the
- * read has answered.
+ * a `gh` call left waiting for its answer, a settings read too when the
+ * model holds them, the rest done at once. `then` are the events the hook
+ * dispatches once the read has answered; `files` is what the settings read
+ * a transcript read follows found.
  */
-const ran = (m: Model, effect: Effect, then: readonly Event[]): Model => {
+const ran = (m: Model, effect: Effect, then: readonly Event[], files: Loaded): Model => {
   switch (effect.kind) {
     case "read-prompt":
     case "fill-prompt":
@@ -206,13 +279,12 @@ const ran = (m: Model, effect: Effect, then: readonly Event[]): Model => {
       return { ...m, closes: m.closes + 1 };
     case "set-draft":
       return { ...m, draft: effect.text };
+    case "read-settings":
+      return m.holdsLoads
+        ? { ...m, loads: [...m.loads, { effect, then, files: m.files }] }
+        : dispatched(m, { type: "settings-read", read: effect.read, loaded: m.files }, then);
     case "read-transcript":
-      return m.loaded.counts === null
-        ? dispatchedAll(
-            dispatched(m, transcriptRead(effect.refresh, { problem: "" }, m.loaded)),
-            then,
-          )
-        : { ...m, reads: [...m.reads, { effect, then, loaded: m.loaded }] };
+      return { ...m, reads: [...m.reads, { effect, then, files }] };
     case "ask-merged":
       return { ...m, asks: [...m.asks, effect] };
     case "open-pane":
@@ -222,14 +294,15 @@ const ran = (m: Model, effect: Effect, then: readonly Event[]): Model => {
   }
 };
 
-/** `event` stepped, its effects run, then `then` dispatched once its transcript read, if any, has answered. */
+/** `event` stepped, its effects run, then `then` dispatched once the read it leads to, if any, has answered. */
 export const dispatched = (m: Model, event: Event, then: readonly Event[] = []): Model => {
-  const { state, effects } = step(m.state, event, m.outside);
-  const reading = effects.find((e) => e.kind === "read-transcript");
+  const { state, effects } = step(m.state, event);
+  const reading = effects.find((e) => e.kind === "read-settings" || e.kind === "read-transcript");
+  const files = event.type === "settings-read" ? event.loaded : m.files;
   const isReleased =
     event.type === "transcript-read" && state.sent.length < m.state.sent.length;
   const done = effects.reduce(
-    (sofar, e) => ran(sofar, e, e === reading ? then : []),
+    (sofar, e) => ran(sofar, e, e === reading ? then : [], files),
     {
       ...m,
       state,
@@ -252,19 +325,49 @@ export const answeredPrompt = (m: Model, at: number, reply: Reply): Model => {
     : dispatched({ ...m, pending: m.pending.filter((_, n) => n !== at) }, event);
 };
 
-/** The transcript read waiting at `at` answered with what it found, then what the hook dispatches after it. */
+/** The settings read waiting at `at` answered with the files as they were when it was asked, then what follows it. */
+export const answeredLoad = (m: Model, at: number): Model => {
+  const load = m.loads[at];
+
+  return load === undefined
+    ? m
+    : dispatched(
+        { ...m, loads: m.loads.filter((_, n) => n !== at) },
+        { type: "settings-read", read: load.effect.read, loaded: load.files },
+        load.then,
+      );
+};
+
+/**
+ * The transcript read waiting at `at` answered with what it found, then
+ * what the hook dispatches after it. A read newer than the one shown that
+ * lands while the settings differ from what its own settings read found
+ * is drawn with them, where the old handlers drew it with what it found.
+ */
 export const answeredRead = (m: Model, at: number, found: Found): Model => {
   const read = m.reads[at];
 
-  return read === undefined
-    ? m
-    : dispatchedAll(
-        dispatched(
-          { ...m, reads: m.reads.filter((_, n) => n !== at) },
-          transcriptRead(read.effect.refresh, found, read.loaded),
-        ),
-        read.then,
-      );
+  if (read === undefined) {
+    return m;
+  }
+  const isDrawnApart =
+    m.state.refresh.reads.some(
+      (r) => r.refresh === read.effect.refresh && r.on.at === "transcript",
+    ) &&
+    read.effect.refresh > m.state.refresh.shown &&
+    !isDeepStrictEqual(drawnWith(loadedOf(m.state.settings)), drawnWith(read.files));
+
+  return dispatchedAll(
+    dispatched(
+      {
+        ...m,
+        reads: m.reads.filter((_, n) => n !== at),
+        diverged: { ...m.diverged, drawn: m.diverged.drawn || isDrawnApart },
+      },
+      { type: "transcript-read", refresh: read.effect.refresh, found },
+    ),
+    read.then,
+  );
 };
 
 /** The `gh` call waiting at `at` answered with the pull requests it says merged. */
@@ -312,4 +415,5 @@ export const observedNew = (m: Model) => ({
 });
 
 /** Whether a run has reached a place where `step` was made to differ. */
-export const isDiverged = (d: Diverged): boolean => d.holds || d.aside || d.stale;
+export const isDiverged = (d: Diverged): boolean =>
+  d.holds || d.aside || d.stale || d.older || d.drawn || d.freed;

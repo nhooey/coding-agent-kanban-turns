@@ -21,7 +21,7 @@ import {
   withKeys,
 } from "../../../src/pane/sections.ts";
 import type { DecideItem } from "../../../types/index.d.ts";
-import { SHIPPED_SETTINGS } from "../../fixtures/shipped-settings.ts";
+import { SETTINGS } from "../../fixtures/settings.ts";
 
 const item = (turn: string, number: number, summary: string): DecideItem => ({
   turn,
@@ -112,8 +112,8 @@ describe("where /answers scrolls", () => {
 
 describe("the Done section and its lines", () => {
   test("the header is a toggle naming the count, its glyph saying whether it's open", () => {
-    expect(doneHeader(2, false, SHIPPED_SETTINGS.marks)).toBe("▸ Done (2)");
-    expect(doneHeader(2, true, SHIPPED_SETTINGS.marks)).toBe("▾ Done (2)");
+    expect(doneHeader(2, false, SETTINGS.marks)).toBe("▸ Done (2)");
+    expect(doneHeader(2, true, SETTINGS.marks)).toBe("▾ Done (2)");
   });
 
   test("the header's glyph is the mark it's given, padded to the wider of the two so the name stays put", () => {

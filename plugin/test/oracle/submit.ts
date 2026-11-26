@@ -10,6 +10,11 @@
 // for the refresh's oracle in ./refresh.ts, which shares `sent` with
 // Submit. Submit's handlers read `raised` from its atom, as they did.
 //
+// And it keeps the `settings` atom, as the refresh last read the files:
+// the pane closes on a sent draft only while it holds usable settings, as
+// `close-when-all-submitted` was read from it. The setting itself is the
+// fake's `isClosedWhenAllSubmitted`, whatever the files.
+//
 // Temporary: the oracle and its test are deleted once the last of the
 // pane's areas has moved into src/pane/pane-state.ts.
 
@@ -43,6 +48,7 @@ type Atoms = {
   refreshes: number;
   merged: readonly string[];
   counts: string;
+  settings: OldLoaded;
 };
 
 /** What a read of the transcript answers: the session's turns, or why they couldn't be read, which the read throws. */
@@ -88,6 +94,7 @@ export const oldEngine = (
     refreshes: 0,
     merged: [],
     counts: "",
+    settings: loaded,
   },
   isClosedWhenAllSubmitted,
   loaded,
@@ -184,7 +191,7 @@ const sendDraft = async ($: OldEngine, text: string): Promise<void> => {
     closesOnSubmit(
       await read($, "raised"),
       await read($, "sent"),
-      $.isClosedWhenAllSubmitted,
+      (await read($, "settings")).counts !== null && $.isClosedWhenAllSubmitted,
     )
   ) {
     await closePane($);

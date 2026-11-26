@@ -3,21 +3,22 @@
 // effects to run, as data. The hooks run the effects and dispatch what each
 // answers as another event, so data flows one way. No `$`, no I/O.
 //
-// The pane's areas move here one at a time, and Submit and the refresh
-// have. The others keep their own atoms until they move: the hooks read
-// what `step` needs of them into `Outside`, and write them when an effect
-// says to.
+// The pane's areas move here one at a time, and Submit, the refresh and the
+// settings have. The others keep their own atoms until they move, which
+// `step` reads nothing of, and writes only when an effect says to.
 
 import type {
   Aside,
   DecideItem,
   Held,
+  Loaded,
   PaneState,
   Press,
   Raised,
   Reading,
   Refresh,
   Settings,
+  SettingsState,
   Settlement,
   Submit,
   SubmitStage,
@@ -75,10 +76,8 @@ export type Answer = Readonly<
   | { type: "press-failed"; press: number; why: string }
 >;
 
-/** What a refresh's transcript read found: the session's turns, with the count line's settings; or why it couldn't read them, empty while the settings can't be used. */
-export type Found = Readonly<
-  { turns: readonly Turn[]; counts: Settings["counts"] } | { problem: string }
->;
+/** What a refresh's transcript read found: the session's turns, or why it couldn't read them. */
+export type Found = Readonly<{ turns: readonly Turn[] } | { problem: string }>;
 
 /** The refresh a `gh` answer is for, with the turns and the window its count line was drawn from. */
 export type MergeAsked = Readonly<{
@@ -90,7 +89,10 @@ export type MergeAsked = Readonly<{
 /**
  * Every change to the pane's state: the person's presses, the engine's
  * events, and what an effect answered. `read-dropped` is a transcript read
- * whose answer couldn't be stepped, so nothing waits on it.
+ * whose answer couldn't be stepped, and `settings-dropped` a settings read
+ * whose answer couldn't, so no refresh waits on either. `settings-asked` is
+ * a read of the settings files that no refresh waits on, as a tool or a
+ * command asks for.
  */
 export type Event =
   | Readonly<
@@ -101,12 +103,10 @@ export type Event =
       | { type: "submit-pressed" }
       | { type: "items-drawn"; items: readonly DecideItem[] }
       | { type: "refresh-asked"; releases: boolean }
-      | {
-          type: "transcript-read";
-          refresh: number;
-          found: Found;
-          warnings: readonly string[];
-        }
+      | { type: "settings-asked" }
+      | { type: "settings-read"; read: number; loaded: Loaded }
+      | { type: "settings-dropped"; read: number }
+      | { type: "transcript-read"; refresh: number; found: Found }
       | { type: "read-dropped"; refresh: number }
       | { type: "merged-found"; found: readonly string[]; asked?: MergeAsked }
       | { type: "announced" }
@@ -118,9 +118,8 @@ export type Event =
  * What `step` asks the hooks to do. Reading, filling and submitting the
  * prompt answer with an event, under the number of the press that asked;
  * reading the transcript and asking `gh` answer under the refresh's
- * number; the rest answer nothing. `set-draft` writes the atom of an area
- * not moved yet, and `read-transcript` reads the settings files again
- * first, for the count line's window, until the settings move.
+ * number, and reading the settings files under the read's; the rest answer
+ * nothing. `set-draft` writes the atom of an area not moved yet.
  */
 export type Effect = Readonly<
   | { kind: "read-prompt"; press: number; purpose: ReadPurpose }
@@ -134,6 +133,7 @@ export type Effect = Readonly<
   | { kind: "submit-prompt"; press: number; text: string }
   | { kind: "close-pane" }
   | { kind: "set-draft"; text: string }
+  | { kind: "read-settings"; read: number }
   | { kind: "read-transcript"; refresh: number }
   | {
       kind: "ask-merged";
@@ -144,15 +144,6 @@ export type Effect = Readonly<
   | { kind: "open-pane" }
   | { kind: "reveal"; to: "start" }
 >;
-
-/** What `step` reads of the areas whose state is still in atoms of their own. */
-export type Outside = Readonly<{
-  /** The `pane.close-when-all-submitted` setting; false while the settings can't be used. */
-  isClosedWhenAllSubmitted: boolean;
-}>;
-
-/** The outside areas as nothing: what a failed press is stepped with, as ending it reads none of them. */
-export const NO_OUTSIDE: Outside = { isClosedWhenAllSubmitted: false };
 
 /** The next state, and the effects to run, in order. */
 export type Stepped = Readonly<{ state: PaneState; effects: readonly Effect[] }>;
@@ -171,7 +162,42 @@ export const INITIAL_PANE: PaneState = {
   sent: [],
   merged: [],
   counts: "",
+  settings: { tag: "unread", asked: 0 },
 };
+
+/** The settings in effect, or none while none has been read or the defaults file can't be used. */
+export const settingsOf = (settings: SettingsState): Settings | null =>
+  settings.tag === "loaded" ? settings.settings : null;
+
+/** The settings as the files' merge gives them: the settings in effect, where each came from, and what was wrong with the files; nothing before a read has answered. */
+export const loadedOf = (settings: SettingsState): Loaded =>
+  settings.tag === "loaded"
+    ? { settings: settings.settings, effective: settings.effective, problems: settings.warnings }
+    : { settings: null, effective: [], problems: settings.tag === "broken" ? settings.problems : [] };
+
+/** What a file was wrong with, for the pane to say: a usable file's warnings, or why the defaults file is unusable. */
+const warningsOf = (settings: SettingsState): readonly string[] => loadedOf(settings).problems;
+
+/** The read whose answer the settings are, 0 before any has answered. */
+const readOf = (settings: SettingsState): number =>
+  settings.tag === "unread" ? 0 : settings.read;
+
+/** The settings read `read` found, as the files' merge gave them, `asked` reads having been asked for. */
+export const settingsFrom = (loaded: Loaded, asked: number, read: number): SettingsState =>
+  loaded.settings === null
+    ? { tag: "broken", asked, read, problems: loaded.problems }
+    : {
+        tag: "loaded",
+        asked,
+        read,
+        settings: loaded.settings,
+        effective: loaded.effective,
+        warnings: loaded.problems,
+      };
+
+/** The `pane.close-when-all-submitted` setting; false while the settings can't be used. */
+const isClosedWhenAllSubmitted = (settings: SettingsState): boolean =>
+  settingsOf(settings)?.pane["close-when-all-submitted"] === true;
 
 /** The raised items as the pane and a reply draw them: the answers Submit holds Done until the turn's end reads them. */
 export const shownOf = (state: PaneState): Raised =>
@@ -326,7 +352,6 @@ const submitted = (
   press: Sending,
   refusal: string | undefined,
   state: PaneState,
-  outside: Outside,
 ): Moved =>
   refusal === undefined
     ? ends(
@@ -334,7 +359,7 @@ const submitted = (
         closesOnSubmit(
           state.raised,
           heldNow(state.sent),
-          outside.isClosedWhenAllSubmitted,
+          isClosedWhenAllSubmitted(state.settings),
         )
           ? [{ kind: "close-pane" }]
           : [],
@@ -384,7 +409,6 @@ const advanced = (
   press: Press,
   answer: Answer,
   state: PaneState,
-  outside: Outside,
 ): Moved | undefined => {
   if (answer.type === "press-failed") {
     return failed(press, answer.why);
@@ -403,7 +427,7 @@ const advanced = (
         : undefined;
     case "submitting":
       return answer.type === "prompt-submitted"
-        ? submitted(press, answer.refusal, state, outside)
+        ? submitted(press, answer.refusal, state)
         : undefined;
     case "reading-back":
       return answer.type === "prompt-read" && answer.purpose === "put-back"
@@ -490,11 +514,11 @@ const overtakenMoved = (state: PaneState, at: number, press: Press, moved: Moved
  * only at the stage that asked for it. Any other is dropped. A box read
  * while a turn runs, as Submit knows it, sends nothing.
  */
-const answered = (state: PaneState, answer: Answer, outside: Outside): Stepped => {
+const answered = (state: PaneState, answer: Answer): Stepped => {
   const { submit } = state;
 
   if (submit.tag === "pressed" && submit.press.press === answer.press) {
-    const moved = advanced(submit.press, answer, state, outside);
+    const moved = advanced(submit.press, answer, state);
 
     return moved === undefined
       ? { state, effects: [] }
@@ -503,7 +527,7 @@ const answered = (state: PaneState, answer: Answer, outside: Outside): Stepped =
   const at = state.overtaken.findIndex((p) => p.press === answer.press);
   const press = state.overtaken[at];
   const moved =
-    press === undefined ? undefined : advanced(press, answer, state, outside);
+    press === undefined ? undefined : advanced(press, answer, state);
 
   return moved === undefined || press === undefined
     ? { state, effects: [] }
@@ -515,23 +539,47 @@ const withSubmit = (state: PaneState, submit: Submit): Stepped => ({
   effects: [],
 });
 
-/** A refresh asked for: the next number reads the transcript, beside any read still out, holding the answers Submit holds now to take out once it has read them when it `releases`, as a turn's end does. */
+/** The settings files asked to be read again: the next read's number, and the effect that reads them. */
+const settingsAsked = (state: PaneState): Readonly<{ state: PaneState; read: number }> => {
+  const read = state.settings.asked + 1;
+
+  return { state: { ...state, settings: { ...state.settings, asked: read } }, read };
+};
+
+/** The settings files read again for no refresh, as a tool or a command asks. */
+const settingsAskedAlone = (state: PaneState): Stepped => {
+  const asked = settingsAsked(state);
+
+  return { state: asked.state, effects: [{ kind: "read-settings", read: asked.read }] };
+};
+
+/**
+ * A refresh asked for: the next number reads the settings files, then the
+ * transcript, beside any read still out, holding the answers Submit holds
+ * now to take out once it has read them when it `releases`, as a turn's
+ * end does.
+ */
 const refreshAsked = (state: PaneState, releases: boolean): Stepped => {
   const refresh = state.refresh.asked + 1;
+  const asked = settingsAsked(state);
 
   return {
     state: {
-      ...state,
+      ...asked.state,
       refresh: {
         ...state.refresh,
         asked: refresh,
         reads: [
           ...state.refresh.reads,
-          { refresh, releases: releases ? state.sent : [] },
+          {
+            refresh,
+            releases: releases ? state.sent : [],
+            on: { at: "settings", read: asked.read },
+          },
         ],
       },
     },
-    effects: [{ kind: "read-transcript", refresh }],
+    effects: [{ kind: "read-settings", read: asked.read }],
   };
 };
 
@@ -539,6 +587,64 @@ const refreshAsked = (state: PaneState, releases: boolean): Stepped => {
 const withoutReading = (refresh: Refresh, reading: Reading): Refresh => ({
   ...refresh,
   reads: refresh.reads.filter((r) => r !== reading),
+});
+
+/** Whether `reading` waits on settings read `read`. */
+const waitsOn = (reading: Reading, read: number): boolean =>
+  reading.on.at === "settings" && reading.on.read === read;
+
+/**
+ * Whether `reading`, its settings read answered, goes on to read the
+ * transcript: while the settings, the newest read's, are usable, or, while
+ * they aren't, when it holds answers to let go of, so whether a turn's end
+ * lets go of them hangs on whether it read the transcript alone, not on
+ * which settings read answered first.
+ */
+const readsOn = (reading: Reading, settings: SettingsState): boolean =>
+  settings.tag === "loaded" || reading.releases.length > 0;
+
+/**
+ * A settings read answered. Its answer replaces the settings when it's
+ * newer than the read they are; an older one's is dropped. A refresh that
+ * waited on it then reads the transcript, as `readsOn` says; one that
+ * doesn't reads nothing, and says what was wrong with the settings when
+ * it's newer than the refresh shown.
+ */
+const settingsRead = (state: PaneState, read: number, loaded: Loaded): Stepped => {
+  const settings =
+    read > readOf(state.settings) && read <= state.settings.asked
+      ? settingsFrom(loaded, state.settings.asked, read)
+      : state.settings;
+  const waiting = state.refresh.reads.filter((r) => waitsOn(r, read));
+  const isSaid = waiting.some(
+    (r) => !readsOn(r, settings) && r.refresh > state.refresh.shown,
+  );
+
+  return {
+    state: {
+      ...state,
+      settings,
+      refresh: {
+        ...state.refresh,
+        reads: state.refresh.reads.flatMap((r): readonly Reading[] =>
+          !waitsOn(r, read) ? [r] : readsOn(r, settings) ? [{ ...r, on: { at: "transcript" } }] : [],
+        ),
+      },
+      raised: isSaid ? unread(state.raised, "", warningsOf(settings)) : state.raised,
+    },
+    effects: waiting
+      .filter((r) => readsOn(r, settings))
+      .map((r): Effect => ({ kind: "read-transcript", refresh: r.refresh })),
+  };
+};
+
+/** A settings read whose answer couldn't be stepped: no refresh waits on it, and nothing else changes. */
+const settingsDropped = (state: PaneState, read: number): PaneState => ({
+  ...state,
+  refresh: {
+    ...state.refresh,
+    reads: state.refresh.reads.filter((r) => !waitsOn(r, read)),
+  },
 });
 
 /**
@@ -551,10 +657,10 @@ const withoutReading = (refresh: Refresh, reading: Reading): Refresh => ({
 const settled = (
   state: PaneState,
   refresh: number,
-  found: Extract<Found, { turns: readonly Turn[] }>,
+  turns: readonly Turn[],
+  { counts }: Settings,
   warnings: readonly string[],
 ): Stepped => {
-  const { turns, counts } = found;
   const known = new Set(state.merged);
   const open = openOf(turns, counts.turns, known);
   const refs = pullRequestsToAsk(turns, counts.turns, known);
@@ -589,17 +695,20 @@ const settled = (
  * A refresh's transcript read answered. A read that read the transcript
  * takes out the answers Submit held when it was asked, whatever else
  * happens to it, and its result replaces what the items and the count line
- * show when it's newer than the read they show; an older one's is dropped.
- * A read that couldn't read the transcript settles nothing and shows no
- * read, so an older read that did still lands after it; it says why only
- * when it's newer than the read shown. An answer to no read waiting is
- * dropped whole.
+ * show when it's newer than the read they show, drawn with the settings as
+ * they are now; an older one's is dropped. A read that couldn't read the
+ * transcript, or that answers while the settings can't be used, settles
+ * nothing and shows no read, so an older read that did still lands after
+ * it; it says why only when it's newer than the read shown. An answer to
+ * no read waiting on the transcript is dropped whole.
  */
 const transcriptRead = (
   state: PaneState,
   event: Extract<Event, { type: "transcript-read" }>,
 ): Stepped => {
-  const reading = state.refresh.reads.find((r) => r.refresh === event.refresh);
+  const reading = state.refresh.reads.find(
+    (r) => r.refresh === event.refresh && r.on.at === "transcript",
+  );
 
   if (reading === undefined) {
     return { state, effects: [] };
@@ -612,28 +721,37 @@ const transcriptRead = (
         : state.sent,
     refresh: withoutReading(state.refresh, reading),
   };
+  const settings = settingsOf(state.settings);
+  const warnings = warningsOf(state.settings);
 
   return event.refresh <= state.refresh.shown
     ? { state: after, effects: [] }
-    : "turns" in event.found
+    : "turns" in event.found && settings !== null
       ? settled(
           { ...after, refresh: { ...after.refresh, shown: event.refresh } },
           event.refresh,
-          event.found,
-          event.warnings,
+          event.found.turns,
+          settings,
+          warnings,
         )
       : {
           state: {
             ...after,
-            raised: unread(after.raised, event.found.problem, event.warnings),
+            raised: unread(
+              after.raised,
+              "problem" in event.found ? event.found.problem : "",
+              warnings,
+            ),
           },
           effects: [],
         };
 };
 
-/** A transcript read whose answer couldn't be stepped: nothing waits on it, and nothing else changes. */
+/** A transcript read whose answer couldn't be stepped: nothing waits on it, and nothing else changes; a refresh still waiting on its settings read isn't one. */
 const readDropped = (state: PaneState, refresh: number): PaneState => {
-  const reading = state.refresh.reads.find((r) => r.refresh === refresh);
+  const reading = state.refresh.reads.find(
+    (r) => r.refresh === refresh && r.on.at === "transcript",
+  );
 
   return reading === undefined
     ? state
@@ -678,11 +796,7 @@ const announced = (state: PaneState): Stepped => ({
 });
 
 /** The pane's state after `event`, and the effects to run for it, in order. */
-export const step = (
-  state: PaneState,
-  event: Event,
-  outside: Outside,
-): Stepped => {
+export const step = (state: PaneState, event: Event): Stepped => {
   switch (event.type) {
     case "session-started":
       // No turn runs, nothing is said and no sent answer waits for a turn's
@@ -736,6 +850,12 @@ export const step = (
       };
     case "refresh-asked":
       return refreshAsked(state, event.releases);
+    case "settings-asked":
+      return settingsAskedAlone(state);
+    case "settings-read":
+      return settingsRead(state, event.read, event.loaded);
+    case "settings-dropped":
+      return { state: settingsDropped(state, event.read), effects: [] };
     case "transcript-read":
       return transcriptRead(state, event);
     case "read-dropped":
@@ -747,13 +867,9 @@ export const step = (
     case "seen":
       return { state: { ...state, raised: seen(state.raised) }, effects: [] };
     default:
-      return answered(state, event, outside);
+      return answered(state, event);
   }
 };
-
-/** Whether `step` reads `Outside` for `event`: only the engine's answer to the draft, for whether the pane closes. */
-export const readsOutside = (event: Event): boolean =>
-  event.type === "prompt-submitted";
 
 /** Whether press `press` is under way in `state`, or overtaken and finishing. */
 const isLive = (state: PaneState, press: number): boolean =>

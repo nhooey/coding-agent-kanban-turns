@@ -6,18 +6,14 @@ import fc from "fast-check";
 
 import { emptyRaised, withItems } from "../../src/items/raised.ts";
 import { INITIAL_PANE, step } from "../../src/pane/pane-state.ts";
-import type {
-  Effect,
-  Event,
-  Outside,
-  Stepped,
-} from "../../src/pane/pane-state.ts";
+import type { Effect, Event, Stepped } from "../../src/pane/pane-state.ts";
 import type {
   DecideItem,
   Held,
   PaneState,
   Raised,
 } from "../../types/index.d.ts";
+import { withClosing } from "./settings.ts";
 
 export const HEADER = "coding-agent-kanban-turns:\n";
 
@@ -197,11 +193,7 @@ export type Walked = Readonly<{ before: PaneState; event: Event; stepped: Steppe
  */
 export const walkWith =
   <R>(answerOf: (effect: Effect, reply: R) => Event | undefined, asks: readonly Effect["kind"][]) =>
-  (
-    commands: readonly CommandOf<R>[],
-    outside: Outside,
-    from: PaneState = INITIAL_PANE,
-  ): readonly Walked[] =>
+  (commands: readonly CommandOf<R>[], from: PaneState = INITIAL_PANE): readonly Walked[] =>
     commands.reduce<
       Readonly<{
         state: PaneState;
@@ -220,7 +212,7 @@ export const walkWith =
               ? undefined
               : answerOf(asked, c.reply);
         const stepped =
-          event === undefined ? undefined : step(state, event, outside);
+          event === undefined ? undefined : step(state, event);
 
         return event === undefined || stepped === undefined
           ? { state, waiting, walked }
@@ -239,7 +231,7 @@ export const walkWith =
 /** The events `commands` make, each stepped from `from`, with the state before it: an answer command answers a prompt call still waiting, as the hooks would. */
 export const walk = walkWith(answerTo, ENGINE);
 
-/** The pane's state before a run: both items raised. */
+/** The pane's state before a run: both items raised, the settings not read yet. */
 export const START: PaneState = { ...INITIAL_PANE, raised: RAISED };
 
 /** The answers an earlier press, press 0, still holds Done when a run starts. */
@@ -248,12 +240,7 @@ export const EARLIER: readonly Held[] = [
   { press: 0, settled: { ref: checkbox.ref, how: "sent", letters: ["C"], note: "" } },
 ];
 
-/** The pane's state as a run may find it: both items raised, an earlier press's answers to some held Done. */
+/** The pane's state as a run may find it: both items raised, an earlier press's answers to some held Done, the defaults in effect with the close setting either way. */
 export const startArb: fc.Arbitrary<PaneState> = fc
-  .subarray([...EARLIER])
-  .map((sent) => ({ ...START, sent }));
-
-/** The outside areas as a step may find them: the close setting either way. */
-export const outsideArb: fc.Arbitrary<Outside> = fc.record({
-  isClosedWhenAllSubmitted: fc.boolean(),
-});
+  .tuple(fc.subarray([...EARLIER]), fc.boolean())
+  .map(([sent, isClosed]) => withClosing({ ...START, sent }, isClosed));
