@@ -125,7 +125,7 @@ const DEFAULTS = JSON.stringify({
   pane: { "close-when-all-submitted": true },
   notes: { rows: 3 },
   marks: {
-    sent: "☑️",
+    sent: "✅",
     chosen: "✅",
     note: "✏️",
     "settled-bar": "▌",
@@ -744,14 +744,14 @@ test("the pane keeps every item raised, newest turn first, a Done one in its tur
   // A click on the line opens the item's full box, dimmed but for its
   // options, which pick as an open item's do: a click writes a fresh
   // reference into the draft and marks the option ✅, the sent answer
-  // keeping its ☑️, and the item stays in its Done section. A click on its
+  // keeping its sent mark, and the item stays in its Done section. A click on its
   // title closes it to its line again.
   await ui.press({ key: "9efb08a1.Decide.1.line" });
   expect(await titles(ui)).toContain("🧠 Decide.1 · Which cache to keep (done)");
   await ui.press({ key: "9efb08a1.Decide.1.B" });
   expect(state.box).toBe(`${HEADER}9efb08a1.Decide.1.B\n`);
   expect(await leadOf(ui, "9efb08a1.Decide.1.B")).toBe("✅ B. ");
-  expect(await leadOf(ui, "9efb08a1.Decide.1.A")).toBe("☑️ A. ");
+  expect(await leadOf(ui, "9efb08a1.Decide.1.A")).toBe("✅ A. ");
   expect((await ui.find({ type: "Button", key: "9efb08a1.Decide.1.B" }))?.props["dimColor"]).not.toBe(true);
   expect(await titles(ui)).toContain("🧠 Decide.1 · Which cache to keep (done)");
   await ui.press({ key: "9efb08a1.Decide.1.B" });
@@ -1075,7 +1075,7 @@ test("an answer in a later prompt settles its item, in the pane and the count li
     expect(
       (await drawing.findAll({ type: "Text", text: /^Answered in / })).map((found) => found.text),
     ).toEqual(["Answered in b2c3d4e5: A", "Answered in b2c3d4e5: B"]);
-    expect(await leadOf(drawing, "9efb08a1.Decide.1.A")).toBe("☑️ A. ");
+    expect(await leadOf(drawing, "9efb08a1.Decide.1.A")).toBe("✅ A. ");
     const sent = await drawing.find({ type: "Button", key: "9efb08a1.Decide.1.A" });
     expect(sent?.text).toBe("Disk");
     expect(sent?.props["dimColor"]).not.toBe(true);
@@ -2536,17 +2536,58 @@ test("a refresh whose transcript read answers after a later refresh's leaves wha
   await ui.unmount();
 });
 
-test("a Done item's lines, opened to its box, have the settled bar beside them, and no hover bar", async ($, on) => {
-  const open: unknown[] = [
-    {
-      ...ITEMS[0],
-      options: [
-        { letter: "A", name: "Disk", pros: ["Survives restarts."], cons: ["Disk use."] },
-        { letter: "B", name: "Memory" },
-      ],
-    },
-    ITEMS[2],
-  ];
+// Item 1 with ➕ and ➖ lines under each option, so a bar's every row shows.
+const WITH_LINES = {
+  ...ITEMS[0],
+  options: [
+    { letter: "A", name: "Disk", pros: ["Survives restarts."], cons: ["Disk use."] },
+    { letter: "B", name: "Memory", pros: ["Fast."], cons: ["Lost on restart."] },
+  ],
+} as const;
+
+const OPTION_LINES = {
+  A: ["9efb08a1.Decide.1.A", "9efb08a1.Decide.1.A-pro-0", "9efb08a1.Decide.1.A-con-0"],
+  B: ["9efb08a1.Decide.1.B", "9efb08a1.Decide.1.B-pro-0", "9efb08a1.Decide.1.B-con-0"],
+} as const;
+
+test("a Done item answered with A has the settled bar beside A's lines alone, a cell clear of their marks, in the pane and under the reply", async ($, on) => {
+  const later: TranscriptRecord[] = [];
+  engine(on, () => [WITH_LINES, ITEMS[2]], listsText, () => later);
+  await $.turn.complete(replyDone("t1"));
+  later.push(human("b2c3d4e5", "9efb08a1.Decide.1.A"), assistant("On it."));
+  await $.turn.complete(replyDone("t2"));
+  const pane = await $.ui.mount({ ...PANE, surface: "terminal" });
+  await openDone(pane);
+  await pane.press({ key: "9efb08a1.Decide.1.line" });
+
+  for (const ui of [pane, await $.ui.mount(REPLY)]) {
+    const gutter = async (key: string) =>
+      (await ui.find({ type: "Box", key: `${key}-gutter` }))?.props;
+    // A's every line, its name, ➕ and ➖, lit in the settled colour, and
+    // none hovering.
+    for (const key of OPTION_LINES.A) {
+      expect(await gutter(key)).toMatchObject({ backgroundColor: "ide" });
+      expect(await gutter(key)).not.toHaveProperty("hover");
+    }
+    // B, which the answer didn't pick, unlit, and hovering neither.
+    for (const key of OPTION_LINES.B) {
+      expect(await gutter(key)).toBeDefined();
+      expect(await gutter(key)).not.toHaveProperty("backgroundColor");
+      expect(await gutter(key)).not.toHaveProperty("hover");
+    }
+    // The bar sits a column left of where it did, one blank cell between it
+    // and the mark, and the option's text where it was: 1 + 1 + 1 cells of
+    // the 3-cell indent.
+    expect((await ui.find({ type: "Box", key: "9efb08a1.Decide.1.A-box" }))?.props).toMatchObject({
+      marginLeft: 1,
+    });
+    expect(await gutter("9efb08a1.Decide.1.A")).toMatchObject({ width: 1, marginRight: 1 });
+  }
+  await pane.unmount();
+});
+
+test("a Done item settled with no letters has no bar beside any option, and no hover bar", async ($, on) => {
+  const open: unknown[] = [WITH_LINES, ITEMS[2]];
   engine(on, () => open);
   await $.command.run(ANSWERS);
   open.splice(0, 1);
@@ -2558,13 +2599,9 @@ test("a Done item's lines, opened to its box, have the settled bar beside them, 
   const gutter = async (key: string) =>
     (await ui.find({ type: "Box", key: `${key}-gutter` }))?.props;
   // Every line of the settled item's options: each option, ➕ and ➖ line.
-  for (const key of [
-    "9efb08a1.Decide.1.A",
-    "9efb08a1.Decide.1.A-pro-0",
-    "9efb08a1.Decide.1.A-con-0",
-    "9efb08a1.Decide.1.B",
-  ]) {
-    expect(await gutter(key)).toMatchObject({ backgroundColor: "ide" });
+  for (const key of [...OPTION_LINES.A, ...OPTION_LINES.B]) {
+    expect(await gutter(key)).toBeDefined();
+    expect(await gutter(key)).not.toHaveProperty("backgroundColor");
     expect(await gutter(key)).not.toHaveProperty("hover");
   }
   // The open item's bar lights only under the pointer, and the settled

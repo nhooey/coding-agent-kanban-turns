@@ -112,7 +112,7 @@ describe("the items themselves", () => {
 
   test("an option is ✅ while chosen, else the sent mark where a Done item's answer picked it, else its glyph", () => {
     expect(optionMark(radio, "A", { chosen: true, sent: true }, MARKS)).toBe("✅");
-    expect(optionMark(radio, "A", { chosen: false, sent: true }, MARKS)).toBe("☑️");
+    expect(optionMark(radio, "A", { chosen: false, sent: true }, MARKS)).toBe("✅");
     expect(optionMark(radio, "A", { chosen: false, sent: false }, MARKS)).toBe("🔘");
   });
 

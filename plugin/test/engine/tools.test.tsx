@@ -88,7 +88,7 @@ const DEFAULTS = JSON.stringify({
   pane: { "close-when-all-submitted": true },
   notes: { rows: 3 },
   marks: {
-    sent: "☑️",
+    sent: "✅",
     chosen: "✅",
     note: "✏️",
     "settled-bar": "▌",
