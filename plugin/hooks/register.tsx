@@ -91,20 +91,14 @@ import {
 } from "../src/items/raised.ts";
 import {
   INITIAL_PANE,
-  NO_OUTSIDE,
   failingPress,
-  readsOutside,
+  loadedOf,
+  settingsOf,
   shownOf,
   step as paneStep,
   submitShown,
 } from "../src/pane/pane-state.ts";
-import type {
-  Effect,
-  Event,
-  Found,
-  Outside,
-  Stepped,
-} from "../src/pane/pane-state.ts";
+import type { Effect, Event, Found, Stepped } from "../src/pane/pane-state.ts";
 import {
   doneHeader,
   doneKey,
@@ -166,8 +160,6 @@ const PANE = {
 // The most bytes one `$.fs.read` returns: the transcript is read in ranges
 // this long.
 const READ_BYTES = 4 * 1024 * 1024;
-// Nothing read yet: no settings until session.start reads the files.
-const UNREAD: Loaded = { settings: null, effective: [], problems: [] };
 // The keys of the buttons that move the focus ring between items: a ring
 // a hotkey leaves on one of them is no item's, so j and k don't count from it.
 const STEPS = { next: "next", previous: "previous" } as const;
@@ -203,13 +195,14 @@ const noting = atom(
 );
 // The pane's state, one value that `step` moves and `dispatch` alone writes:
 // Submit and the refresh, with the raised items, the answers Submit holds
-// Done, the pull requests known merged and the count line, so far. Change
-// the tag when PaneState's fields, or those of a type it holds, change: it
-// declines what an earlier version stored, which outlives a reload.
+// Done, the pull requests known merged and the count line, and the
+// settings, so far. Change the tag when PaneState's fields, or those of a
+// type it holds, Settings' among them, change: it declines what an earlier
+// version stored, which outlives a reload.
 const pane = atom(
   { plugin: "coding-agent-kanban-turns", key: "pane" } as const,
   INITIAL_PANE,
-  { shape: "pane-3" },
+  { shape: "pane-4" },
 );
 
 // What the reply lint found in the main loop's last final response, for the
@@ -223,16 +216,9 @@ const lintNote = atom(
   NO_LINT_NOTE,
   { shape: "lint-note-1" },
 );
-// Change the tag when Settings' fields change, as for PaneState.
-const settings = atom(
-  { plugin: "coding-agent-kanban-turns", key: "settings" } as const,
-  UNREAD,
-  { shape: "settings-10" },
-);
-
-/** The settings in effect, or none while the defaults file can't be used. */
+/** The settings in effect, or none before a read has answered or while the defaults file can't be used. */
 const settingsNow = async ($: EngineInterface): Promise<Settings | null> =>
-  (await read($, settings)).settings;
+  settingsOf((await read($, pane)).settings);
 
 /** The raised items as the pane and a reply draw them: the answers Submit sent Done until the turn's end reads them. */
 const shownNow = async ($: EngineInterface): Promise<Raised> =>
@@ -368,15 +354,22 @@ const mergedNow = async (
   };
 };
 
-/** Reads the settings files again, so an edit to either is taken up at the next refresh. */
+/** Reads the settings files again, for a tool or a command: the settings as the newest read to answer, this one or a later, found them. */
 const reloadSettings = async ($: EngineInterface): Promise<Loaded> => {
-  const now = await loadSettings($).catch(
-    (error: unknown): Loaded => ({ ...UNREAD, problems: [String(error)] }),
-  );
-  await update($, settings, () => now);
+  await dispatch($, { type: "settings-asked" });
 
-  return now;
+  return loadedOf((await read($, pane)).settings);
 };
+
+/** The settings files merged, as `loadSettings` reads them; a read that throws says why, as a defaults file that can't be used does. */
+const settingsFound = ($: EngineInterface): Promise<Loaded> =>
+  attempt(() => loadSettings($)).catch(
+    (error: unknown): Loaded => ({
+      settings: null,
+      effective: [],
+      problems: [String(error)],
+    }),
+  );
 
 /**
  * `kanban_outstanding`: the count line, the roll-up's draft and the open
@@ -412,26 +405,12 @@ const outstandingNow = async ($: EngineInterface): Promise<string> => {
   });
 };
 
-/**
- * What a refresh's transcript read finds: the settings read again, then
- * the session's turns, with the count line's settings. Without settings
- * there's no window to read, and the settings' problems say why; a read
- * that fails, or throws, says why it couldn't read the transcript.
- */
-const transcriptFound = async (
-  $: EngineInterface,
-): Promise<Readonly<{ found: Found; warnings: readonly string[] }>> => {
-  const { settings: s, problems } = await reloadSettings($);
-  const found: Found =
-    s === null
-      ? { problem: "" }
-      : await turnsNow($).then(
-          (turns) => ({ turns, counts: s.counts }),
-          (error: unknown) => ({ problem: String(error) }),
-        );
-
-  return { found, warnings: problems };
-};
+/** What a refresh's transcript read finds: the session's turns; or, for a read that fails or throws, why it couldn't read them. */
+const transcriptFound = ($: EngineInterface): Promise<Found> =>
+  attempt(() => turnsNow($)).then(
+    (turns) => ({ turns }),
+    (error: unknown) => ({ problem: String(error) }),
+  );
 
 /**
  * Rewrites the prompt draft with `edit`: the one way a click, a note or
@@ -469,26 +448,13 @@ const toggleReassess = ($: EngineInterface) =>
 const attempt = <T,>(call: () => T | Promise<T>): Promise<T> =>
   Promise.resolve().then(call);
 
-/** What `paneStep` reads of the areas whose state is still in atoms of their own; a read that throws rejects. */
-const outsideNow = async ($: EngineInterface): Promise<Outside> => ({
-  isClosedWhenAllSubmitted:
-    (await attempt(() => settingsNow($)))?.pane["close-when-all-submitted"] ===
-    true,
-});
-
-/**
- * `event` stepped in a single update of the pane's atom: the state written,
- * and the effects of the step that wrote it. The outside atoms are read
- * only for an event whose step reads them, so no other event, such as the
- * session's start, can fail on them.
- */
+/** `event` stepped in a single update of the pane's atom: the state written, and the effects of the step that wrote it. */
 const stepNow = async ($: EngineInterface, event: Event): Promise<Stepped> => {
-  const outside = readsOutside(event) ? await outsideNow($) : NO_OUTSIDE;
   // `update` may run its function again on a missed write: the step whose
   // state it wrote is the last it ran, taken once the write has landed.
   let attempted = undefined as Stepped | undefined;
   const written = await update($, pane, (state) => {
-    attempted = paneStep(state, event, outside);
+    attempted = paneStep(state, event);
 
     return attempted.state;
   });
@@ -549,8 +515,8 @@ const runEffects = async (
  * of the pane's atom, then the effects it asked for run in order, each
  * prompt call's answer dispatched in turn. Resolves once they all have.
  * A step that fails, before anything is written, is judged by the state as
- * it stands; a transcript read whose answer fails to step is dropped, so
- * nothing waits on it.
+ * it stands; a transcript or settings read whose answer fails to step is
+ * dropped, so no refresh waits on it.
  */
 const dispatch = async ($: EngineInterface, event: Event): Promise<void> => {
   const done = await stepNow($, event).then(
@@ -559,10 +525,15 @@ const dispatch = async ($: EngineInterface, event: Event): Promise<void> => {
   );
 
   if ("error" in done) {
-    if (event.type === "transcript-read") {
-      await dispatch($, { type: "read-dropped", refresh: event.refresh }).catch(
-        () => undefined,
-      );
+    const dropped: Event | undefined =
+      event.type === "transcript-read"
+        ? { type: "read-dropped", refresh: event.refresh }
+        : event.type === "settings-read"
+          ? { type: "settings-dropped", read: event.read }
+          : undefined;
+
+    if (dropped !== undefined) {
+      await dispatch($, dropped).catch(() => undefined);
     }
     const state = await attempt(() => read($, pane)).catch(() => INITIAL_PANE);
 
@@ -575,11 +546,13 @@ const dispatch = async ($: EngineInterface, event: Event): Promise<void> => {
 /**
  * Runs one effect `paneStep` asked for, and resolves to the event its
  * answer makes: under the press's number for a prompt call, and under the
- * refresh's for a transcript read. A read that throws reads as an empty
- * box, a put-back fill that throws as not taken, and a submit that throws
- * as refused, for why; emptying the box that throws rejects, failing the
- * press, as the box may have been emptied. A transcript read that throws
- * reads as one that couldn't read the transcript. `gh` is asked without
+ * refresh's for a transcript read, and the read's for the settings files.
+ * A read that throws reads as an empty box, a put-back fill that throws as
+ * not taken, and a submit that throws as refused, for why; emptying the
+ * box that throws rejects, failing the press, as the box may have been
+ * emptied. A transcript read that throws reads as one that couldn't read
+ * the transcript, and a settings read that throws as files that can't be
+ * used, saying why. `gh` is asked without
  * waiting for it, so the pane and the count line are drawn first; its
  * answer is dispatched once it comes, and one that fails changes nothing.
  */
@@ -634,16 +607,18 @@ const runEffect = async (
       await attempt(() => update($, draft, () => effect.text));
 
       return undefined;
-    case "read-transcript": {
-      const read = await attempt(() => transcriptFound($)).catch(
-        (error: unknown) => ({
-          found: { problem: String(error) },
-          warnings: [],
-        }),
-      );
-
-      return { type: "transcript-read", refresh: effect.refresh, ...read };
-    }
+    case "read-settings":
+      return {
+        type: "settings-read",
+        read: effect.read,
+        loaded: await settingsFound($),
+      };
+    case "read-transcript":
+      return {
+        type: "transcript-read",
+        refresh: effect.refresh,
+        found: await transcriptFound($),
+      };
     case "ask-merged":
       void attempt(() => mergedNow($, effect.refs, effect.timeoutMs))
         .then(({ found }) =>
@@ -969,8 +944,7 @@ export const register: Register = (on) => {
     await refresh($, true);
     await dispatch($, { type: "announced" });
     // The refresh has read the settings again.
-    const isLinting =
-      (await read($, settings)).settings?.lint["turn-end"] === true;
+    const isLinting = (await settingsNow($))?.lint["turn-end"] === true;
     const note =
       isLinting && e.reason === "answer" && isKanbanReply(e.answer)
         ? replyLintText(lintReply(e.answer))

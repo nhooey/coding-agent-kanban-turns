@@ -2,7 +2,9 @@
 // of refreshes, their transcript reads and `gh` answers, presses among
 // them, the state and effects checked after each; then through random
 // sequences, reads answered in any order, repeated and stray among them,
-// its invariants checked after every step.
+// its invariants checked after every step. The named sequences answer each
+// settings read a refresh asks for at once, before its transcript read, as
+// the files are read; pane-state-settings.test.ts holds the settings' own.
 
 import { describe, test } from "node:test";
 import { isDeepStrictEqual } from "node:util";
@@ -11,18 +13,11 @@ import fc from "fast-check";
 
 import { countLine } from "../../../src/items/outstanding.ts";
 import { problemsOf, unseen } from "../../../src/items/raised.ts";
-import { INITIAL_PANE, readsOutside, shownOf, step } from "../../../src/pane/pane-state.ts";
-import type { Event, Found, Outside, Stepped } from "../../../src/pane/pane-state.ts";
-import type { PaneState } from "../../../types/index.d.ts";
-import {
-  BOXES,
-  EARLIER,
-  ITEMS,
-  RAISED,
-  START,
-  outsideArb,
-  startArb,
-} from "../../fixtures/submit.ts";
+import { INITIAL_PANE, shownOf, step } from "../../../src/pane/pane-state.ts";
+import type { Event, Found, Stepped } from "../../../src/pane/pane-state.ts";
+import type { Loaded, PaneState } from "../../../types/index.d.ts";
+import { BOXES, EARLIER, ITEMS, RAISED, START, startArb } from "../../fixtures/submit.ts";
+import { BAD_KEY, BROKEN, MISSING, usable } from "../../fixtures/settings.ts";
 import {
   COUNTS,
   DRAWN,
@@ -33,30 +28,54 @@ import {
   walkPane,
 } from "../../fixtures/refresh.ts";
 
-const OUTSIDE: Outside = { isClosedWhenAllSubmitted: false };
+/** What the settings files say in the named sequences, unless one says otherwise: the defaults. */
+const FILES: Loaded = usable(false);
 
-/** Each step's state and effects, from `from`, as `events` move it. */
-const steps = (events: readonly Event[], from: PaneState = START): readonly Stepped[] =>
+/** `event` stepped from `state`, each settings read it asks for answered at once with `files`, its effects in their place. */
+const steppedWith = (state: PaneState, event: Event, files: Loaded): Stepped => {
+  const first = step(state, event);
+
+  return first.effects.reduce<Stepped>(
+    (sofar, e) => {
+      if (e.kind !== "read-settings") {
+        return { state: sofar.state, effects: [...sofar.effects, e] };
+      }
+      const answered = step(sofar.state, { type: "settings-read", read: e.read, loaded: files });
+
+      return { state: answered.state, effects: [...sofar.effects, ...answered.effects] };
+    },
+    { state: first.state, effects: [] },
+  );
+};
+
+/** Each step's state and effects, from `from`, as `events` move it, the settings files saying `files`. */
+const steps = (
+  events: readonly Event[],
+  from: PaneState = START,
+  files: Loaded = FILES,
+): readonly Stepped[] =>
   events.reduce<readonly Stepped[]>(
-    (sofar, event) => [...sofar, step(sofar.at(-1)?.state ?? from, event, OUTSIDE)],
+    (sofar, event) => [...sofar, steppedWith(sofar.at(-1)?.state ?? from, event, files)],
     [],
   );
 
 /** The state after `events`. */
-const after = (events: readonly Event[], from: PaneState = START): PaneState =>
-  steps(events, from).at(-1)?.state ?? from;
+const after = (events: readonly Event[], from: PaneState = START, files: Loaded = FILES): PaneState =>
+  steps(events, from, files).at(-1)?.state ?? from;
 
 const ASK: Event = { type: "refresh-asked", releases: false };
 const TURN_END: Event = { type: "refresh-asked", releases: true };
-const found = (turns: Extract<Found, { turns: unknown }>["turns"]): Found => ({
-  turns,
-  counts: COUNTS,
-});
-const read = (refresh: number, f: Found, warnings: readonly string[] = []): Event => ({
+const found = (turns: Extract<Found, { turns: unknown }>["turns"]): Found => ({ turns });
+const read = (refresh: number, f: Found): Event => ({
   type: "transcript-read",
   refresh,
   found: f,
-  warnings,
+});
+/** A refresh's read waiting on the transcript, holding `releases`. */
+const onTranscript = (refresh: number, releases: PaneState["sent"] = []) => ({
+  refresh,
+  releases,
+  on: { at: "transcript" } as const,
 });
 const OPEN = found(TRANSCRIPTS.open);
 const ANSWERED = found(TRANSCRIPTS.answered);
@@ -86,7 +105,7 @@ const FIRST_SENT = {
 } as const;
 
 describe("a refresh", () => {
-  test("asks for the transcript under its number, beside any read still out", () => {
+  test("asks for the transcript under its number, beside any read still out, once its settings read answers", () => {
     const [first, second] = steps([ASK, ASK]);
 
     expect(first?.effects).toEqual([{ kind: "read-transcript", refresh: 1 }]);
@@ -94,20 +113,17 @@ describe("a refresh", () => {
     expect(second?.state.refresh).toEqual({
       asked: 2,
       shown: 0,
-      reads: [
-        { refresh: 1, releases: [] },
-        { refresh: 2, releases: [] },
-      ],
+      reads: [onTranscript(1), onTranscript(2)],
     });
   });
 
   test("that reads the transcript settles the items and draws the count line from it, and asks gh about the Review items' pull requests", () => {
-    const last = steps([ASK, read(1, ANSWERED, ["config.yaml: bad key"])]).at(-1);
+    const last = steps([ASK, read(1, ANSWERED)], START, usable(false, [BAD_KEY])).at(-1);
 
     expect(last?.state.refresh).toEqual({ asked: 1, shown: 1, reads: [] });
     expect(last?.state.raised.settledRefs).toEqual(["9efb08a1.Decide.1"]);
     expect(last?.state.raised.turns).toEqual(["9efb08a1", "b2c3d4e5"]);
-    expect(last?.state.raised.warnings).toEqual(["config.yaml: bad key"]);
+    expect(last?.state.raised.warnings).toEqual([BAD_KEY]);
     expect(last?.state.counts).toBe("📌 Outstanding: 🔍 1");
     expect(last?.effects).toEqual([
       {
@@ -126,32 +142,34 @@ describe("a refresh", () => {
 
   test("that can't read the transcript settles nothing, says why, and shows no read", () => {
     const settled = after([ASK, read(1, ANSWERED)]);
-    const last = steps([ASK, read(2, FAILED, ["config.yaml: bad key"])], settled).at(-1);
+    const last = steps([ASK, read(2, FAILED)], settled, usable(false, [BAD_KEY])).at(-1);
 
     expect(last?.state.raised.settledRefs).toEqual(settled.raised.settledRefs);
     expect(last?.state.counts).toBe(settled.counts);
-    expect(problemsOf(last?.state.raised ?? RAISED)).toBe(`config.yaml: bad key; ${GONE}`);
+    expect(problemsOf(last?.state.raised ?? RAISED)).toBe(`${BAD_KEY}; ${GONE}`);
     expect(last?.state.refresh).toEqual({ asked: 2, shown: 1, reads: [] });
     expect(last?.effects).toEqual([]);
   });
 
   test("whose settings can't be used reads nothing, and says what was wrong with them", () => {
-    expect(
-      problemsOf(after([ASK, read(1, { problem: "" }, ["defaults/config.yaml: missing"])]).raised),
-    ).toBe("defaults/config.yaml: missing");
+    const last = steps([ASK], START, BROKEN).at(-1);
+
+    expect(problemsOf(last?.state.raised ?? RAISED)).toBe(MISSING);
+    expect(last?.state.refresh).toEqual({ asked: 1, shown: 0, reads: [] });
+    expect(last?.effects).toEqual([]);
   });
 
   test("whose answer couldn't be stepped is dropped: nothing waits on it, and nothing else changes", () => {
-    const reading = after([...sending(BOXES.first), entered(), TURN_END, ASK]);
-    const dropped = step(reading, { type: "read-dropped", refresh: 1 }, OUTSIDE);
+    const waiting = after([...sending(BOXES.first), entered(), TURN_END, ASK]);
+    const dropped = step(waiting, { type: "read-dropped", refresh: 1 });
 
     expect(dropped.state).toEqual({
-      ...reading,
-      refresh: { asked: 2, shown: 0, reads: [{ refresh: 2, releases: [] }] },
+      ...waiting,
+      refresh: { asked: 2, shown: 0, reads: [onTranscript(2)] },
     });
     expect(dropped.effects).toEqual([]);
-    expect(step(dropped.state, read(1, ANSWERED), OUTSIDE).state).toBe(dropped.state);
-    expect(step(START, { type: "read-dropped", refresh: 1 }, OUTSIDE)).toEqual({
+    expect(step(dropped.state, read(1, ANSWERED)).state).toBe(dropped.state);
+    expect(step(START, { type: "read-dropped", refresh: 1 })).toEqual({
       state: START,
       effects: [],
     });
@@ -176,7 +194,7 @@ describe("an older refresh", () => {
     expect(older.refresh).toEqual({
       asked: 2,
       shown: 1,
-      reads: [{ refresh: 2, releases: [] }],
+      reads: [onTranscript(2)],
     });
     expect(after([read(2, ANSWERED)], older).raised.settledRefs).toEqual(["9efb08a1.Decide.1"]);
   });
@@ -189,7 +207,7 @@ describe("an older refresh", () => {
     const failed = after([ASK, ASK, read(2, FAILED)]);
     const last = after([read(1, ANSWERED)], failed);
 
-    expect(failed.refresh).toEqual({ asked: 2, shown: 0, reads: [{ refresh: 1, releases: [] }] });
+    expect(failed.refresh).toEqual({ asked: 2, shown: 0, reads: [onTranscript(1)] });
     expect(problemsOf(failed.raised)).toBe(GONE);
     expect(last.raised.settledRefs).toEqual(["9efb08a1.Decide.1"]);
     expect(problemsOf(last.raised)).toBe("");
@@ -199,8 +217,8 @@ describe("an older refresh", () => {
   test("a read answered twice, or never asked for, changes nothing", () => {
     const once = after([ASK, read(1, OPEN)]);
 
-    expect(step(once, read(1, ANSWERED), OUTSIDE)).toEqual({ state: once, effects: [] });
-    expect(step(START, read(3, ANSWERED), OUTSIDE)).toEqual({ state: START, effects: [] });
+    expect(step(once, read(1, ANSWERED))).toEqual({ state: once, effects: [] });
+    expect(step(START, read(3, ANSWERED))).toEqual({ state: START, effects: [] });
   });
 });
 
@@ -209,7 +227,7 @@ describe("a turn's end's refresh", () => {
     const reading = after([...sending(BOXES.first), entered(), TURN_END]);
 
     expect(reading.refresh.reads).toEqual([
-      { refresh: 1, releases: [{ press: 1, settled: FIRST_SENT }] },
+      onTranscript(1, [{ press: 1, settled: FIRST_SENT }]),
     ]);
     expect(after([read(1, OPEN)], reading).sent).toEqual([]);
   });
@@ -289,14 +307,14 @@ describe("gh saying a pull request merged", () => {
   });
 
   test("naming nothing changes nothing", () => {
-    expect(step(shown, merged([], 1), OUTSIDE)).toEqual({ state: shown, effects: [] });
+    expect(step(shown, merged([], 1))).toEqual({ state: shown, effects: [] });
   });
 });
 
 describe("the items looked at", () => {
   test("at a session's start or a turn's end, open the pane at its top over an open item it hadn't been opened over, once", () => {
     const first = steps([{ type: "announced" }]).at(-1);
-    const again = step(first?.state ?? START, { type: "announced" }, OUTSIDE);
+    const again = step(first?.state ?? START, { type: "announced" });
 
     expect(first?.effects).toEqual([{ kind: "open-pane" }, { kind: "reveal", to: "start" }]);
     expect(unseen(first?.state.raised ?? RAISED)).toEqual([]);
@@ -311,7 +329,7 @@ describe("the items looked at", () => {
     const last = steps([{ type: "seen" }]).at(-1);
 
     expect(last?.effects).toEqual([]);
-    expect(step(last?.state ?? START, { type: "announced" }, OUTSIDE).effects).toEqual([]);
+    expect(step(last?.state ?? START, { type: "announced" }).effects).toEqual([]);
   });
 });
 
@@ -357,13 +375,13 @@ describe("the random refresh sequences", () => {
   const runs = fc.sample(paneCommandsArb, { numRuns: 500, seed: 7 });
   const shareOf = (isMet: (before: PaneState, event: Event) => boolean): number =>
     runs.filter((commands) =>
-      walkPane(commands, OUTSIDE, { ...START, sent: EARLIER }).some(({ before, event }) =>
+      walkPane(commands, { ...START, sent: EARLIER }).some(({ before, event }) =>
         isMet(before, event),
       ),
     ).length / runs.length;
   const readingOf = (before: PaneState, event: Event) =>
     event.type === "transcript-read"
-      ? before.refresh.reads.find((r) => r.refresh === event.refresh)
+      ? before.refresh.reads.find((r) => r.refresh === event.refresh && r.on.at === "transcript")
       : undefined;
 
   test("have an older read answer after a newer one's in at least a quarter of runs", () => {
@@ -399,26 +417,22 @@ describe("the random refresh sequences", () => {
 });
 
 describe("the refresh's invariants over random event sequences", () => {
-  const sequences = fc.tuple(paneCommandsArb, outsideArb, startArb);
+  const sequences = fc.tuple(paneCommandsArb, startArb);
   const holds = (
-    check: (
-      s: Readonly<{ before: PaneState; event: Event; stepped: Stepped; outside: Outside }>,
-    ) => boolean,
+    check: (s: Readonly<{ before: PaneState; event: Event; stepped: Stepped }>) => boolean,
   ) =>
     fc.assert(
-      fc.property(sequences, ([commands, outside, from]) =>
-        walkPane(commands, outside, from).every((s) => check({ ...s, outside })),
-      ),
+      fc.property(sequences, ([commands, from]) => walkPane(commands, from).every(check)),
       { numRuns: 500 },
     );
 
-  test("an older refresh's result never replaces a newer one's, and a read that couldn't read the transcript settles nothing", () => {
+  test("an older refresh's result never replaces a newer one's, and a read that couldn't read the transcript, or answers while the settings can't be used, settles nothing", () => {
     holds(({ before, event, stepped: { state } }) => {
       const isWaiting =
         event.type === "transcript-read" &&
-        before.refresh.reads.some((r) => r.refresh === event.refresh);
+        before.refresh.reads.some((r) => r.refresh === event.refresh && r.on.at === "transcript");
       const isNewer = isWaiting && event.refresh > before.refresh.shown;
-      const isShown = isNewer && "turns" in event.found;
+      const isShown = isNewer && "turns" in event.found && before.settings.tag === "loaded";
       const isSettledSame =
         state.raised.items === before.raised.items &&
         state.raised.settledRefs === before.raised.settledRefs &&
@@ -453,7 +467,7 @@ describe("the refresh's invariants over random event sequences", () => {
     );
   });
 
-  test("a dropped read changes nothing but the reads waiting", () => {
+  test("a dropped read changes nothing but the reads waiting, and leaves a refresh still waiting on its settings", () => {
     holds(({ before, event, stepped: { state, effects } }) =>
       event.type !== "read-dropped" ||
       (effects.length === 0 &&
@@ -461,7 +475,10 @@ describe("the refresh's invariants over random event sequences", () => {
           { ...state, refresh: { ...state.refresh, reads: [] } },
           { ...before, refresh: { ...before.refresh, reads: [] } },
         ) &&
-        state.refresh.reads.every((r) => r.refresh !== event.refresh)),
+        state.refresh.reads.every((r) => r.refresh !== event.refresh || r.on.at === "settings") &&
+        before.refresh.reads
+          .filter((r) => r.on.at === "settings")
+          .every((r) => state.refresh.reads.includes(r))),
     );
   });
 
@@ -495,7 +512,10 @@ describe("the refresh's invariants over random event sequences", () => {
     holds(({ before, event, stepped: { state } }) => {
       const gone = before.sent.filter((h) => !state.sent.includes(h));
       const reading = before.refresh.reads.find(
-        (r) => event.type === "transcript-read" && r.refresh === event.refresh,
+        (r) =>
+          event.type === "transcript-read" &&
+          r.refresh === event.refresh &&
+          r.on.at === "transcript",
       );
 
       return (
@@ -526,18 +546,6 @@ describe("the refresh's invariants over random event sequences", () => {
   test("the pane opens by itself only over an open item it hadn't been opened over", () => {
     holds(({ before, stepped: { effects } }) =>
       effects.every((e) => e.kind !== "open-pane" || unseen(before.raised).length > 0),
-    );
-  });
-
-  test("a step that reads no outside area steps the same under any", () => {
-    fc.assert(
-      fc.property(paneCommandsArb, outsideArb, outsideArb, startArb, (commands, a, b, from) =>
-        walkPane(commands, a, from).every(
-          ({ before, event }) =>
-            readsOutside(event) || isDeepStrictEqual(step(before, event, a), step(before, event, b)),
-        ),
-      ),
-      { numRuns: 300 },
     );
   });
 

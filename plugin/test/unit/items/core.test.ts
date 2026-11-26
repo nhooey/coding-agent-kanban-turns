@@ -7,9 +7,9 @@ import { expect } from "expect";
 import { answersIn, answerTo, lettersAfter } from "../../../src/items/answers.ts";
 import { glyphOf, markOf, optionMark, refOf } from "../../../src/items/items.ts";
 import type { DecideItem } from "../../../types/index.d.ts";
-import { SHIPPED_SETTINGS } from "../../fixtures/shipped-settings.ts";
+import { SETTINGS } from "../../fixtures/settings.ts";
 
-const MARKS = SHIPPED_SETTINGS.marks;
+const MARKS = SETTINGS.marks;
 
 const radio: DecideItem = {
   turn: "9efb08a1",

@@ -191,17 +191,22 @@ export type Submit = Readonly<
 export type Held = Readonly<{ press: number; settled: Settlement }>;
 
 /**
- * A transcript read a refresh asked for that hasn't answered, by the
- * refresh's number, with the answers Submit held when it was asked, which
+ * A refresh's read that hasn't answered, by the refresh's number: first of
+ * the settings files, by the settings read's number, then of the
+ * transcript. It holds the answers Submit held when it was asked, which
  * the read takes out once it has read the transcript they went into: a
  * turn's end's holds; none for any other refresh.
  */
-export type Reading = Readonly<{ refresh: number; releases: readonly Held[] }>;
+export type Reading = Readonly<{
+  refresh: number;
+  releases: readonly Held[];
+  on: Readonly<{ at: "settings"; read: number } | { at: "transcript" }>;
+}>;
 
 /**
  * The refresh: how many refreshes have been asked for, which numbers them;
  * the refresh whose transcript read the items and the count line show, 0
- * before any; and the reads not answered yet, oldest first. A read no newer
+ * before any; and the refreshes' reads not answered yet, oldest first. A read no newer
  * than the one shown is dropped when it answers, so an older refresh never
  * replaces a newer one.
  */
@@ -221,14 +226,36 @@ export type Refresh = Readonly<{
 export type Aside = Readonly<{ said: string; presses: number }>;
 
 /**
+ * The settings, as the newest read of the files to answer found them: none
+ * read yet; loaded, with the settings in effect, where each came from and
+ * what was wrong with a file that still left them usable; or broken, the
+ * defaults file unusable, with why. `asked` counts the reads asked for,
+ * which numbers them, and `read` is the one whose answer this is: a read no
+ * newer than it is dropped when it answers, so an older read never
+ * replaces a newer one.
+ */
+export type SettingsState = Readonly<
+  | { tag: "unread"; asked: number }
+  | {
+      tag: "loaded";
+      asked: number;
+      read: number;
+      settings: Settings;
+      effective: readonly string[];
+      warnings: readonly string[];
+    }
+  | { tag: "broken"; asked: number; read: number; problems: readonly string[] }
+>;
+
+/**
  * The pane's state, one value that `step` moves: how many presses there
  * have been, which numbers them; Submit; the presses a session's start
  * overtook, which finish as they would have, since a hook already running
  * when the plugin reloads still settles, and what the last of them to end
  * said; the refresh; the raised items; the answers Submit holds Done; the
  * pull requests `gh` said merged, as `owner/repo#N`, a merge staying so
- * none is asked about again; and the skill's count line, empty when
- * nothing is open.
+ * none is asked about again; the skill's count line, empty when nothing is
+ * open; and the settings.
  */
 export type PaneState = Readonly<{
   presses: number;
@@ -240,6 +267,7 @@ export type PaneState = Readonly<{
   sent: readonly Held[];
   merged: readonly string[];
   counts: string;
+  settings: SettingsState;
 }>;
 
 /** A value a settings file holds, as YAML reads it. */
@@ -326,7 +354,6 @@ declare module "claude-code" {
       draft: string;
       noting: string;
       pane: Shaped<PaneState>;
-      settings: Shaped<Loaded>;
       instructed: string;
       lintNote: Shaped<LintNote>;
     };

@@ -1,13 +1,13 @@
 // What the refresh's pane-state tests and its differential test drive the
 // refresh with, beside Submit's fixtures in ./submit.ts: the transcripts a
-// read may find, what `gh` may say merged, and the random events and
-// answers fast-check draws from them, presses and their answers among
-// them, since Submit holds the answers a refresh takes out.
+// read may find, what the settings files and `gh` may say, and the random
+// events and answers fast-check draws from them, presses and their answers
+// among them, since Submit holds the answers a refresh takes out.
 
 import fc from "fast-check";
 
 import type { Effect, Event, Found } from "../../src/pane/pane-state.ts";
-import type { DecideItem, Settings, Turn } from "../../types/index.d.ts";
+import type { DecideItem, Loaded, Turn } from "../../types/index.d.ts";
 import {
   ENGINE,
   ITEMS,
@@ -17,10 +17,10 @@ import {
   walkWith,
 } from "./submit.ts";
 import type { CommandOf, Reply } from "./submit.ts";
+import { COUNTS, loadedArb } from "./settings.ts";
 import { turnOf } from "./turns.ts";
 
-/** The count line's settings, as the defaults give them. */
-export const COUNTS: Settings["counts"] = { turns: 5, "gh-timeout-ms": 5000 };
+export { COUNTS };
 
 /** The pull request the raising turn's Review item names. */
 export const PULL = "nhooey/kanban#21";
@@ -53,14 +53,8 @@ export const GONE = "the transcript is gone";
 
 /** What a read may find: one of the transcripts, or a transcript that can't be read. */
 export const foundArb: fc.Arbitrary<Found> = fc.oneof(
-  { arbitrary: fc.constantFrom(...Object.values(TRANSCRIPTS)).map((turns): Found => ({ turns, counts: COUNTS })), weight: 4 },
+  { arbitrary: fc.constantFrom(...Object.values(TRANSCRIPTS)).map((turns): Found => ({ turns })), weight: 4 },
   { arbitrary: fc.constant<Found>({ problem: GONE }), weight: 1 },
-);
-
-/** What the settings files may say was wrong with them. */
-export const warningsArb: fc.Arbitrary<readonly string[]> = fc.constantFrom(
-  [],
-  ["config.yaml: bad key"],
 );
 
 /** What `gh` may say merged. */
@@ -74,23 +68,20 @@ export const DRAWN: DecideItem = {
   summary: "Which branch to cut",
 };
 
-/** What the engine answers any call with: a prompt call as Submit's fixtures say, a transcript read with what it found, `gh` with what merged. */
+/** What the engine answers any call with: a prompt call as Submit's fixtures say, a settings read with the files' merge, a transcript read with what it found, `gh` with what merged. */
 export type PaneReply = Reply &
-  Readonly<{ found: Found; warnings: readonly string[]; merged: readonly string[] }>;
+  Readonly<{ loaded: Loaded; found: Found; merged: readonly string[] }>;
 
 export const paneReplyArb: fc.Arbitrary<PaneReply> = fc
-  .tuple(replyArb, foundArb, warningsArb, mergedArb)
-  .map(([reply, found, warnings, merged]) => ({ ...reply, found, warnings, merged }));
+  .tuple(replyArb, loadedArb, foundArb, mergedArb)
+  .map(([reply, loaded, found, merged]) => ({ ...reply, loaded, found, merged }));
 
 /** The event the hooks dispatch when the call `effect` asked for answers with `reply`; none for an effect that asks nothing. */
 export const paneAnswerTo = (effect: Effect, reply: PaneReply): Event | undefined =>
-  effect.kind === "read-transcript"
-    ? {
-        type: "transcript-read",
-        refresh: effect.refresh,
-        found: reply.found,
-        warnings: reply.warnings,
-      }
+  effect.kind === "read-settings"
+    ? { type: "settings-read", read: effect.read, loaded: reply.loaded }
+    : effect.kind === "read-transcript"
+    ? { type: "transcript-read", refresh: effect.refresh, found: reply.found }
     : effect.kind === "ask-merged"
       ? {
           type: "merged-found",
@@ -99,23 +90,25 @@ export const paneAnswerTo = (effect: Effect, reply: PaneReply): Event | undefine
         }
       : answerTo(effect, reply);
 
-/** The effects that ask something and answer with an event: the prompt calls, transcript reads and `gh`. */
+/** The effects that ask something and answer with an event: the prompt calls, settings and transcript reads, and `gh`. */
 export const PANE_ASKS: readonly Effect["kind"][] = [
   ...ENGINE,
+  "read-settings",
   "read-transcript",
   "ask-merged",
 ];
 
 /**
  * Any event the pane takes: Submit's, and the refresh's, a turn's end's
- * refresh, which releases what Submit held, among them; stray transcript
- * reads, dropped reads and `gh` answers, for any refresh, too.
+ * refresh, which releases what Submit held, among them; settings reads no
+ * refresh waits on; stray settings and transcript reads, dropped reads and
+ * `gh` answers, for any read or refresh, too.
  */
 export const paneEventArb: fc.Arbitrary<Event> = fc.oneof(
   { arbitrary: eventArb, weight: 6 },
   {
     arbitrary: fc.boolean().map((releases): Event => ({ type: "refresh-asked", releases })),
-    weight: 4,
+    weight: 7,
   },
   fc
     .subarray([...ITEMS, DRAWN], { minLength: 1 })
@@ -124,8 +117,15 @@ export const paneEventArb: fc.Arbitrary<Event> = fc.oneof(
   fc
     .constantFrom("s", "s2")
     .map((session): Event => ({ type: "session-joined", session })),
+  fc.constant<Event>({ type: "settings-asked" }),
   fc
-    .record({ refresh: fc.integer({ min: 1, max: 4 }), found: foundArb, warnings: warningsArb })
+    .record({ read: fc.integer({ min: 0, max: 5 }), loaded: loadedArb })
+    .map((r): Event => ({ type: "settings-read", ...r })),
+  fc
+    .integer({ min: 1, max: 5 })
+    .map((read): Event => ({ type: "settings-dropped", read })),
+  fc
+    .record({ refresh: fc.integer({ min: 1, max: 4 }), found: foundArb })
     .map((r): Event => ({ type: "transcript-read", ...r })),
   fc
     .integer({ min: 1, max: 4 })
@@ -160,10 +160,10 @@ export const paneCommandArb: fc.Arbitrary<PaneCommand> = fc.oneof(
   },
 );
 
-/** A random run: long enough for several refreshes to read at once, and to outlast a session's start. */
+/** A random run: long enough for several refreshes to read at once, each its settings then its transcript, and to outlast a session's start. */
 export const paneCommandsArb: fc.Arbitrary<readonly PaneCommand[]> = fc.array(
   paneCommandArb,
-  { minLength: 20, maxLength: 80 },
+  { minLength: 20, maxLength: 100 },
 );
 
 /** The events `commands` make, each stepped from `from`, with the state before it: an answer command answers any call still waiting. */
