@@ -347,6 +347,18 @@ export type Settings = Readonly<{
  */
 export type LintNote = Readonly<{ conversation: string; text: string }>;
 
+/**
+ * What the pane's toggles a click moved hold, each set by key: `expanded`,
+ * the Done branch and the Done items opened to their full box, which start
+ * collapsed; `collapsed`, the Open and Queued branches and the turn headers
+ * folded, which start expanded. No move of an item between branches
+ * changes them.
+ */
+export type Folds = Readonly<{
+  expanded: readonly string[];
+  collapsed: readonly string[];
+}>;
+
 /** The settings in effect, where each came from, and what was wrong with the files. */
 export type Loaded = Readonly<{
   /** Null while the defaults file can't be used. */
@@ -360,8 +372,9 @@ export type Loaded = Readonly<{
 declare module "claude-code" {
   interface PluginState {
     "coding-agent-kanban-turns": {
-      expanded: readonly string[];
+      folds: Shaped<Folds>;
       focused: string;
+      held: string;
       isKeysOpen: boolean;
       draft: string;
       noting: string;
