@@ -23,10 +23,16 @@ export const LAYOUT = {
   indent: 3,
   /**
    * The column left of an option's lines that lights while the pointer is
-   * over the option, or stays lit once its item is Done: it comes out of
-   * the option's indent, so its text stays put.
+   * over the option, or stays lit beside an answered option once its item
+   * is Done: it comes out of the option's indent, so its text stays put.
    */
   gutter: 1,
+  /**
+   * The blank cells between the gutter and an option's mark, so the bar
+   * stands apart from the mark; they come out of the indent with the
+   * gutter.
+   */
+  gutterGap: 1,
   /** The cells between an item's label and its summary on its title line. */
   titleGap: 1,
   /** The cells between a label and the text after it, on a Done line or in the keys panel. */

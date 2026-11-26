@@ -81,8 +81,10 @@ notes:
 marks:
   # A Done item's options that the answer which made it Done picked,
   # drawn at full strength in the dimmed item, with no underline, beside
-  # its letter: the draft's own picks keep `chosen` underlined.
-  sent: ☑️
+  # its letter: the draft's own picks keep `chosen` underlined. The same
+  # as `chosen`, so an answered option reads as a picked one; ☑️, which
+  # common terminals draw grey, sets it apart.
+  sent: ✅
   # An option the draft picks, in place of its glyph beside its letter,
   # the option's line underlined; also the glyph of 🔄 Reassess while the
   # draft ends on the `reassess` line.
