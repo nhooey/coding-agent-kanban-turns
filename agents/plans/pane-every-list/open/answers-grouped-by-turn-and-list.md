@@ -13,4 +13,8 @@ touches: [plugin/src/items/answers.ts, plugin/src/items/outstanding.ts, plugin/t
 - **Reading.** The draft and the user's prompts are parsed line by line into groups, by a parser over that grammar rather than a regular expression per form: an item line answers its group's turn and list, never the turn before as a bare numbered line `2. B` does, and the context is skipped. Plain references, anywhere in the text, read as they do today.
 - **Round trip.** Reading what the writer wrote gives back the same answers, and text the user typed outside the groups is kept where it was.
 
+## Already true for Todo
+
+The draft's code in `plugin/src/items/answers.ts` reads and writes a Todo item's answer beside a Decide item's, as a plain reference on a line of its own, `9efb08a1.Todo.3: done: rotated it`: `toggledWord` writes a word and takes it out, and `withNote` keeps the word beside the note. The grouped form, which needs a parser over the grammar, is still to come.
+
 Checks: tests in `plugin/test/unit/` for the grouped example in [the end state](pane-every-list.md), for a word with a note, for a context holding `:` or `→`, for a plain reference beside a group, and for the round trip.

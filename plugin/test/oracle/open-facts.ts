@@ -21,7 +21,6 @@ import {
   settlingPullRequests,
   subjectKey,
   summaryOf,
-  textsOf,
   withRepliedFrees,
   withResolvedFrees,
 } from "../../src/items/outstanding.ts";
@@ -34,10 +33,12 @@ import type {
   Settling,
 } from "../../src/items/outstanding.ts";
 import { refOf } from "../../src/items/items.ts";
+import { wordedSubjects } from "../../src/items/listed.ts";
 import {
   isOwn,
   reassessStart,
   reassessStarts,
+  textsOf,
 } from "../../src/transcript/turns.ts";
 import type { DecideItem, Settlement, Turn } from "../../types/index.d.ts";
 
@@ -128,6 +129,7 @@ export const settlingOf = (
   return {
     merged,
     decided: answeredSubjects(turns),
+    worded: wordedSubjects(turns),
     reports: turns.flatMap((turn, n) =>
       textsOf(turn).flatMap(({ owner, text, reportNames }) =>
         isOwn(owner) || reportNames === undefined

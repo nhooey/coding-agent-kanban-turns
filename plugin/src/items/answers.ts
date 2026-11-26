@@ -1,36 +1,36 @@
 // The answers written in the prompt draft: reading them, and the draft once
-// an option is clicked or a note written. No `$`, no I/O: register.tsx reads
-// the draft, calls these, and writes what they return.
+// an option or an action is clicked or a note written. No `$`, no I/O:
+// register.tsx reads the draft, calls these, and writes what they return.
 
 import { asksQuestion } from "./answer-lines.ts";
-import { isSameTurn, refOf } from "./items.ts";
-import { DECIDE, LETTER, REASSESS, TURN_ID_PREFIX } from "../protocol/rules.ts";
+import { isDecide, isSameTurn, refOf } from "./items.ts";
+import { saidOf, saidText } from "./said.ts";
+import { referencesOfLine } from "./word-answers.ts";
+import type { LineReference } from "./word-answers.ts";
+import { DECIDE, LETTER, REASSESS, paneListOf, settlingWordsOf } from "../protocol/rules.ts";
 import { SPEC } from "../protocol/spec.ts";
-import { escaped } from "../text/patterns.ts";
 import { isReassessLine } from "../transcript/turns.ts";
-import type { DecideItem } from "../../types/index.d.ts";
+import type { DecideItem, ListedItem, TodoItem } from "../../types/index.d.ts";
 
 /**
- * One answer written in the draft, and where it sits: `<turn>.Decide.<n>.<letters>`,
- * a note after it to the end of its line, `…Decide.<n>.B: <note>`, or a note
- * alone, `…Decide.<n>: <text>`, which answers the item in words.
+ * One answer written in the draft, and where it sits, to an item of a list
+ * the pane draws, by its header: `<turn>.Decide.<n>.<letters>`, a note
+ * after it to the end of its line, `…Decide.<n>.B: <note>`, or a note
+ * alone, `…Decide.<n>: <text>`, which answers the item in words; or, for a
+ * list with settling words, `<turn>.Todo.<n>: <word>`, a note after the
+ * word, `…: done: <note>`, or a note alone, which settles nothing.
  */
 export type Answer = Readonly<{
   start: number;
   end: number;
   turn: string;
+  list: string;
   number: number;
   letters: readonly string[];
+  word: string;
   note: string;
 }>;
 
-// A turn id of 6 to 8 hex characters (a prefix of the 8 is as good), the item
-// number, then one capital or several joined by commas, a note after `: ` to
-// the end of the line, or both. Not part of a longer word.
-const ANSWER = new RegExp(
-  String.raw`(?<![\w.])(${TURN_ID_PREFIX})\.${escaped(DECIDE.header)}\.(\d+)(?:\.(${LETTER}(?:,${LETTER})*)(?!\w))?(?:: ([^\n]*))?`,
-  "g",
-);
 // A note that is only letters, `…Decide.2: B`, is the letters written the other way.
 const LETTERS_ONLY = new RegExp(
   String.raw`^(${LETTER}(?:\s*,\s*${LETTER})*)\s*$`,
@@ -39,45 +39,92 @@ const LETTERS_ONLY = new RegExp(
 const lettersIn = (joined: string): readonly string[] =>
   joined === "" ? [] : joined.split(",");
 
-const answerOf = (m: RegExpMatchArray): Answer => {
-  const said = (m[4] ?? "").trim();
-  const asLetters = m[3] === undefined ? LETTERS_ONLY.exec(said) : null;
-  const start = m.index ?? 0;
+/** What a Decide answer picks and says: its letters, by a dot or as a note of letters alone, and its note. */
+const decided = (
+  dotted: string | undefined,
+  said: string,
+): Pick<Answer, "letters" | "word" | "note"> => {
+  const asLetters = dotted === undefined ? LETTERS_ONLY.exec(said) : null;
 
   return {
-    start,
-    end: start + m[0].length,
-    turn: m[1] ?? "",
-    number: Number(m[2]),
-    letters: lettersIn(m[3] ?? asLetters?.[1]?.replace(/\s/g, "") ?? ""),
+    letters: lettersIn(dotted ?? asLetters?.[1]?.replace(/\s/g, "") ?? ""),
+    word: "",
     note: asLetters ? "" : said,
   };
 };
 
-/** Every answer written in the draft, in order. */
-export const answersIn = (draft: string): readonly Answer[] =>
-  [...draft.matchAll(ANSWER)]
-    .filter((m) => m[3] !== undefined || m[4] !== undefined)
-    .map(answerOf);
+/** What an answer to an item of `list`, by its header, picks and says: a Decide item's letters and note, another list's settling word and note. */
+const pickedAndSaid = (
+  list: string,
+  dotted: string | undefined,
+  said: string,
+): Pick<Answer, "letters" | "word" | "note"> => {
+  const spec = paneListOf(list);
 
-const isFor = (answer: Answer, item: DecideItem): boolean =>
-  answer.number === item.number && isSameTurn(answer.turn, item.turn);
+  return spec === undefined || spec === DECIDE
+    ? decided(dotted, said)
+    : { letters: [], ...saidOf(said, settlingWordsOf(spec)) };
+};
+
+/** The answer a reference on a line writes, its place moved by `offset`, where the line opens in the draft. */
+const answerOf = (ref: LineReference, offset: number): Answer => ({
+  start: offset + ref.start,
+  end: offset + ref.end,
+  turn: ref.turn,
+  list: ref.list,
+  number: ref.number,
+  ...pickedAndSaid(ref.list, ref.dotted, ref.said ?? ""),
+});
+
+/** Whether a reference writes an answer the draft holds: it names its turn, as the pane writes it, and has a Decide item's letters after it, or words after its colon. */
+const isAnswer = (ref: LineReference): boolean =>
+  ref.turn !== "" &&
+  (ref.said !== undefined || (ref.dotted !== undefined && ref.list === DECIDE.header));
+
+/** Each line of the draft, with where it opens. */
+const linesOf = (draft: string): readonly Readonly<{ line: string; offset: number }>[] =>
+  draft.split("\n").reduce<readonly Readonly<{ line: string; offset: number }>[]>(
+    (sofar, line) => {
+      const last = sofar.at(-1);
+
+      return [...sofar, { line, offset: last === undefined ? 0 : last.offset + last.line.length + 1 }];
+    },
+    [],
+  );
+
+/** Every answer written in the draft, in order, each line read by the grammar the turn's end reads it by. */
+export const answersIn = (draft: string): readonly Answer[] =>
+  linesOf(draft).flatMap(({ line, offset }) =>
+    referencesOfLine(line)
+      .filter(isAnswer)
+      .map((ref) => answerOf(ref, offset)),
+  );
+
+const isFor = (answer: Answer, item: ListedItem): boolean =>
+  answer.list === item.list &&
+  answer.number === item.number &&
+  isSameTurn(answer.turn, item.turn);
 
 /** The draft's answer to the item, if it holds one. */
-export const answerTo = (draft: string, item: DecideItem): Answer | undefined =>
+export const answerTo = (draft: string, item: ListedItem): Answer | undefined =>
   answersIn(draft).find((answer) => isFor(answer, item));
 
 /** The letters the draft picks for the item; none when it does not answer it. */
 export const lettersFor = (
   draft: string,
-  item: DecideItem,
+  item: ListedItem,
 ): readonly string[] => answerTo(draft, item)?.letters ?? [];
 
+/** The settling word the draft gives the item; empty when it gives none. */
+export const wordFor = (draft: string, item: ListedItem): string =>
+  answerTo(draft, item)?.word ?? "";
+
 /** The note the draft gives the item; empty when it gives none. */
-export const noteFor = (draft: string, item: DecideItem): string =>
+export const noteFor = (draft: string, item: ListedItem): string =>
   answerTo(draft, item)?.note ?? "";
 
-export const isAnswered = (draft: string, item: DecideItem): boolean =>
+/** Whether the draft holds an answer to the item, a note alone among them. */
+export const isAnswered = (draft: string, item: ListedItem): boolean =>
   answerTo(draft, item) !== undefined;
 
 /** The draft's line the answer sits on. */
@@ -96,18 +143,34 @@ const lineOf = (draft: string, answer: Answer): string => {
  * them, since it reads a line that asks one as a question about the item
  * that picks nothing; none where no such answer is left.
  */
-export const choiceTo = (draft: string, item: DecideItem): Answer | undefined =>
+export const choiceTo = (draft: string, item: ListedItem): Answer | undefined =>
   answersIn(draft).findLast(
     (answer) => isFor(answer, item) && !asksQuestion(lineOf(draft, answer)),
   );
 
-/** An answer as the draft holds it: the letters, then the note. */
+/**
+ * Whether sending the draft would settle the item, by its choice, the
+ * latest answer to it on a line that asks no question: any such answer to
+ * a Decide item, a note in words among them; a settling word for an item
+ * of a list that has them, whose note alone settles nothing.
+ */
+export const settles = (draft: string, item: ListedItem): boolean => {
+  const choice = choiceTo(draft, item);
+
+  return isDecide(item) ? choice !== undefined : (choice?.word ?? "") !== "";
+};
+
+/** An answer as the draft holds it: the letters, then the word and the note. */
 const written = (
-  item: DecideItem,
+  item: ListedItem,
   letters: readonly string[],
+  word: string,
   note: string,
-): string =>
-  `${refOf(item)}${letters.length > 0 ? `.${letters.join(",")}` : ""}${note ? `: ${note}` : ""}`;
+): string => {
+  const said = saidText({ word, note });
+
+  return `${refOf(item)}${letters.length > 0 ? `.${letters.join(",")}` : ""}${said ? `: ${said}` : ""}`;
+};
 
 const inOptionOrder = (
   item: DecideItem,
@@ -174,26 +237,51 @@ const appended = (draft: string, text: string): string => {
 };
 
 /**
- * The draft once a note is written for the item: its answer, letters kept,
- * moved to a line of its own at the end, as `choose` adds one, since a note
- * runs to its line's end;
- * an empty note leaves the letters alone, or drops a letterless answer.
+ * The draft once a note is written for the item: its answer, letters or
+ * settling word kept, moved to a line of its own at the end, as `choose`
+ * adds one, since a note runs to its line's end; an empty note leaves the
+ * letters or the word alone, or drops an answer with neither.
  */
 export const withNote = (
   draft: string,
-  item: DecideItem,
+  item: ListedItem,
   note: string,
 ): string => {
   const held = answerTo(draft, item);
   const letters = held?.letters ?? [];
+  const word = held?.word ?? "";
   const said = note.replace(/\s+/g, " ").trim();
   const rest = held === undefined ? draft : withoutAnswer(draft, held);
-  const text = written(item, letters, said);
+  const text = written(item, letters, word, said);
 
   return said !== ""
     ? appended(rest.replace(/\s+$/, ""), text)
-    : held === undefined || letters.length === 0
+    : held === undefined || (letters.length === 0 && word === "")
       ? rest
+      : replaced(draft, held, text);
+};
+
+/**
+ * The draft once an item's action is clicked, the button writing `word`, a
+ * settling word: the item's answer written with it in place of the one the
+ * draft held, its note kept, or added on a line of its own at the end; a
+ * click on the word the answer holds takes it out, and the answer is
+ * dropped when no note is left.
+ */
+export const toggledWord = (
+  draft: string,
+  item: TodoItem,
+  word: string,
+): string => {
+  const held = answerTo(draft, item);
+  const next = held?.word === word ? "" : word;
+  const note = held?.note ?? "";
+  const text = written(item, [], next, note);
+
+  return held === undefined
+    ? appended(draft, text)
+    : next === "" && note === ""
+      ? withoutAnswer(draft, held)
       : replaced(draft, held, text);
 };
 
@@ -284,7 +372,7 @@ export const choose = (
   const held = answerTo(draft, item);
   const letters = lettersAfter(item, held?.letters ?? [], letter);
   const note = held?.note ?? "";
-  const text = written(item, letters, note);
+  const text = written(item, letters, "", note);
 
   return held === undefined
     ? appended(draft, text)

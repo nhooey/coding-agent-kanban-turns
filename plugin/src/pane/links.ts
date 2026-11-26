@@ -10,7 +10,7 @@ import { DECISIONS, isLineOf } from "../protocol/rules.ts";
 import { SPEC } from "../protocol/spec.ts";
 import { parseReply } from "../transcript/reply.ts";
 import type { Block, ItemHead, Option } from "../transcript/reply.ts";
-import type { DecideItem } from "../../types/index.d.ts";
+import type { DecideItem, TodoItem } from "../../types/index.d.ts";
 
 /** Where a question's link points: a name that never resolves, so a click the plugin misses opens nothing real. */
 export const QUESTION_LINK = "https://kanban-turns.invalid/";
@@ -74,8 +74,8 @@ export const linkedQuestions = (
   };
 };
 
-/** The item with the ref, by its place among `items`; -1 when none has it. */
-export const itemOfRef = (items: readonly DecideItem[], ref: string): number =>
+/** The item with the ref, of any list the pane draws, by its place among `items`; -1 when none has it. */
+export const itemOfRef = (items: readonly (DecideItem | TodoItem)[], ref: string): number =>
   items.findIndex((item) => refOf(item) === ref);
 
 /** The ref a question's link names, by its href; empty when it names none. */

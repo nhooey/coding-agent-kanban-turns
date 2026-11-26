@@ -28,10 +28,19 @@
 #       never looked up, so an item naming only that never settles;
 #     report: a report naming it, in a turn after the last that printed it
 #       in its own list;
+#     settling-word: one of its list's settling-words, which the user's own
+#       text gives the latest printing of its subject in its own list, by
+#       reference; a note alone settles nothing;
 #     none: nothing; a list that doesn't roll up is settled by none, since
 #       none of its items stays open to settle;
 #   settling-words: each word that, after an item's reference, settles it,
 #     with what it does; a word settles every list it's on the same way.
+#     The word stands alone after the reference's `: `, `Todo.3: done`, or
+#     is followed by `: ` and a note, `Todo.3: done: rotated it yesterday`.
+#     Any other text after `: ` is a note, which settles no item of a list
+#     with settling words; a Decide item's note is an answer in words. A
+#     word settles the item in the pane and under a reply, and, for a list
+#     settled-by settling-word, in the 📌 roll-up and the count line.
 lists:
   done:
     header: Done
@@ -87,8 +96,10 @@ lists:
     glyph: 👉
     aliases: [To do]
     rolls-up: true
-    settled-by: none
-    settling-words: {}
+    settled-by: settling-word
+    settling-words:
+      done: settles it, the person having done it
+      skip: settles it, the person not doing it
   decide:
     header: Decide
     glyph: 🧠
@@ -170,7 +181,11 @@ skill:
 #     turn too;
 #   letters: the range an option's capital letter is in, `first` to `last`;
 #   turn-after: the words that name an answer's turn after it, `Decide.2: B
-#     of 9efb08a1`.
+#     of 9efb08a1`;
+#   separators: what may part one answer from the next on a line, spaces
+#     around it, `Todo.1: done, Decide.2: B`. An answer's text after its
+#     reference's colon, the spaces after the colon aside, runs to the next
+#     reference of a list the pane draws, a separator before it aside.
 reference:
   turn-id:
     length: 8
@@ -180,6 +195,7 @@ reference:
     first: A
     last: Z
   turn-after: [of, from]
+  separators: [",", ";", "/"]
 
 # The line an item that blocks other work ends on, naming the items it
 # frees: `Frees: 0f311c94.Decide.2, 0f311c94.Review.1`. Each is an item's

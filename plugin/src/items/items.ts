@@ -5,14 +5,23 @@
 
 import { refOfText, refText, uniqueRefs } from "./frees.ts";
 import type { ItemRef } from "./frees.ts";
-import { DECIDE, DEFAULT_KIND } from "../protocol/rules.ts";
+import { DECIDE, DEFAULT_KIND, paneListOf } from "../protocol/rules.ts";
+import type { ListName } from "../protocol/rules.ts";
 import { SPEC } from "../protocol/spec.ts";
 import { field, isObject } from "../json/fields.ts";
-import type { DecideItem, DecideKind } from "../../types/index.d.ts";
+import type { DecideItem, DecideKind, ListedItem } from "../../types/index.d.ts";
 
-/** The reference an answer names the item by, without its letters. */
-export const refOf = (item: DecideItem): string =>
-  item.ref || `${item.turn}.${DECIDE.header}.${item.number}`;
+/** The reference an answer names the item by, without its letters: `9efb08a1.Decide.2`, `9efb08a1.Todo.3`, a Decide item's where the input names no list. */
+export const refOf = (item: ListedItem): string =>
+  item.ref || `${item.turn}.${listOf(item).header}.${item.number}`;
+
+/** Whether the item is a Decide item, the case with options. */
+export const isDecide = (item: ListedItem): item is DecideItem =>
+  "options" in item;
+
+/** The list an item is of, as its label and a list's header name it: the spec's list its `list` names, Decide's for one the pane doesn't draw. */
+export const listOf = (item: ListedItem): ListName =>
+  paneListOf(item.list) ?? DECIDE;
 
 /** Whether two turn ids name one turn: either may be a prefix of the other, as an answer's may; an empty one names none. */
 export const isSameTurn = (a: string, b: string): boolean =>
@@ -113,7 +122,7 @@ const withRef = ({ frees, supersedes, ...item }: DecideItem): DecideItem => ({
   ...item,
   list: DECIDE.header,
   kind: kindOf(item.kind),
-  ref: refOf(item),
+  ref: refOf({ ...item, list: DECIDE.header }),
   ...freesField(frees),
   ...supersedesField(supersedes),
 });

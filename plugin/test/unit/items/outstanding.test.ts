@@ -1427,6 +1427,7 @@ const ownKey = (item: ListItem): string => `${item.list}\t${subjectKey(summaryOf
 const NOTHING: Settling = {
   merged: new Set(),
   decided: new Set(),
+  worded: new Set(),
   reports: [],
   lastOwn: new Map(),
 };
@@ -1447,7 +1448,7 @@ describe("the settlers, by the way a list is settled", () => {
       waiting: "report",
       authorizations: "none",
       review: "merged-pull-request",
-      todo: "none",
+      todo: "settling-word",
       decide: "answer",
     });
   });
@@ -1481,6 +1482,14 @@ describe("the settlers, by the way a list is settled", () => {
     expect(settles(item, { ...NOTHING, decided: new Set([subjectKey(summaryOf(item.line))]) })).toBe(true);
     expect(settles(item, NOTHING)).toBe(false);
     expect(pullRequests(listItem("decide", "**example/kanban#22 Bump**"))).toEqual([]);
+  });
+
+  test("settling-word settles an item whose subject's latest printing a settling word settled", () => {
+    const { settles, pullRequests } = SETTLERS["settling-word"];
+    const item = listItem("todo", "**Rotate the deploy token**");
+    expect(settles(item, { ...NOTHING, worded: new Set([subjectKey(summaryOf(item.line))]) })).toBe(true);
+    expect(settles(item, NOTHING)).toBe(false);
+    expect(pullRequests(listItem("todo", "**example/kanban#22 Bump**"))).toEqual([]);
   });
 
   test("report settles an item a report names after the last turn its own list printed it in", () => {
@@ -1622,6 +1631,7 @@ describe("factsOf", () => {
       turns: [],
       start: 0,
       answers: [],
+      words: [],
       items: [],
       latestOwn: new Map(),
     });

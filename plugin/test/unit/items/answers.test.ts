@@ -298,6 +298,19 @@ describe("questions in a reply", () => {
     expect(itemOfRef(items, "")).toBe(-1);
   });
 
+  test("a Todo item a ref names, among the Decide items, by its place", () => {
+    const todo = {
+      turn: "9efb08a1",
+      list: "Todo",
+      number: 3,
+      summary: "Rotate the deploy token",
+      ref: "9efb08a1.Todo.3",
+    } as const;
+
+    expect(itemOfRef([...items, todo], "9efb08a1.Todo.3")).toBe(items.length);
+    expect(itemOfRef([...items, todo], "9efb08a1.Decide.3")).toBe(2);
+  });
+
   test("the items a reply links, once each, in the reply's order", () => {
     const hrefs = [
       "https://kanban-turns.invalid/9efb08a1.Decide.3",

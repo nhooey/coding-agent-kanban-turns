@@ -99,6 +99,9 @@ const fenceOpening = (line: string): Fence | undefined => {
     : undefined;
 };
 
+/** Whether a code block's line is one of its fences, the one that opens it or the one that closes it, which is a fence's character alone: not a line of the code inside it. */
+export const isFenceLine = (line: string): boolean => fenceOpening(line) !== undefined;
+
 /** Whether a line closes the code block `fence` opened: its character alone, at least as many, whitespace around it. */
 const isFenceClosing = (fence: Fence, line: string): boolean => {
   const body = line.trim();

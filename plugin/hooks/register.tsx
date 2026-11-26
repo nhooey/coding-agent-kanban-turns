@@ -36,7 +36,9 @@ import {
   noteFor,
   reassessKept,
   toggledReassess,
+  toggledWord,
   withNote,
+  wordFor,
 } from "../src/items/answers.ts";
 import { conversationKeyOf, instructing } from "../src/transcript/instructed.ts";
 import type { Instructing } from "../src/transcript/instructed.ts";
@@ -65,7 +67,7 @@ import {
   replyLintText,
 } from "../src/lint/reply.ts";
 import { outstandingText, unreadText } from "../src/items/roll-up.ts";
-import { ignoredSupersedes, itemsOf, refOf } from "../src/items/items.ts";
+import { ignoredSupersedes, isDecide, itemsOf, refOf } from "../src/items/items.ts";
 import { freesLineOf } from "../src/items/frees.ts";
 import { LAYOUT, codeSpans } from "../src/pane/layout.ts";
 import { cellWidth } from "../src/text/cells.ts";
@@ -89,6 +91,7 @@ import {
   answeredCount,
   decideItemsOf,
   isSettled,
+  listedItemsOf,
   problemsOf,
   settlementOf,
   supersedesOf,
@@ -107,6 +110,7 @@ import {
   BRANCHES,
   BRANCH_NAMES,
   NO_FOLDS,
+  actionKey,
   boxToggle,
   branchHeader,
   branchOf,
@@ -118,6 +122,7 @@ import {
   heldAfterPick,
   isOpen,
   lineKey,
+  listRuns,
   paneGroups,
   paneStops,
   ringAfterMove,
@@ -142,6 +147,7 @@ import {
 } from "../src/transcript/turns.ts";
 import type { Turn } from "../types/index.d.ts";
 import {
+  actionLead,
   answeredText,
   answersText,
   configText,
@@ -160,12 +166,18 @@ import {
   boxLines,
   doneRowOf,
   sentLetters,
+  sentWord,
   submitStep,
+  todoActions,
+  todoNotePlaceholder,
+  wordSaidBy,
 } from "../src/pane/view.ts";
 import type { DoneRow, ItemLink, NotesMode } from "../src/pane/view.ts";
 import type {
   DecideItem,
   Folds,
+  ListedItem,
+  TodoItem,
   LintNote,
   Loaded,
   PaneState,
@@ -237,7 +249,7 @@ const noting = atom(
 const pane = atom(
   { plugin: "coding-agent-kanban-turns", key: "pane" } as const,
   INITIAL_PANE,
-  { shape: "pane-6" },
+  { shape: "pane-7" },
 );
 
 // What the reply lint found in the main loop's last final response, for the
@@ -488,7 +500,7 @@ const rewriteDraft = async (
  */
 const answerItem = async (
   $: EngineInterface,
-  item: DecideItem,
+  item: ListedItem,
   edit: (text: string) => string,
 ): Promise<void> => {
   const before = await paneNow($);
@@ -526,8 +538,14 @@ const answer = ($: EngineInterface, item: DecideItem, letter: string) =>
     reassessKept(text, (body) => choose(body, item, letter)),
   );
 
+/** Writes the draft with the item's settling word, `word`, or takes the one there out, its note kept and a `reassess` line kept last. */
+const pressWord = ($: EngineInterface, item: TodoItem, word: string) =>
+  answerItem($, item, (text) =>
+    reassessKept(text, (body) => toggledWord(body, item, word)),
+  );
+
 /** Writes the item's note into the draft, on a line of its own, a `reassess` line kept last. */
-const note = ($: EngineInterface, item: DecideItem, said: string) =>
+const note = ($: EngineInterface, item: ListedItem, said: string) =>
   answerItem($, item, (text) =>
     reassessKept(text, (body) => withNote(body, item, said)),
   );
@@ -772,7 +790,7 @@ const ringTo = async ($: EngineInterface, key: string): Promise<boolean> => {
  * The field also takes the focus as the pane draws it, until the ring is
  * on it: a pane already open with the ring elsewhere moves it there.
  */
-const openNotes = async ($: EngineInterface, item: DecideItem): Promise<void> => {
+const openNotes = async ($: EngineInterface, item: ListedItem): Promise<void> => {
   await showLevels($, item);
   await openPane($, true, refOf(item));
   await reveal($, { key: notesKey(item) }, "end");
@@ -804,7 +822,7 @@ const fold = ($: EngineInterface, toggle: Toggle) =>
   update($, folds, (now) => withToggled(now, toggle));
 
 /** Every level `item` is under opened, to scroll to it: its branch, its turn there and, for a Done item, its box. */
-const showLevels = async ($: EngineInterface, item: DecideItem): Promise<void> => {
+const showLevels = async ($: EngineInterface, item: ListedItem): Promise<void> => {
   const branch = branchOf((await paneNow($)).groups, item);
 
   if (branch !== undefined) {
@@ -862,7 +880,7 @@ const showItem = ($: EngineInterface, href: string): Promise<void> =>
  */
 const showRef = async ($: EngineInterface, ref: string): Promise<void> => {
   const r = await shownNow($);
-  const items = decideItemsOf(r);
+  const items = listedItemsOf(r);
   const item = items[itemOfRef(items, ref)];
   await openPane($, true);
 
@@ -1307,14 +1325,16 @@ export const register: Register = (on) => {
             folded,
             n === 0 && openCount > 0 ? 0 : LAYOUT.blockGap,
             (group) =>
-              branch === "done"
-                ? doneItems($, elements, s, r, group, folded, text)
-                : itemBoxes($, elements, s, r, group.items, {
-                    key: `${group.key}-items`,
-                    text,
-                    isPane: true,
-                    noting: notingNow,
-                  }),
+              listSections(elements, group, (items, key) =>
+                branch === "done"
+                  ? doneItems($, elements, s, r, items, key, folded, text)
+                  : itemBoxes($, elements, s, r, items, {
+                      key,
+                      text,
+                      isPane: true,
+                      noting: notingNow,
+                    }),
+              ),
           ),
         )}
         <Box
@@ -1579,7 +1599,7 @@ const doneRow = (
   $: EngineInterface,
   elements: Elements,
   s: Settings,
-  item: DecideItem,
+  item: ListedItem,
   { line, link }: DoneRow,
 ) => {
   const { Box, Button, Text } = elements;
@@ -1704,24 +1724,51 @@ const turnSection = (
 };
 
 /**
- * A turn's Done items: each one dim line, `▌🧠 Decide.1  <summary> · <what
- * made it Done>`, which a click opens to the item's full box, whose title
- * closes it again.
+ * A turn's group's items, list by list in the spec's order, each list's
+ * run under a faint header naming it, `👉 Todo`, then what `body` draws of
+ * the run's items, under `key`.
+ */
+const listSections = (
+  elements: Pick<Elements, "Box" | "Text">,
+  group: TurnGroup,
+  body: (items: readonly ListedItem[], key: string) => RenderNode,
+) => {
+  const { Box, Text } = elements;
+
+  return (
+    <Box key={`${group.key}-lists`} flexDirection="column">
+      {listRuns(group.items).map((run) => (
+        <Box key={`${group.key}.${run.list.header}-list`} flexDirection="column">
+          <Text key={`${group.key}.${run.list.header}`} dimColor>
+            {run.header}
+          </Text>
+          {body(run.items, `${group.key}.${run.list.header}-items`)}
+        </Box>
+      ))}
+    </Box>
+  );
+};
+
+/**
+ * A turn's Done items of one list: each one dim line, `▌🧠 Decide.1
+ * <summary> · <what made it Done>`, which a click opens to the item's full
+ * box, whose title closes it again.
  */
 const doneItems = (
   $: EngineInterface,
   elements: Elements,
   s: Settings,
   r: Raised,
-  group: TurnGroup,
+  items: readonly ListedItem[],
+  key: string,
   folded: Folds,
   text: string,
 ) => {
   const { Box } = elements;
 
   return (
-    <Box key={`${group.key}-items`} flexDirection="column">
-      {group.items.map((item) =>
+    <Box key={key} flexDirection="column">
+      {items.map((item) =>
         isOpen(folded, boxToggle(item)) ? (
           <Box key={`${refOf(item)}.full`} flexDirection="column">
             {itemBoxes($, elements, s, r, [item], {
@@ -1733,7 +1780,13 @@ const doneItems = (
             })}
           </Box>
         ) : (
-          doneRow($, elements, s, item, doneRowOf(item, settlementOf(r, item)))
+          doneRow(
+            $,
+            elements,
+            s,
+            item,
+            doneRowOf(item, settlementOf(r, item), wordSaidBy(s.actions)),
+          )
         ),
       )}
     </Box>
@@ -1755,7 +1808,7 @@ const itemBoxes = (
   elements: Elements,
   s: Settings,
   r: Raised,
-  items: readonly DecideItem[],
+  items: readonly ListedItem[],
   at: Readonly<{
     key: string;
     text: string;
@@ -1771,6 +1824,22 @@ const itemBoxes = (
       {items.map((item) => {
         const isDone = isSettled(r, item);
         const settlement = isDone ? settlementOf(r, item) : undefined;
+        const common = {
+          title: itemTitle(item, isDone),
+          ...boxLines(isDone, settlement, supersedesOf(r, item), wordSaidBy(s.actions)),
+          link: (key: string, link: ItemLink) => itemLink($, elements, key, link),
+          note: isDone ? "" : noteFor(at.text, item),
+          isSettled: isDone,
+          notes: notesMode({
+            isSettled: isDone,
+            isPane: at.isPane,
+            isNoting: at.noting === refOf(item),
+          }),
+          keyOf: (part: string) => actionKey(item, part),
+          onNote: (said: string) => (isDone ? undefined : note($, item, said)),
+          onOpenNotes: () => openNotes($, item),
+          ...(at.onTitle ? { onTitle: at.onTitle } : {}),
+        };
 
         return (
           <Box
@@ -1781,25 +1850,19 @@ const itemBoxes = (
             borderDimColor={isDone}
             paddingX={LAYOUT.boxPadding}
           >
-            {itemView(elements, s, item, {
-              title: itemTitle(item, isDone),
-              chosen: lettersFor(at.text, item),
-              sent: sentLetters(settlement),
-              ...boxLines(isDone, settlement, supersedesOf(r, item)),
-              link: (key, link) => itemLink($, elements, key, link),
-              note: isDone ? "" : noteFor(at.text, item),
-              isSettled: isDone,
-              notes: notesMode({
-                isSettled: isDone,
-                isPane: at.isPane,
-                isNoting: at.noting === refOf(item),
-              }),
-              keyOf: (letter) => `${refOf(item)}.${letter}`,
-              onPick: (letter) => answer($, item, letter),
-              onNote: (said) => (isDone ? undefined : note($, item, said)),
-              onOpenNotes: () => openNotes($, item),
-              ...(at.onTitle ? { onTitle: at.onTitle } : {}),
-            })}
+            {isDecide(item)
+              ? itemView(elements, s, item, {
+                  ...common,
+                  chosen: lettersFor(at.text, item),
+                  sent: sentLetters(settlement),
+                  onPick: (letter) => answer($, item, letter),
+                })
+              : todoView(elements, s, item, {
+                  ...common,
+                  chosen: wordFor(at.text, item),
+                  sent: sentWord(settlement),
+                  onWord: (word) => pressWord($, item, word),
+                })}
           </Box>
         );
       })}
@@ -1807,78 +1870,42 @@ const itemBoxes = (
   );
 };
 
+/** What both kinds of item box draw from: the title, what made the item Done, its links, the draft's note, the notes, the keys and the presses every item takes. */
+type BoxView = {
+  title: Readonly<{ label: string; summary: string }>;
+  /** What made the item Done, the line under its title; empty while open, or where that's a link. */
+  settled: string;
+  /** The lines under it naming other items, each a link: the item that superseded it, then those it supersedes. */
+  links: readonly ItemLink[];
+  /** A link's line, as a button keyed `key`. */
+  link: (key: string, link: ItemLink) => RenderNode;
+  note: string;
+  isSettled?: boolean;
+  /** The notes: none, the field, the field taking the focus, or a button that opens the pane at it. */
+  notes: NotesMode;
+  keyOf: (part: string) => string;
+  onNote: (note: string) => unknown;
+  onOpenNotes: () => unknown;
+  /** What a press on the title runs, which makes it a button; none, a plain line. */
+  onTitle?: () => unknown;
+};
+
 /**
- * One Decide item as the skill writes it: the title, the note, each option
- * a plain button reading `glyph letter. name: consequence`, its ➕ and ➖
- * lines indented under it, always in full, and the `Frees:` line naming
- * what it frees, where it frees anything.
+ * An item's title line, the label bold on its background, the summary
+ * plain after it on the same line, wrapping under its own start; a Done
+ * item's label is dimmed with the rest, with no background. With
+ * `onTitle` the summary is a button that runs it.
  */
-const itemView = (
+const titleRow = (
   elements: Elements,
   s: Settings,
-  item: DecideItem,
-  view: {
-    title: Readonly<{ label: string; summary: string }>;
-    chosen: readonly string[];
-    /** The letters the answer that made the item Done picked. */
-    sent: readonly string[];
-    /** What made the item Done, the line under its title; empty while open, or where that's a link. */
-    settled: string;
-    /** The lines under it naming other items, each a link: the item that superseded it, then those it supersedes. */
-    links: readonly ItemLink[];
-    /** A link's line, as a button keyed `key`. */
-    link: (key: string, link: ItemLink) => RenderNode;
-    note: string;
-    isSettled?: boolean;
-    /** The notes: none, the field, the field taking the focus, or a button that opens the pane at it. */
-    notes: NotesMode;
-    keyOf: (letter: string) => string;
-    onPick: (letter: string) => unknown;
-    onNote: (note: string) => unknown;
-    onOpenNotes: () => unknown;
-    /** What a press on the title runs, which makes it a button; none, a plain line. */
-    onTitle?: () => unknown;
-  },
+  item: ListedItem,
+  view: BoxView,
 ) => {
-  const { Box, Button, Input, Text } = elements;
+  const { Button, Text } = elements;
   const { colors } = s;
+  const inline = inlineOf(elements, s);
   const dim = view.isSettled === true;
-  const inline = (
-    line: string,
-    key: string,
-    props: Record<string, unknown> = {},
-  ) =>
-    codeSpans(line).map((part, n) => (
-      <Text
-        key={`${key}-${n}`}
-        {...props}
-        {...(part.isCode ? { color: colors.code } : {})}
-      >
-        {part.text}
-      </Text>
-    ));
-  const lines = (
-    prefix: string,
-    texts: readonly string[] | undefined,
-    background: string | undefined,
-    key: string,
-  ) =>
-    (texts ?? []).map((line, n) => (
-      <Box key={`${key}-${n}`} marginLeft={LAYOUT.indent}>
-        <Text
-          dimColor={dim}
-          {...(background ? { backgroundColor: background } : {})}
-          wrap="wrap"
-        >
-          {prefix ? `${prefix} ` : ""}
-          {inline(line, `${key}-${n}`)}
-        </Text>
-      </Box>
-    ));
-  // The label bold on its background, the summary plain after it on the
-  // same line, wrapping under its own start; a Done item's label is dimmed
-  // with the rest, with no background. With `onTitle` each is a button
-  // that runs it.
   const ref = refOf(item);
   const label = (
     <Text
@@ -1902,26 +1929,142 @@ const itemView = (
   );
   const onTitle = view.onTitle;
 
+  return hanging(
+    elements,
+    `${ref}.title`,
+    { width: cellWidth(view.title.label) + LAYOUT.titleGap, node: label },
+    onTitle === undefined ? (
+      summary
+    ) : (
+      <Button
+        key={lineKey(item)}
+        label={item.summary}
+        plain
+        dimColor={dim}
+        onPress={() => onTitle()}
+      >
+        {summary}
+      </Button>
+    ),
+  );
+};
+
+/** The lines under an item's title naming other items, each a link indented under it, keyed `<ref>.link.<to>`. */
+const linkLines = (
+  elements: Pick<Elements, "Box">,
+  item: ListedItem,
+  view: BoxView,
+) => {
+  const { Box } = elements;
+  const ref = refOf(item);
+
+  return view.links.map((link) => (
+    <Box key={`${ref}.link.${link.to}-box`} marginLeft={LAYOUT.indent}>
+      {view.link(`${ref}.link.${link.to}`, link)}
+    </Box>
+  ));
+};
+
+/** A text's code spans in the code colour, the rest plain, each a Text. */
+const inlineOf =
+  (elements: Pick<Elements, "Text">, s: Settings) =>
+  (line: string, key: string, props: Record<string, unknown> = {}) => {
+    const { Text } = elements;
+
+    return codeSpans(line).map((part, n) => (
+      <Text
+        key={`${key}-${n}`}
+        {...props}
+        {...(part.isCode ? { color: s.colors.code } : {})}
+      >
+        {part.text}
+      </Text>
+    ));
+  };
+
+/** Lines indented under an item's title, dimmed while it's Done, each opening on `prefix` where it has one. */
+const indentedLines = (
+  elements: Pick<Elements, "Box" | "Text">,
+  s: Settings,
+  dim: boolean,
+  texts: readonly string[] | undefined,
+  key: string,
+) => {
+  const { Box, Text } = elements;
+  const inline = inlineOf(elements, s);
+
+  return (texts ?? []).map((line, n) => (
+    <Box key={`${key}-${n}`} marginLeft={LAYOUT.indent}>
+      <Text dimColor={dim} wrap="wrap">
+        {inline(line, `${key}-${n}`)}
+      </Text>
+    </Box>
+  ));
+};
+
+/** The notes under an item: none, a button that opens the pane at the field under a reply, or the field, taking the focus where `✏️ Add a note` asked for it. */
+const notesView = (
+  elements: Elements,
+  s: Settings,
+  item: ListedItem,
+  view: BoxView,
+  placeholder: string,
+) => {
+  const { Box, Button, Input } = elements;
+
+  return view.notes === "none" ? null : view.notes === "button" ? (
+    <Box key={`${view.keyOf("add-note")}-box`} marginLeft={LAYOUT.indent}>
+      <Button
+        key={view.keyOf("add-note")}
+        label="Add a note"
+        plain
+        onPress={() => view.onOpenNotes()}
+      >
+        {`${s.marks.note} Add a note`}
+      </Button>
+    </Box>
+  ) : (
+    <Box key={`${notesKey(item)}-box`} marginLeft={LAYOUT.indent}>
+      <Input
+        key={notesKey(item)}
+        label={`${s.marks.note} `}
+        placeholder={placeholder}
+        submitLabel="add to the draft"
+        rows={noteRows(s.notes.rows)}
+        {...(view.notes === "focused" ? { autoFocus: true as const } : {})}
+        value={view.note}
+        onSubmit={(said) => view.onNote(said)}
+      />
+    </Box>
+  );
+};
+
+/**
+ * One Todo item: the title, what made it Done, its body, the lines the
+ * reply printed under its summary, then a row of its actions, each a plain
+ * button, `Done` and `Skip`, opening on the chosen mark while the draft
+ * gives its word, or the sent mark where the word made the item Done; then
+ * the `Frees:` line, and the notes, whose note alone settles nothing. Its
+ * actions write the draft whether it's open or Done.
+ */
+const todoView = (
+  elements: Elements,
+  s: Settings,
+  item: TodoItem,
+  view: BoxView & {
+    /** The settling word the draft gives the item; empty for none. */
+    chosen: string;
+    /** The settling word that made the item Done; empty for none. */
+    sent: string;
+    onWord: (word: string) => unknown;
+  },
+) => {
+  const { Box, Button, Text } = elements;
+  const dim = view.isSettled === true;
+
   return (
     <Box flexDirection="column">
-      {hanging(
-        elements,
-        `${ref}.title`,
-        { width: cellWidth(view.title.label) + LAYOUT.titleGap, node: label },
-        onTitle === undefined ? (
-          summary
-        ) : (
-          <Button
-            key={lineKey(item)}
-            label={item.summary}
-            plain
-            dimColor={dim}
-            onPress={() => onTitle()}
-          >
-            {summary}
-          </Button>
-        ),
-      )}
+      {titleRow(elements, s, item, view)}
       {view.settled ? (
         <Box key="done-by" marginLeft={LAYOUT.indent}>
           <Text dimColor wrap="wrap">
@@ -1929,11 +2072,88 @@ const itemView = (
           </Text>
         </Box>
       ) : null}
-      {view.links.map((link) => (
-        <Box key={`${ref}.link.${link.to}-box`} marginLeft={LAYOUT.indent}>
-          {view.link(`${ref}.link.${link.to}`, link)}
+      {linkLines(elements, item, view)}
+      {indentedLines(elements, s, dim, item.note, "note")}
+      <Box
+        key={`${refOf(item)}.actions`}
+        marginLeft={LAYOUT.indent}
+        columnGap={LAYOUT.controlGap}
+        flexWrap="wrap"
+      >
+        {todoActions(s.actions).map(({ word, label }) => {
+          const isChosen = view.chosen === word;
+
+          return (
+            <Button
+              key={view.keyOf(word)}
+              label={label}
+              plain
+              onPress={() => view.onWord(word)}
+            >
+              {`${actionLead({ chosen: isChosen, sent: view.sent === word }, s.marks)} `}
+              <Text key={`${view.keyOf(word)}-label`} {...(isChosen ? { underline: true } : {})}>
+                {label}
+              </Text>
+            </Button>
+          );
+        })}
+      </Box>
+      {indentedLines(elements, s, dim, freesLineOf(item.frees ?? []), "frees")}
+      {notesView(elements, s, item, view, todoNotePlaceholder(todoActions(s.actions)))}
+    </Box>
+  );
+};
+
+/**
+ * One Decide item as the skill writes it: the title, the note, each option
+ * a plain button reading `glyph letter. name: consequence`, its ➕ and ➖
+ * lines indented under it, always in full, and the `Frees:` line naming
+ * what it frees, where it frees anything.
+ */
+const itemView = (
+  elements: Elements,
+  s: Settings,
+  item: DecideItem,
+  view: BoxView & {
+    chosen: readonly string[];
+    /** The letters the answer that made the item Done picked. */
+    sent: readonly string[];
+    onPick: (letter: string) => unknown;
+  },
+) => {
+  const { Box, Button, Text } = elements;
+  const { colors } = s;
+  const dim = view.isSettled === true;
+  const inline = inlineOf(elements, s);
+  const lines = (
+    prefix: string,
+    texts: readonly string[] | undefined,
+    background: string | undefined,
+    key: string,
+  ) =>
+    (texts ?? []).map((line, n) => (
+      <Box key={`${key}-${n}`} marginLeft={LAYOUT.indent}>
+        <Text
+          dimColor={dim}
+          {...(background ? { backgroundColor: background } : {})}
+          wrap="wrap"
+        >
+          {prefix ? `${prefix} ` : ""}
+          {inline(line, `${key}-${n}`)}
+        </Text>
+      </Box>
+    ));
+  return (
+    <Box flexDirection="column">
+      {titleRow(elements, s, item, view)}
+      {view.settled ? (
+        <Box key="done-by" marginLeft={LAYOUT.indent}>
+          <Text dimColor wrap="wrap">
+            {view.settled}
+          </Text>
         </Box>
-      ))}
+      ) : null}
+      {linkLines(elements, item, view)}
       {lines("", item.note, undefined, "note")}
       {item.options.map((option) => {
         const isChosen = view.chosen.includes(option.letter);
@@ -2042,31 +2262,7 @@ const itemView = (
         );
       })}
       {lines("", freesLineOf(item.frees ?? []), undefined, "frees")}
-      {view.notes === "none" ? null : view.notes === "button" ? (
-        <Box key={`${view.keyOf("add-note")}-box`} marginLeft={LAYOUT.indent}>
-          <Button
-            key={view.keyOf("add-note")}
-            label="Add a note"
-            plain
-            onPress={() => view.onOpenNotes()}
-          >
-            {`${s.marks.note} Add a note`}
-          </Button>
-        </Box>
-      ) : (
-        <Box key={`${notesKey(item)}-box`} marginLeft={LAYOUT.indent}>
-          <Input
-            key={notesKey(item)}
-            label={`${s.marks.note} `}
-            placeholder="Notes, or an answer in your own words"
-            submitLabel="add to the draft"
-            rows={noteRows(s.notes.rows)}
-            {...(view.notes === "focused" ? { autoFocus: true as const } : {})}
-            value={view.note}
-            onSubmit={(said) => view.onNote(said)}
-          />
-        </Box>
-      )}
+      {notesView(elements, s, item, view, "Notes, or an answer in your own words")}
     </Box>
   );
 };
