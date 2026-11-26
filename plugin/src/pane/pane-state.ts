@@ -176,7 +176,7 @@ export const loadedOf = (settings: SettingsState): Loaded =>
     : { settings: null, effective: [], problems: settings.tag === "broken" ? settings.problems : [] };
 
 /** What a file was wrong with, for the pane to say: a usable file's warnings, or why the defaults file is unusable. */
-const warningsOf = (settings: SettingsState): readonly string[] => loadedOf(settings).problems;
+const settingsProblemsOf = (settings: SettingsState): readonly string[] => loadedOf(settings).problems;
 
 /** The read whose answer the settings are, 0 before any has answered. */
 const readOf = (settings: SettingsState): number =>
@@ -630,7 +630,7 @@ const settingsRead = (state: PaneState, read: number, loaded: Loaded): Stepped =
           !waitsOn(r, read) ? [r] : readsOn(r, settings) ? [{ ...r, on: { at: "transcript" } }] : [],
         ),
       },
-      raised: isSaid ? unread(state.raised, "", warningsOf(settings)) : state.raised,
+      raised: isSaid ? unread(state.raised, "", settingsProblemsOf(settings)) : state.raised,
     },
     effects: waiting
       .filter((r) => readsOn(r, settings))
@@ -659,7 +659,7 @@ const settled = (
   refresh: number,
   turns: readonly Turn[],
   { counts }: Settings,
-  warnings: readonly string[],
+  settingsProblems: readonly string[],
 ): Stepped => {
   const known = new Set(state.merged);
   const open = openOf(turns, counts.turns, known);
@@ -673,7 +673,7 @@ const settled = (
         state.raised,
         open.items,
         open.settlements,
-        warnings,
+        settingsProblems,
         turns.map((turn) => turn.id),
       ),
     },
@@ -722,7 +722,7 @@ const transcriptRead = (
     refresh: withoutReading(state.refresh, reading),
   };
   const settings = settingsOf(state.settings);
-  const warnings = warningsOf(state.settings);
+  const settingsProblems = settingsProblemsOf(state.settings);
 
   return event.refresh <= state.refresh.shown
     ? { state: after, effects: [] }
@@ -732,7 +732,7 @@ const transcriptRead = (
           event.refresh,
           event.found.turns,
           settings,
-          warnings,
+          settingsProblems,
         )
       : {
           state: {
@@ -740,7 +740,7 @@ const transcriptRead = (
             raised: unread(
               after.raised,
               "problem" in event.found ? event.found.problem : "",
-              warnings,
+              settingsProblems,
             ),
           },
           effects: [],

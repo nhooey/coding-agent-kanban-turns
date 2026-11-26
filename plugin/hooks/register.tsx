@@ -84,6 +84,7 @@ import {
 } from "../src/items/outstanding.ts";
 import {
   answeredCount,
+  decideItemsOf,
   isSettled,
   problemsOf,
   settlementOf,
@@ -202,7 +203,7 @@ const noting = atom(
 const pane = atom(
   { plugin: "coding-agent-kanban-turns", key: "pane" } as const,
   INITIAL_PANE,
-  { shape: "pane-4" },
+  { shape: "pane-5" },
 );
 
 // What the reply lint found in the main loop's last final response, for the
@@ -239,7 +240,7 @@ const paneNow = async (
   const state = await read($, pane);
   const shown = shownOf(state);
   const sections = turnSections(
-    shown.items,
+    decideItemsOf(shown),
     (item) => isSettled(shown, item),
     shown.turns,
   );
@@ -749,7 +750,8 @@ const reopen = async ($: EngineInterface): Promise<Raised> => {
 /** A question's link pressed: the pane, with the keyboard, scrolled to its item, its Done section and box opened when it's Done. */
 const showItem = async ($: EngineInterface, href: string): Promise<void> => {
   const r = await shownNow($);
-  const item = r.items[itemOfLink(r.items, href)];
+  const items = decideItemsOf(r);
+  const item = items[itemOfLink(items, href)];
   await openPane($, true);
 
   if (item !== undefined) {
@@ -1045,7 +1047,8 @@ export const register: Register = (on) => {
   // under the whole text instead.
   on("ui.render", { component: "AssistantMessage" }, async ($, e, next) => {
     const r = await shownNow($);
-    const linked = linkedQuestions(e.props.text, r.items);
+    const raisedItems = decideItemsOf(r);
+    const linked = linkedQuestions(e.props.text, raisedItems);
 
     if (linked.hrefs.length === 0) {
       return next(e);
@@ -1054,7 +1057,7 @@ export const register: Register = (on) => {
     const s = await settingsNow($);
     const elements = $.ui.resolve(e);
     const { Box, Markdown } = elements;
-    const items = linkedItems(r.items, linked.hrefs);
+    const items = linkedItems(raisedItems, linked.hrefs);
     const boxes =
       s === null
         ? null

@@ -44,19 +44,22 @@ export type DecideItem = Readonly<{
  * answer to it, the letters and note it gave and the id of the turn it was
  * sent in; a later `reassess` turn; a later item on its subject, the item
  * asked again; or, until the turn's end reads the transcript, the answer the
- * pane's Submit sent.
+ * pane's Submit sent. `HowSettled` is that alone, apart from which item it
+ * settled; `Settlement` names the item by its ref.
  */
-export type Settlement = Readonly<
+export type HowSettled = Readonly<
   | {
-      ref: string;
       how: "answered";
       turn: string;
       letters: readonly string[];
       note: string;
     }
-  | { ref: string; how: "reassessed" | "restated" }
-  | { ref: string; how: "sent"; letters: readonly string[]; note: string }
+  | { how: "reassessed" | "restated" }
+  | { how: "sent"; letters: readonly string[]; note: string }
 >;
+
+/** How a Decide item stopped being open, and the item, by its ref. */
+export type Settlement = Readonly<{ ref: string } & HowSettled>;
 
 /**
  * Who wrote a turn's prompt, or a message sent while it ran: the user;
@@ -123,6 +126,19 @@ export type Turn = Readonly<{
 }>;
 
 /**
+ * Where a raised Decide item stands: open, or settled, as the last refresh
+ * found it or Submit sent it, with how it settled where the transcript or
+ * Submit says. A settled item holds one settlement at most, and an open one
+ * none; the settlement holds no ref of its own, the item's being the one.
+ */
+export type ItemState = Readonly<
+  { tag: "open" } | { tag: "settled"; settlement?: HowSettled }
+>;
+
+/** A raised Decide item, and where it stands. */
+export type RaisedItem = Readonly<{ item: DecideItem; state: ItemState }>;
+
+/**
  * Every Decide item raised in this session, oldest first: the pane lists
  * them all, and a reply draws its own under its text. An item stays once
  * raised; one no longer open is settled, Done in the UI, drawn dimmed, its
@@ -133,18 +149,14 @@ export type Raised = Readonly<{
   session: string;
   /** The ids of the turns the last refresh read, oldest first: what a turn's index in the pane counts back from. */
   turns: readonly string[];
-  /** Each item a `kanban_options` call drew or a refresh found open, by ref once, oldest first. */
-  items: readonly DecideItem[];
-  /** Raised refs the last refresh didn't find open. */
-  settledRefs: readonly string[];
-  /** How each item the last refresh found settled settled, by its ref. */
-  settlements: readonly Settlement[];
+  /** Each item a `kanban_options` call drew or a refresh found open, by ref once, oldest first, with where it stands. */
+  items: readonly RaisedItem[];
   /** Refs raised by the last main-loop turn's end, so the pane opens by itself only for a new one. */
   seenRefs: readonly string[];
   /** Why the last refresh couldn't read the transcript, for the pane to say; empty when it could. */
   problem: string;
-  /** What was wrong with the settings files at the last refresh, for the pane to say. */
-  warnings: readonly string[];
+  /** What was wrong with the settings files at the last refresh, for the pane to say: a usable file's warnings, or why the defaults file is unusable. */
+  settingsProblems: readonly string[];
 }>;
 
 /**
