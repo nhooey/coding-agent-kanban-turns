@@ -46,9 +46,11 @@ import { observedOld } from "../../oracle/refresh.ts";
 import { BOXES, RAISED, START, replyArb, turnArb } from "../../fixtures/submit.ts";
 import type { Reply } from "../../fixtures/submit.ts";
 import { COUNTS } from "../../fixtures/refresh.ts";
+import { withSettings } from "../../fixtures/settings.ts";
 import {
   answeredPrompt,
   dispatched,
+  filesOf,
   isDiverged,
   model,
   observedNew,
@@ -58,8 +60,9 @@ import type { Model } from "../../fixtures/pane-model.ts";
 
 const LOADED = { counts: COUNTS, problems: [] } as const;
 
+/** The model as a run starts: the settings read, the close setting `isClosed`. */
 const fresh = (isClosed: boolean): Model =>
-  model(START, { isClosedWhenAllSubmitted: isClosed }, LOADED);
+  model(withSettings(START, filesOf(LOADED, isClosed)), filesOf(LOADED, isClosed));
 
 /** Lets the old handlers run until each waits on a prompt call. */
 const flush = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));

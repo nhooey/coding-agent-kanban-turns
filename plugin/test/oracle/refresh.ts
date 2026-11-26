@@ -9,9 +9,9 @@
 //
 // Where the copy departs from the hooks it was taken from:
 //
-// - the settings are `$.loaded`, read at once, where `reloadSettings` read
-//   the files and wrote the `settings` atom between awaits; the test may
-//   change them between refreshes;
+// - the settings are `$.loaded`, read at once and written to the
+//   `settings` atom, where `reloadSettings` read the files between awaits;
+//   the test may change them between refreshes;
 // - the pane opening by itself is counted in `$.opens`, where `announce`
 //   called `$.ui.open` and scrolled it to its top;
 // - `mergedNow` has no timeout and no `gh` output to parse: the test
@@ -124,7 +124,7 @@ const askMerged = async (
 /** The refresh; resolves to whether it read the transcript. */
 export const refresh = async ($: OldEngine): Promise<boolean> => {
   const stamp = await update($, "refreshes", (n) => n + 1);
-  const { counts: s, problems } = $.loaded;
+  const { counts: s, problems } = await update($, "settings", () => $.loaded);
   const found: Readonly<{ turns: readonly Turn[] } | { problem: string }> =
     s === null
       ? { problem: "" }

@@ -299,6 +299,8 @@ const engine = (
     userFiles: {} as Record<string, string>,
     // Whether the plugin's own defaults file is gone from its folder.
     isDefaultsMissing: false,
+    // Why a read of the plugin's own defaults file fails; none fails.
+    defaultsDenial: undefined as string | undefined,
     isRingMovable: false,
     focus: [] as string[],
   };
@@ -379,6 +381,9 @@ const engine = (
   // (test/unit/config/) hold the real one to the fixture's shape. The transcript is
   // read as bytes, by the range asked for.
   on("fs.read", async (_, e) => {
+    if (state.defaultsDenial !== undefined && e.path.endsWith("/defaults/config.yaml")) {
+      return { deny: state.defaultsDenial };
+    }
     if (e.path !== TRANSCRIPT) {
       return { value: userFile(e.path) ?? DEFAULTS };
     }
@@ -619,6 +624,56 @@ test("with no defaults file, no settings are used, and /answers, the pane and /a
 
   const config = (await $.command.run({ ...ANSWERS, command: "answers-config" })).text ?? "";
   expect(config.split("\n")).toEqual([expect.stringMatching(/^Not used: .*\/defaults\/config\.yaml: is missing$/)]);
+});
+
+test("a defaults file whose read fails leaves no settings in use, and the pane and /answers-config say why", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  const why = "the defaults can't be read";
+  state.defaultsDenial = why;
+
+  const config = (await $.command.run({ ...ANSWERS, command: "answers-config" })).text ?? "";
+  expect(config).toMatch(/^Not used: /);
+  expect(config).toContain(why);
+
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  expect(await titles(ui)).toEqual([]);
+  expect(JSON.stringify(await ui.drawn())).toContain(why);
+  await ui.unmount();
+});
+
+test("a settings read whose answer can't be written is dropped: its refresh waits on nothing, and the next refresh reads as before", async ($, on) => {
+  engine(on, () => ITEMS);
+  type Written = Readonly<{ settings: Readonly<{ tag: string }>; refresh: Readonly<{ reads: readonly unknown[] }> }>;
+  const pane = { denied: 0, written: [] as Written[] };
+  // The first write of a settings read's answer fails, as a full store's
+  // would; every other write lands, and is kept.
+  on("state.set", (_, e, next) => {
+    const written = (e as unknown as { key: string; value: { value: Written } });
+
+    if (written.key !== "pane") {
+      return next(e);
+    }
+    if (pane.denied === 0 && written.value.value.settings.tag !== "unread") {
+      pane.denied += 1;
+
+      return { deny: "the store is full" };
+    }
+    pane.written.push(written.value.value);
+
+    return next(e);
+  });
+
+  await $.command.run(ANSWERS).catch(() => undefined);
+  expect(pane.denied).toBe(1);
+  expect(pane.written.at(-1)?.settings.tag).toBe("unread");
+  expect(pane.written.at(-1)?.refresh.reads).toEqual([]);
+
+  await $.command.run(ANSWERS);
+  expect(pane.written.at(-1)?.settings.tag).toBe("loaded");
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  expect(await titles(ui)).not.toEqual([]);
+  await ui.unmount();
 });
 
 test("a user's config.jsonc is not read: the defaults are in effect", async ($, on) => {
@@ -2010,7 +2065,9 @@ test("a turn that starts while the session's start registers keeps Submit waitin
 test("raised items stored under an older shape are not drawn", async ($, on) => {
   engine(on, () => []);
   // What the plugin kept before the raised items moved into the pane's
-  // state, under the pane's earlier shape, as a reload finds it.
+  // state, under the pane's earlier shape, as a reload finds it: the first
+  // read finds it, and the plugin's writes since, of the settings it reads,
+  // land over it.
   const stale = {
     shape: "pane-2",
     value: {
@@ -2020,9 +2077,15 @@ test("raised items stored under an older shape are not drawn", async ($, on) => 
       raised: { session: "session-1", items: ITEMS, settledRefs: [], seenRefs: [], problem: "", warnings: [] },
     },
   };
-  on("state.get", (_, e, next) =>
-    e.key === "pane" ? { value: { value: stale, version: 1 } } : next(e),
-  );
+  const reads = { pane: 0 };
+  on("state.get", (_, e, next) => {
+    if (e.key !== "pane") {
+      return next(e);
+    }
+    reads.pane += 1;
+
+    return reads.pane === 1 ? { value: { value: stale, version: 1 } } : next(e);
+  });
   await $.command.run({ ...ANSWERS, command: "answers-config" });
   const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
 
@@ -2031,27 +2094,34 @@ test("raised items stored under an older shape are not drawn", async ($, on) => 
   await ui.unmount();
 });
 
-test("settings stored under an older shape are not used", async ($, on) => {
+test("a pane stored under the shape from before the settings moved into it is not used", async ($, on) => {
   engine(on, () => ITEMS);
-  // What an earlier version of the plugin kept, before Settings gained
-  // notes and lost colors.expand, as a reload finds it: the store answers it
-  // whatever the plugin writes since.
+  // What the plugin kept under the pane-3 shape, while the settings were an
+  // atom of their own: no settings field, and a refresh's read out with no
+  // `on`, as a reload finds it. The store answers it whatever the plugin
+  // writes since.
   const stale = {
-    shape: "settings-2",
+    shape: "pane-3",
     value: {
-      settings: { ...JSON.parse(DEFAULTS), notes: undefined, colors: { expand: "claude" } },
-      effective: [],
-      problems: [],
+      presses: 1,
+      submit: { tag: "idle" },
+      overtaken: [],
+      aside: { said: "", presses: 0 },
+      refresh: { asked: 2, shown: 1, reads: [{ refresh: 2, releases: [] }] },
+      raised: { session: "session-1", items: ITEMS, settledRefs: [], seenRefs: [], problem: "", warnings: [] },
+      sent: [],
+      merged: [],
+      counts: "",
     },
   };
   on("state.get", (_, e, next) =>
-    e.key === "settings" ? { value: { value: stale, version: 1 } } : next(e),
+    e.key === "pane" ? { value: { value: stale, version: 1 } } : next(e),
   );
   await $.tool.call({ tool: TOOL, items: ITEMS } as never);
   const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
 
-  // Read as absent, the stale value draws nothing: no items drawn with
-  // settings that lack notes.rows.
+  // Read as absent, the stale value draws nothing: no items, and no
+  // settings it never held.
   expect(await titles(ui)).toEqual([]);
   expect(await ui.find({ type: "Text", text: /^No open Decide items/ })).toBeDefined();
   await ui.unmount();

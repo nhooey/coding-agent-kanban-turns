@@ -11,20 +11,15 @@ import fc from "fast-check";
 
 import { closesOnSubmit, heldNow, refreshed } from "../../../src/items/raised.ts";
 import {
-  NO_OUTSIDE,
+  INITIAL_PANE,
   failingPress,
-  readsOutside,
+  settingsOf,
   shownOf,
   step,
   submitShown,
   turnOf,
 } from "../../../src/pane/pane-state.ts";
-import type {
-  Answer,
-  Event,
-  Outside,
-  Stepped,
-} from "../../../src/pane/pane-state.ts";
+import type { Answer, Event, Stepped } from "../../../src/pane/pane-state.ts";
 import {
   NEEDS_ENTER_TEXT,
   NOT_EMPTIED_TEXT,
@@ -41,23 +36,24 @@ import {
   ENGINE,
   START,
   commandsArb,
-  outsideArb,
   startArb,
   walk,
 } from "../../fixtures/submit.ts";
+import { BROKEN, withClosing, withSettings } from "../../fixtures/settings.ts";
 
-const OUTSIDE: Outside = { isClosedWhenAllSubmitted: true };
+/** The close setting the named sequences step under, unless one says otherwise. */
+const CLOSES = true;
 
-/** Each step's state and effects, from `from`, as `events` move it. */
+/** Each step's state and effects, from `from` with the defaults in effect, the close setting `isClosed`, as `events` move it. */
 const steps = (
   events: readonly Event[],
-  outside: Outside = OUTSIDE,
+  isClosed: boolean = CLOSES,
   from: PaneState = START,
 ): readonly Stepped[] =>
   events.reduce<readonly Stepped[]>(
     (sofar, event) => [
       ...sofar,
-      step(sofar.at(-1)?.state ?? from, event, outside),
+      step(sofar.at(-1)?.state ?? withClosing(from, isClosed), event),
     ],
     [],
   );
@@ -65,9 +61,9 @@ const steps = (
 /** The state after `events`. */
 const after = (
   events: readonly Event[],
-  outside: Outside = OUTSIDE,
+  isClosed: boolean = CLOSES,
   from: PaneState = START,
-): PaneState => steps(events, outside, from).at(-1)?.state ?? from;
+): PaneState => steps(events, isClosed, from).at(-1)?.state ?? from;
 
 const PRESS: Event = { type: "submit-pressed" };
 const SESSION: Event = { type: "session-started" };
@@ -160,11 +156,20 @@ describe("a Submit sent", () => {
     expect(steps([...sending(BOXES.both), entered()]).at(-1)?.effects).toEqual([
       { kind: "close-pane" },
     ]);
-    expect(
-      steps([...sending(BOXES.both), entered()], { isClosedWhenAllSubmitted: false }).at(
-        -1,
-      )?.effects,
-    ).toEqual([]);
+    expect(steps([...sending(BOXES.both), entered()], false).at(-1)?.effects).toEqual([]);
+  });
+
+  test("leaves the pane open while no settings have been read, or the defaults file can't be used", () => {
+    const sent = (from: PaneState) =>
+      [...sending(BOXES.both), entered()].reduce<Stepped>(
+        (sofar, event) => step(sofar.state, event),
+        { state: from, effects: [] },
+      ).effects;
+
+    expect(START.settings.tag).toBe("unread");
+    expect(sent(START)).toEqual([]);
+    expect(sent(withSettings(START, BROKEN))).toEqual([]);
+    expect(sent(withClosing(START, true))).toEqual([{ kind: "close-pane" }]);
   });
 
   test("leaves the pane open while an item is still open", () => {
@@ -274,7 +279,7 @@ describe("a press that fails", () => {
   test("once it has ended, changes nothing", () => {
     const done = after([...sending(BOXES.first), entered()]);
 
-    expect(step(done, failed("boom"), OUTSIDE)).toEqual({ state: done, effects: [] });
+    expect(step(done, failed("boom"))).toEqual({ state: done, effects: [] });
   });
 });
 
@@ -308,16 +313,6 @@ describe("failingPress", () => {
         { kind: "read-transcript", refresh: 1 },
       ]),
     ).toBeUndefined();
-  });
-});
-
-describe("readsOutside", () => {
-  test("is true only for the engine's answer to the draft", () => {
-    expect(readsOutside(entered())).toBe(true);
-    expect(readsOutside(emptied())).toBe(false);
-    expect(readsOutside(putBack(true))).toBe(false);
-    expect(readsOutside(SESSION)).toBe(false);
-    expect(readsOutside(failed("boom"))).toBe(false);
   });
 });
 
@@ -444,7 +439,7 @@ describe("a press a session's start overtook", () => {
   });
 
   test("taken, closes the pane as it would have", () => {
-    const last = steps([...OVERTAKEN, entered()], OUTSIDE, ALL_DONE).at(-1);
+    const last = steps([...OVERTAKEN, entered()], CLOSES, ALL_DONE).at(-1);
 
     expect(last?.effects).toEqual([{ kind: "close-pane" }]);
     expect(last?.state.overtaken).toEqual([]);
@@ -515,24 +510,24 @@ describe("a press a session's start overtook", () => {
 
     // Press 2 taken: its end leaves what press 1 said, which came after it
     // was pressed.
-    const taken = step(last?.state ?? START, entered(2), OUTSIDE).state;
+    const taken = step(last?.state ?? START, entered(2)).state;
     expect(taken.submit).toEqual({ tag: "idle" });
     expect(taken.aside.said).toBe(notSentText("busy"));
     // A press pressed since, once it ends, says in its place.
-    expect(after([PRESS, read(BOXES.mention, 3)], OUTSIDE, taken).aside.said).toBe("");
+    expect(after([PRESS, read(BOXES.mention, 3)], CLOSES, taken).aside.said).toBe("");
   });
 
   test("what it says goes once a turn starts, or the session starts again", () => {
     const said = after([...OVERTAKEN, refused("busy"), readBack(""), putBack(true)]);
 
-    expect(after([started("t1")], OUTSIDE, said).aside.said).toBe("");
-    expect(after([SESSION], OUTSIDE, said).aside.said).toBe("");
+    expect(after([started("t1")], CLOSES, said).aside.said).toBe("");
+    expect(after([SESSION], CLOSES, said).aside.said).toBe("");
   });
 
   test("what it says stays through a later press that sends nothing and says nothing new, as for a box of blanks, which keeps all the pane said before it", () => {
     const said = after([...OVERTAKEN, refused("busy"), readBack(""), putBack(true)]);
 
-    expect(after([PRESS, read(BOXES.blank, 2)], OUTSIDE, said).aside.said).toBe(
+    expect(after([PRESS, read(BOXES.blank, 2)], CLOSES, said).aside.said).toBe(
       notSentText("busy"),
     );
   });
@@ -588,7 +583,7 @@ describe("the random event sequences", () => {
   const runs = fc.sample(commandsArb, { numRuns: 1000, seed: 42 });
   const shareOf = (isMet: (state: PaneState) => boolean, from = START): number =>
     runs.filter((commands) =>
-      walk(commands, OUTSIDE, from).some(({ stepped }) => isMet(stepped.state)),
+      walk(commands, withClosing(from, CLOSES)).some(({ stepped }) => isMet(stepped.state)),
     ).length / runs.length;
 
   test("have a press under way beside an overtaken one in at least a third of runs", () => {
@@ -611,50 +606,59 @@ describe("the random event sequences", () => {
 });
 
 describe("Submit's invariants over random event sequences", () => {
-  const sequences = fc.tuple(commandsArb, outsideArb, startArb);
+  const sequences = fc.tuple(commandsArb, startArb);
   const holds = (
-    check: (
-      s: Readonly<{ before: PaneState; event: Event; stepped: Stepped; outside: Outside }>,
-    ) => boolean,
+    check: (s: Readonly<{ before: PaneState; event: Event; stepped: Stepped }>) => boolean,
   ) =>
     fc.assert(
-      fc.property(sequences, ([events, outside, from]) =>
-        walk(events, outside, from).every((s) => check({ ...s, outside })),
-      ),
+      fc.property(sequences, ([events, from]) => walk(events, from).every(check)),
       { numRuns: 500 },
     );
+  /** `state` with its settings as they are in `settings`. */
+  const settingsAs = (state: PaneState, settings: PaneState): PaneState => ({
+    ...state,
+    settings: settings.settings,
+  });
 
-  test("a step that reads no outside area steps the same under any", () => {
+  test("a step other than the engine's answer to the draft steps the same whatever the close setting, or none read", () => {
     fc.assert(
-      fc.property(
-        commandsArb,
-        outsideArb,
-        outsideArb,
-        startArb,
-        (commands, a, b, from) =>
-          walk(commands, a, from).every(
-            ({ before, event }) =>
-              readsOutside(event) ||
-              isDeepStrictEqual(step(before, event, a), step(before, event, b)),
-          ),
+      fc.property(commandsArb, startArb, fc.boolean(), (commands, from, isClosed) =>
+        walk(commands, from).every(({ before, event }) => {
+          const other = withClosing(before, isClosed);
+          const none = { ...before, settings: INITIAL_PANE.settings };
+
+          return (
+            event.type === "prompt-submitted" ||
+            [other, none].every((b) => {
+              const stepped = step(b, event);
+
+              return isDeepStrictEqual(
+                { ...stepped, state: settingsAs(stepped.state, before) },
+                step(before, event),
+              );
+            })
+          );
+        }),
       ),
       { numRuns: 300 },
     );
   });
 
-  test("a failed press steps the same under any outside areas, or none", () => {
+  test("a failed press steps the same under any settings, or none", () => {
     fc.assert(
-      fc.property(commandsArb, outsideArb, startArb, (commands, outside, from) =>
-        walk(commands, outside, from).every(({ stepped: { state } }) =>
+      fc.property(commandsArb, startArb, (commands, from) =>
+        walk(commands, from).every(({ stepped: { state } }) =>
           [
             ...(state.submit.tag === "pressed" ? [state.submit.press] : []),
             ...state.overtaken,
-          ].every(({ press }) =>
-            isDeepStrictEqual(
-              step(state, failed("boom", press), outside),
-              step(state, failed("boom", press), NO_OUTSIDE),
-            ),
-          ),
+          ].every(({ press }) => {
+            const none = step({ ...state, settings: INITIAL_PANE.settings }, failed("boom", press));
+
+            return isDeepStrictEqual(
+              { ...none, state: settingsAs(none.state, state) },
+              step(state, failed("boom", press)),
+            );
+          }),
         ),
       ),
       { numRuns: 300 },
@@ -688,7 +692,7 @@ describe("Submit's invariants over random event sequences", () => {
   });
 
   test("the pane closes only on a draft the engine took, when nothing is left open and the setting says to", () => {
-    holds(({ before, event, stepped, outside }) =>
+    holds(({ before, event, stepped }) =>
       stepped.effects.every(
         (e) =>
           e.kind !== "close-pane" ||
@@ -698,7 +702,7 @@ describe("Submit's invariants over random event sequences", () => {
             closesOnSubmit(
               before.raised,
               heldNow(before.sent),
-              outside.isClosedWhenAllSubmitted,
+              settingsOf(before.settings)?.pane["close-when-all-submitted"] === true,
             )),
       ),
     );

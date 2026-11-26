@@ -9,7 +9,7 @@
 // says, the count line, the calls waiting, and how often the pane opened by
 // itself and closed.
 //
-// Three differences are fixes, found only where the model says a run has
+// Five differences are fixes, found only where the model says a run has
 // reached them, judged on each step's input, after which the run's
 // comparison ends; named tests show each:
 //
@@ -19,7 +19,17 @@
 //   turn's end takes out only the holds its read began with, and a refusal
 //   only its press's own;
 // - an overtaken press ends while the pane says something of a later
-//   press, or of an earlier one: what it says stays apart.
+//   press, or of an earlier one: what it says stays apart;
+// - a transcript read lands after a later refresh read the settings files
+//   to say something else: it draws with the settings in effect, where the
+//   old handlers drew it with what its own refresh read;
+// - a turn's end that holds answers reads the settings files and finds
+//   them broken: it reads the transcript to let go of them, where the old
+//   handlers read none and kept them held.
+//
+// The settings are read at once on both sides, so no settings read answers
+// after a newer one here; pane-state-settings-differential.test.ts holds
+// them.
 //
 // A read that couldn't read the transcript shows no read, so an older one
 // that did still lands after it, on both sides.
@@ -61,13 +71,16 @@ import {
   answeredAsk,
   answeredPrompt,
   answeredRead,
+  NOT_DIVERGED,
   dispatched,
+  filesOf,
   isDiverged,
   model,
   observedNew,
-  withLoaded,
+  withFiles,
 } from "../../fixtures/pane-model.ts";
 import type { Model } from "../../fixtures/pane-model.ts";
+import { BAD_KEY, withSettings } from "../../fixtures/settings.ts";
 
 /** Lets the old handlers run until each waits on a call. */
 const flush = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
@@ -85,9 +98,12 @@ type Command = Readonly<
   | { do: "settings"; loaded: OldLoaded }
 >;
 
+/** Settings files with nothing wrong. */
+const CLEAN_FILES: OldLoaded = { counts: COUNTS, problems: [] };
+
 /** The settings files may say: usable, usable with a file's problem, or not usable. */
 const LOADS: readonly OldLoaded[] = [
-  { counts: COUNTS, problems: [] },
+  CLEAN_FILES,
   { counts: COUNTS, problems: ["config.yaml: bad key"] },
   { counts: null, problems: ["defaults/config.yaml: missing"] },
 ];
@@ -109,8 +125,13 @@ const sendingReplyArb: fc.Arbitrary<Reply> = fc.oneof(
 );
 
 // Presses and the answers to their calls outweigh the rest, so a press
-// often holds answers Done before a turn's end reads the transcript.
-const commandArb: fc.Arbitrary<Command> = fc.oneof(
+// often holds answers Done before a turn's end reads the transcript. A
+// transcript read finds what `found` gives, and the settings files change
+// to what `files` gives.
+const commandArbWith = (
+  found: fc.Arbitrary<Found>,
+  files: readonly OldLoaded[] = LOADS,
+): fc.Arbitrary<Command> => fc.oneof(
   { arbitrary: fc.constant<Command>({ do: "press" }), weight: 3 },
   turnArb.map((turn): Command => ({ do: "turn-start", turn })),
   { arbitrary: turnArb.map((turn): Command => ({ do: "turn-complete", turn })), weight: 2 },
@@ -131,7 +152,7 @@ const commandArb: fc.Arbitrary<Command> = fc.oneof(
     arbitrary: fc
       .record({
         pick: fc.oneof({ arbitrary: fc.constant(0), weight: 3 }, fc.nat({ max: 3 })),
-        found: foundArb,
+        found,
       })
       .map((r): Command => ({ do: "read", ...r })),
     weight: 3,
@@ -141,7 +162,21 @@ const commandArb: fc.Arbitrary<Command> = fc.oneof(
     .map((r): Command => ({ do: "gh", ...r })),
   // The settings files change between refreshes, so a newer refresh may
   // read none while an older one's read is still out.
-  fc.constantFrom(...LOADS).map((loaded): Command => ({ do: "settings", loaded })),
+  fc.constantFrom(...files).map((loaded): Command => ({ do: "settings", loaded })),
+);
+
+/** The commands, a transcript read finding what the fixtures' reads do. */
+const commandArb: fc.Arbitrary<Command> = commandArbWith(foundArb);
+
+/**
+ * The commands, a transcript read failing one time in two and the settings
+ * files staying clean: a newer refresh that reads no transcript is how an
+ * older read lands late, and clean files keep the settings' fixes from
+ * ending a run first.
+ */
+const failingCommandArb: fc.Arbitrary<Command> = commandArbWith(
+  fc.oneof(foundArb, fc.constant<Found>({ problem: GONE })),
+  [CLEAN_FILES],
 );
 
 /** The settings a run starts with. */
@@ -156,6 +191,8 @@ const refreshing: Event = { type: "refresh-asked", releases: false };
 
 /** Runs one command on both sides; the old handlers are left waiting on their next call. */
 const runCommand = async ($: OldEngine, m: Model, c: Command): Promise<Model> => {
+  const isClosed = $.isClosedWhenAllSubmitted;
+
   switch (c.do) {
     case "press": {
       const readsWhileRunning = $.atoms.runningTurn !== "" && $.atoms.submitting === 0;
@@ -236,12 +273,13 @@ const runCommand = async ($: OldEngine, m: Model, c: Command): Promise<Model> =>
     case "settings":
       $.loaded = c.loaded;
 
-      return withLoaded(m, c.loaded);
+      return withFiles(m, filesOf(c.loaded, isClosed));
   }
 };
 
+/** The model as a run starts: the settings `loaded` read, the close setting `isClosed`. */
 const fresh = (loaded: OldLoaded, isClosed: boolean): Model =>
-  model(START, { isClosedWhenAllSubmitted: isClosed }, loaded);
+  model(withSettings(START, filesOf(loaded, isClosed)), filesOf(loaded, isClosed));
 
 /**
  * Runs `commands` on both sides, comparing them after each, until the
@@ -275,7 +313,13 @@ const compared = async (
 };
 
 describe("the refresh's step against the old handlers", () => {
-  test("say the same after every command of random sequences, until a run reaches a fix", async () => {
+  /** Runs `numRuns` seeded random sequences of `commands`, comparing both sides; resolves to what share of commands were compared, and what share of runs reached each path. */
+  const measured = async (
+    commands: fc.Arbitrary<Command>,
+    seed: number,
+    numRuns: number,
+    files: fc.Arbitrary<OldLoaded> = loadedArb,
+  ) => {
     const counts = {
       compared: 0,
       all: 0,
@@ -285,16 +329,15 @@ describe("the refresh's step against the old handlers", () => {
       merged: 0,
       runs: 0,
     };
-    // Seeded, so the shares below are measured over the same runs each time.
     await fc.assert(
       fc.asyncProperty(
-        fc.array(commandArb, { minLength: 30, maxLength: 80 }),
-        loadedArb,
+        fc.array(commands, { minLength: 30, maxLength: 80 }),
+        files,
         fc.boolean(),
-        async (commands, loaded, isClosed) => {
-          const run = await compared(commands, loaded, isClosed);
+        async (sequence, loaded, isClosed) => {
+          const run = await compared(sequence, loaded, isClosed);
           counts.compared += run.count;
-          counts.all += commands.length;
+          counts.all += sequence.length;
           counts.runs += 1;
           counts.readsAtOnce += run.m.state.refresh.asked > 1 ? 1 : 0;
           counts.released += run.m.released > 0 ? 1 : 0;
@@ -302,17 +345,42 @@ describe("the refresh's step against the old handlers", () => {
           counts.merged += run.m.state.merged.length > 0 ? 1 : 0;
         },
       ),
-      { numRuns: 400, seed: 20261121 },
+      { numRuns, seed },
     );
 
-    // The fixes cut few runs short; most runs refresh more than once, and
-    // enough take out answers a turn's end read, show an older read after
-    // a newer one failed, or learn of a merge.
-    expect(counts.compared / counts.all).toBeGreaterThan(0.75);
-    expect(counts.readsAtOnce / counts.runs).toBeGreaterThan(0.5);
-    expect(counts.released / counts.runs).toBeGreaterThan(0.05);
-    expect(counts.landedLate / counts.runs).toBeGreaterThan(0.05);
-    expect(counts.merged / counts.runs).toBeGreaterThan(0.05);
+    return {
+      compared: counts.compared / counts.all,
+      readsAtOnce: counts.readsAtOnce / counts.runs,
+      released: counts.released / counts.runs,
+      landedLate: counts.landedLate / counts.runs,
+      merged: counts.merged / counts.runs,
+    };
+  };
+
+  test("say the same after every command of random sequences, until a run reaches a fix", async () => {
+    // Seeded, so the shares below are measured over the same runs each time.
+    const shares = await measured(commandArb, 20261121, 400);
+
+    // The fixes cut some runs short: of 400 runs, 145 at a stale read, and
+    // 54 and 47 at the settings' drawn and freed fixes, as the files change
+    // while a read is out, so 0.642 of commands are compared, short of the
+    // 0.75 this test held before the settings moved. Most runs refresh more
+    // than once (0.97), and enough take out answers a turn's end read
+    // (0.073) or learn of a merge (0.125).
+    expect(shares.compared).toBeGreaterThan(0.6);
+    expect(shares.readsAtOnce).toBeGreaterThan(0.9);
+    expect(shares.released).toBeGreaterThan(0.06);
+    expect(shares.merged).toBeGreaterThan(0.1);
+  });
+
+  test("say the same after every command of random sequences whose reads fail one time in two, the files clean, until a run reaches a fix", async () => {
+    // An older read lands late after a newer one that read no transcript,
+    // which the fixtures' reads reach in few runs (0.02 above). Measured
+    // here: 0.0575 of runs land one late, and 0.70 of commands compared.
+    const shares = await measured(failingCommandArb, 20261126, 400, fc.constant(CLEAN_FILES));
+
+    expect(shares.landedLate).toBeGreaterThan(0.05);
+    expect(shares.compared).toBeGreaterThan(0.65);
   });
 
   /** Answers the call waiting at `at` on both sides. */
@@ -350,8 +418,8 @@ describe("the refresh's step against the old handlers", () => {
     ]);
   };
   const LOADED: OldLoaded = { counts: COUNTS, problems: [] };
-  const open: Found = { turns: TRANSCRIPTS.open, counts: COUNTS };
-  const answered: Found = { turns: TRANSCRIPTS.answered, counts: COUNTS };
+  const open: Found = { turns: TRANSCRIPTS.open };
+  const answered: Found = { turns: TRANSCRIPTS.answered };
 
   test("fix: an older refresh's read that answers after a newer one's no longer replaces it; the old handlers drew the older", async () => {
     const $ = oldEngine(RAISED, false, LOADED);
@@ -390,7 +458,28 @@ describe("the refresh's step against the old handlers", () => {
     expect(observedNew(landed).shown.settledRefs).toEqual(["9efb08a1.Decide.1"]);
     expect(landed.state.refresh).toEqual({ asked: 2, shown: 1, reads: [] });
     expect(landed.landedLate).toBe(1);
-    expect(landed.diverged).toEqual({ holds: false, aside: false, stale: false });
+    expect(landed.diverged).toEqual(NOT_DIVERGED);
+  });
+
+  test("fix: a read that lands after a later refresh read other settings draws with those; the old handlers drew it with what its own refresh read", async () => {
+    const $ = oldEngine(RAISED, false, LOADED);
+    // The turn's end reads under clean files; then a user file goes wrong,
+    // and /answers reads it before the first read lands.
+    const reading = await turnEnd($, fresh(LOADED, false), "t1");
+    const warned: OldLoaded = { counts: COUNTS, problems: [BAD_KEY] };
+    $.loaded = warned;
+    void reopened($);
+    await flush();
+    const both = dispatched(withFiles(reading, filesOf(warned, false)), refreshing, [
+      { type: "seen" },
+    ]);
+    const landed = await answerRead($, both, open, 0);
+
+    // The old handlers drew the first read with its own clean files.
+    expect(observedOld($).problems).toBe("");
+    // `step` draws it with the settings in effect, which warn.
+    expect(observedNew(landed).problems).toBe(BAD_KEY);
+    expect(landed.diverged.drawn).toBe(true);
   });
 
   test("fix: a read asked before the session changed is dropped as it answers; the old handlers drew the last session's transcript into the new one's items", async () => {
@@ -412,7 +501,11 @@ describe("the refresh's step against the old handlers", () => {
     expect(observedOld($).shown.items).toHaveLength(2);
     // `step` drops the read: the new session's items wait for its own.
     expect(observedNew(late).shown.items).toEqual([]);
-    expect(late.state.refresh).toEqual({ asked: 2, shown: 1, reads: [{ refresh: 2, releases: [] }] });
+    expect(late.state.refresh).toEqual({
+      asked: 2,
+      shown: 1,
+      reads: [{ refresh: 2, releases: [], on: { at: "transcript" } }],
+    });
     expect(late.diverged.stale).toBe(true);
   });
 
