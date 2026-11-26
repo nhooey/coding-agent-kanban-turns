@@ -13,7 +13,7 @@
 
 import type { Turn } from "../../types/index.d.ts";
 import { SPEC } from "../protocol/spec.ts";
-import { PIN, unfencedLines } from "./outstanding.ts";
+import { parseReply } from "../transcript/reply.ts";
 
 const INTERVAL = SPEC["roll-up"].interval;
 const MINUTE = 60_000;
@@ -28,9 +28,9 @@ const timeOf = (text: string | undefined): number | undefined => {
   return Number.isNaN(time) ? undefined : time;
 };
 
-/** Whether a final response prints the full roll-up: one of its lines outside a code block is the roll-up's header. */
+/** Whether a final response prints the full roll-up: one of its lines outside a code block is the roll-up's header, as parseReply reads the response. */
 export const printsFullRollUp = (text: string): boolean =>
-  unfencedLines(text).some((line) => PIN.test(line));
+  parseReply(text).some((block) => block.kind === "roll-up");
 
 /** Each completed turn's duration whose prompt and the next turn's prompt give their times, oldest first, in milliseconds. */
 export const turnDurations = (turns: readonly Turn[]): readonly number[] =>

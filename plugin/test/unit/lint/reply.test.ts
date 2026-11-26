@@ -404,4 +404,13 @@ describe("isKanbanReply", () => {
     expect(isKanbanReply("The tests pass.\n\n| A | B |\n| - | - |\n")).toBe(false);
     expect(isKanbanReply("A **bold:** word.")).toBe(false);
   });
+
+  test("isn't a reply whose header, roll-up or count line is inside a code block", () => {
+    expect(isKanbanReply("Like this:\n\n```\n✅ **Done:**\n📌 Outstanding: 🧠 1\n```\n")).toBe(false);
+  });
+
+  test("isn't a reply for an older roll-up header bare, alone or opening prose", () => {
+    expect(isKanbanReply("Still open from earlier\n- **The README**\n")).toBe(false);
+    expect(isKanbanReply("Still open from earlier, the README.\n")).toBe(false);
+  });
 });

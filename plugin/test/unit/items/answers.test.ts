@@ -286,6 +286,21 @@ describe("questions in a reply", () => {
     expect(linkedItems(items, hrefs)).toEqual([binary, radio]);
     expect(linkedItems(items, [])).toEqual([]);
   });
+
+  test("a summary line is a numbered item's own line, `1.` or `1)`, not one under another item or inside code", () => {
+    const LINK = "https://kanban-turns.invalid/9efb08a1.Decide.1";
+
+    expect(linkedQuestions("1) **Which cache to keep**", items).hrefs).toEqual([LINK]);
+    expect(linkedQuestions("2. **Other**\n   1. **Which cache to keep**", items).hrefs).toEqual([]);
+    expect(linkedQuestions("```\n1. **Which cache to keep**\n```", items).hrefs).toEqual([]);
+    expect(linkedQuestions("1.\n**Which cache to keep**", items).hrefs).toEqual([]);
+  });
+
+  test("a CRLF reply's summary line keeps its line end", () => {
+    expect(linkedQuestions("1. **Which cache to keep**  \r\nmore", items).text).toBe(
+      "1. **[Which cache to keep](https://kanban-turns.invalid/9efb08a1.Decide.1)**  \r\nmore",
+    );
+  });
 });
 
 describe("checkbox items", () => {

@@ -61,6 +61,12 @@ describe("printsFullRollUp", () => {
   test("keeps a block open until its own fence closes it", () => {
     expect(printsFullRollUp(`\`\`\`\n~~~\n${FULL}\`\`\`\n`)).toBe(false);
   });
+
+  test("reads fences as parseReply does: a block left open holds the rest, and a closing fence is at least as long", () => {
+    expect(printsFullRollUp(`\`\`\`\n${FULL}`)).toBe(false);
+    expect(printsFullRollUp(`\`\`\`\`\n\`\`\`\n${FULL}\`\`\`\`\n`)).toBe(false);
+    expect(printsFullRollUp(`\`\`\`text\n\`\`\` x\n${FULL}`)).toBe(false);
+  });
 });
 
 describe("turnDurations", () => {

@@ -50,7 +50,6 @@
 // ZWJ sequence or a skin-tone modifier is one grapheme of 2 cells here and
 // each wide part's 2 there. Here is what the terminal draws.
 
-import { PIN } from "../items/outstanding.ts";
 import { cellWidth } from "../text/cells.ts";
 import {
   firstLetters,
@@ -64,9 +63,8 @@ import { DECIDE, DEFAULT_KIND, LETTER } from "../protocol/rules.ts";
 import { SPEC } from "../protocol/spec.ts";
 import { NO_DRAFT, draftOf } from "../protocol/tools.ts";
 import { escaped } from "../text/patterns.ts";
-import { HEADER } from "../transcript/turns.ts";
+import { isCountLine, parseReply, proseLines } from "../transcript/reply.ts";
 
-const ROLL_UP = SPEC["roll-up"];
 const KINDS: Kinds = SPEC.options.kinds;
 const TAUGHT = taughtKinds(KINDS);
 const UNTAUGHT: Kinds = Object.fromEntries(
@@ -671,13 +669,12 @@ export const CLEAN_REPLY_TEXT =
 export const UNSHAPED_REPLY_TEXT =
   "The last final response holds no list's header, roll-up or count line, so the reply lint passes over it, as the turn's end does.";
 
-/** Whether a reply is drawn in the protocol's shape, so the turn's end lints it: a line opens a list's header or the 📌 roll-up, or is the count line. */
-export const isKanbanReply = (text: string): boolean =>
-  text
-    .split("\n")
-    .some(
-      (line) =>
-        HEADER.test(line) ||
-        PIN.test(line) ||
-        line.trimStart().startsWith(`${ROLL_UP.glyph} ${ROLL_UP["count-label"]}:`),
-    );
+/** Whether a reply is drawn in the protocol's shape, so the turn's end lints it: it holds a list's header or the 📌 roll-up's start, or a line outside code is the count line. */
+export const isKanbanReply = (text: string): boolean => {
+  const blocks = parseReply(text);
+
+  return (
+    blocks.some((block) => block.kind === "header" || block.kind === "roll-up") ||
+    proseLines(blocks).some(isCountLine)
+  );
+};

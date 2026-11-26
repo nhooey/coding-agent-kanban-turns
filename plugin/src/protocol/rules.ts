@@ -32,6 +32,13 @@ export const namesOf = (
   list: Readonly<{ header: string; aliases: readonly string[] }>,
 ): readonly string[] => [list.header, ...list.aliases];
 
+/** Each list header followed by its aliases, the names older replies in a transcript still carry. */
+export const SECTION_NAMES: readonly string[] =
+  Object.values(SPEC.lists).flatMap(namesOf);
+
+/** The Decide list's names, the first its own. */
+export const DECISIONS: readonly string[] = namesOf(DECIDE);
+
 /** A Decide item's label, its list's glyph and its reference without the turn: `🧠 Decide.2`. */
 export const itemLabel = (number: number): string =>
   `${DECIDE.glyph} ${DECIDE.header}.${number}`;

@@ -1,27 +1,43 @@
 // A reply's Decide questions as links: each raised item's summary line made
 // a link that names the item, the item a pressed link names, and the items a
 // reply links, drawn under it; or the reply's Decide list cut out, for the
-// items' boxes to stand in its place.
+// items' boxes to stand in its place. Both read the reply's blocks, as
+// parseReply gives them.
 
 import { refOf } from "../items/items.ts";
-import { PIN } from "../items/outstanding.ts";
-import { LETTER, isLineOf } from "../protocol/rules.ts";
+import { DECISIONS, isLineOf } from "../protocol/rules.ts";
 import { SPEC } from "../protocol/spec.ts";
-import { DECISIONS, HEADER, isTopicRule } from "../transcript/turns.ts";
+import { parseReply } from "../transcript/reply.ts";
+import type { Block, ItemHead, Option } from "../transcript/reply.ts";
 import type { DecideItem } from "../../types/index.d.ts";
 
 /** Where a question's link points: a name that never resolves, so a click the plugin misses opens nothing real. */
 export const QUESTION_LINK = "https://kanban-turns.invalid/";
 
-// A numbered item's bold summary, alone on its line.
-const SUMMARY_LINE = /^(\s*\d+\.\s+)\*\*(.+?)\*\*([ \t]*)$/gm;
-
 const plainSummary = (summary: string): string =>
   summary.replaceAll("**", "").replaceAll("`", "").trim();
+
+/** A numbered item's bold summary, where it's alone on its line; undefined for a bullet or a line holding more. */
+const summaryAlone = (head: ItemHead): string | undefined =>
+  head.number !== undefined && head.isAlone ? head.summary : undefined;
+
+/** A numbered item's summary alone on its line, where the block is such an item. */
+const summaryOfBlock = (block: Block): string | undefined =>
+  block.kind === "item" ? summaryAlone(block.head) : undefined;
+
+/** An item's own line, `line`, with its summary made a link, `**[<summary>](<href>)**`, all else as written. */
+const linkedLine = (line: string, head: ItemHead, href: string): string => {
+  const summary = summaryAlone(head);
+
+  return summary === undefined
+    ? line
+    : `${head.lead}**[${summary}](${href})**${line.slice(head.lead.length + summary.length + 4)}`;
+};
 
 /**
  * A reply's text with each given item's summary line, `1. **<summary>**`,
  * made a link to the item, `1. **[<summary>](…/<ref>)**`; the hrefs it made.
+ * A summary line is a numbered item's own line, its bold summary alone on it.
  */
 export const linkedQuestions = (
   text: string,
@@ -30,26 +46,30 @@ export const linkedQuestions = (
   const bySummary = new Map(
     items.map((item) => [plainSummary(item.summary), item]),
   );
-  const hrefOf = (summary: string): string | undefined => {
-    const item = bySummary.get(plainSummary(summary));
+  const hrefOf = (block: Block): string | undefined => {
+    const summary = summaryOfBlock(block);
+    const item =
+      summary === undefined ? undefined : bySummary.get(plainSummary(summary));
 
     return item === undefined ? undefined : `${QUESTION_LINK}${refOf(item)}`;
   };
+  const linked = parseReply(text).map((block) => ({
+    block,
+    href: hrefOf(block),
+  }));
 
   return {
-    text: text.replace(
-      SUMMARY_LINE,
-      (line, lead: string, summary: string, tail: string) => {
-        const href = hrefOf(summary);
-
-        return href === undefined
-          ? line
-          : `${lead}**[${summary}](${href})**${tail}`;
-      },
-    ),
-    hrefs: [...text.matchAll(SUMMARY_LINE)]
-      .map((m) => hrefOf(m[2] ?? ""))
-      .filter((href) => href !== undefined),
+    text: linked
+      .flatMap(({ block, href }) =>
+        block.kind === "item" && href !== undefined
+          ? [
+              linkedLine(block.lines[0] ?? "", block.head, href),
+              ...block.lines.slice(1),
+            ]
+          : block.lines,
+      )
+      .join("\n"),
+    hrefs: linked.flatMap(({ href }) => href ?? []),
   };
 };
 
@@ -64,51 +84,113 @@ export const itemOfLink = (
       )
     : -1;
 
-// A list item's bold summary, alone on its line at the line's start, one
-// line at a time: a numbered bold line indented under an option is the
-// option's.
-const SUMMARY_ONE = /^(\d+\.\s+)\*\*(.+?)\*\*([ \t]*)$/;
-
-// An option, `🔘 A. **Disk**`: its letter and its bold name.
-const OPTION = new RegExp(String.raw`(?:^|\s)(${LETTER})\.\s+\*\*(.+?)\*\*`);
-
-/** The letter and plain name of each option written in a block of lines. */
-const optionsIn = (block: readonly string[]): readonly string[] =>
-  block.flatMap((line) => {
-    const found = OPTION.exec(line);
-
-    return found === null ? [] : [`${found[1]}. ${plainSummary(found[2] ?? "")}`];
-  });
-
-/** Whether a block of a list's lines writes each of the item's options, by letter and name. */
-const hasOptionsOf = (item: DecideItem, block: readonly string[]): boolean => {
-  const written = optionsIn(block);
+/** Whether the options written include each of the item's, by letter and plain name. */
+const hasOptionsOf = (item: DecideItem, options: readonly Option[]): boolean => {
+  const written = options.map(
+    (option) => `${option.letter}. ${plainSummary(option.name)}`,
+  );
 
   return item.options.every((option) =>
     written.includes(`${option.letter}. ${plainSummary(option.name)}`),
   );
 };
 
-/** A list header's underline: a line of `▔` alone. */
-const isUnderline = (line: string): boolean =>
-  isLineOf(SPEC.characters["header-underline"], line);
+/** The character a list's header is underlined with. */
+const HEADER_RULE = SPEC.characters["header-underline"];
+
+/** Whether a line opens at its very start, as prose after a list does, where the list's own lines are indented. */
+const isAtStart = (line: string): boolean => /^\S/.test(line);
 
 /**
- * Whether a line ends the list above it: a blank line, the next header, the
- * 📌 roll-up, a topic header or its rule, or prose at the line's start that
- * is no item's summary, the list's items being indented under theirs.
+ * One block's part of the Decide list above it: the lines it keeps in the
+ * list, the options those of them outside code write, its summary where it
+ * is one of the list's items, and whether the list ends with it.
  */
-const endsList = (line: string, following: string): boolean =>
-  line.trim() === "" ||
-  HEADER.test(line) ||
-  PIN.test(line) ||
-  isTopicRule(line) ||
-  isTopicRule(following) ||
-  (/^\S/.test(line) && !SUMMARY_ONE.test(line) && !isUnderline(line));
+type Part = Readonly<{
+  kept: readonly string[];
+  options: readonly Option[];
+  summary: string | undefined;
+  ends: boolean;
+}>;
 
-/** Whether a line is the header of a Decide list. */
-const isDecideHeader = (line: string): boolean =>
-  DECISIONS.includes(HEADER.exec(line)?.[1] ?? "");
+/** No part of the list: the block ends it. */
+const ENDED: Part = { kept: [], options: [], summary: undefined, ends: true };
+
+/**
+ * An item's part of the list: where its summary is alone on its line, it is
+ * one of the list's items, keeping its lines up to one outside code at the
+ * line's start, other than a header's underline, which is prose its lines
+ * run into and ends the list; any other item ends the list.
+ */
+const itemPart = (block: Extract<Block, { kind: "item" }>): Part => {
+  const summary = summaryOfBlock(block);
+  const prose = block.body.findIndex(
+    (under) =>
+      !under.isCode &&
+      isAtStart(under.line) &&
+      !isLineOf(HEADER_RULE, under.line),
+  );
+  const own = prose < 0 ? block.body : block.body.slice(0, prose);
+
+  return summary === undefined
+    ? ENDED
+    : {
+        kept: block.lines.slice(0, 1 + own.length),
+        options: own.flatMap((under) =>
+          under.isCode || under.option === undefined ? [] : [under.option],
+        ),
+        summary,
+        ends: prose >= 0,
+      };
+};
+
+/** Whether a block other than an item goes on with the list: a header's underline, or an indented underline, separator, line of prose or code block. */
+const goesOn = (block: Block): boolean =>
+  (block.kind === "underline" && block.char === HEADER_RULE) ||
+  ((block.kind === "underline" ||
+    block.kind === "separator" ||
+    block.kind === "text" ||
+    block.kind === "code") &&
+    !isAtStart(block.lines[0] ?? ""));
+
+/** A block's part of the Decide list above it. */
+const partOf = (block: Block): Part =>
+  block.kind === "item"
+    ? itemPart(block)
+    : goesOn(block)
+      ? {
+          kept: block.lines,
+          options:
+            block.kind === "text" && block.option !== undefined ? [block.option] : [],
+          summary: undefined,
+          ends: false,
+        }
+      : ENDED;
+
+/** The parts of the list the blocks after its header hold, up to the one that ends it. */
+const listParts = (blocks: readonly Block[]): readonly Part[] => {
+  const parts = blocks.map(partOf);
+  const end = parts.findIndex((part) => part.ends);
+
+  return end < 0 ? parts : parts.slice(0, end + 1);
+};
+
+/** One of the list's items: its summary, and the options written in its lines and those of the parts after it up to the next item. */
+type ListedItem = Readonly<{ summary: string; options: readonly Option[] }>;
+
+const listedItems = (parts: readonly Part[]): readonly ListedItem[] =>
+  parts.reduce<readonly ListedItem[]>((listed, part) => {
+    const last = listed.at(-1);
+
+    return part.summary !== undefined
+      ? [...listed, { summary: part.summary, options: part.options }]
+      : last === undefined
+        ? listed
+        : [
+            ...listed.slice(0, -1),
+            { ...last, options: [...last.options, ...part.options] },
+          ];
+  }, []);
 
 /**
  * The reply's text either side of its Decide list, for `items`' boxes to
@@ -123,39 +205,36 @@ export const decideListCut = (
   text: string,
   items: readonly DecideItem[],
 ): Readonly<{ before: string; after: string }> | undefined => {
+  const blocks = parseReply(text);
+  const pinned = blocks.findIndex((block) => block.kind === "roll-up");
+  const own = pinned < 0 ? blocks : blocks.slice(0, pinned);
+  const headers = own.flatMap((block, n) =>
+    block.kind === "header" && DECISIONS.includes(block.name) ? [n] : [],
+  );
+  const start = headers.length === 1 ? headers[0] : undefined;
+  const header = start === undefined ? undefined : blocks[start];
+  const parts = start === undefined ? [] : listParts(blocks.slice(start + 1));
+  const listed = listedItems(parts);
   const lines = text.split("\n");
-  const pinned = lines.findIndex((line) => PIN.test(line));
-  const ownLines = pinned < 0 ? lines : lines.slice(0, pinned);
-  const headers = ownLines.flatMap((line, n) =>
-    isDecideHeader(line) ? [n] : [],
-  );
-  const start = headers.length === 1 ? (headers[0] ?? -1) : -1;
-  const length = lines
-    .slice(start + 1)
-    .findIndex((line, n) => endsList(line, lines[start + n + 2] ?? ""));
-  const end = length < 0 ? lines.length : start + 1 + length;
-  const list = lines.slice(start + 1, end);
-  const starts = list.flatMap((line, n) =>
-    SUMMARY_ONE.test(line) ? [n] : [],
-  );
-  const blocks = starts.map((at, n) => list.slice(at, starts[n + 1]));
+  const at = header?.at ?? 0;
+  const end = at + 1 + parts.reduce((sum, part) => sum + part.kept.length, 0);
   const isIntact =
-    start >= 0 &&
+    header !== undefined &&
     items.length > 0 &&
-    blocks.length === items.length &&
+    listed.length === items.length &&
     items.every((item, n) => {
-      const block = blocks[n] ?? [];
-      const summary = SUMMARY_ONE.exec(block[0] ?? "")?.[2] ?? "";
+      const found = listed[n];
 
       return (
-        plainSummary(item.summary) === plainSummary(summary) &&
-        hasOptionsOf(item, block)
+        found !== undefined &&
+        plainSummary(item.summary) === plainSummary(found.summary) &&
+        hasOptionsOf(item, found.options)
       );
     });
 
   return isIntact
     ? {
-        before: lines.slice(0, start).join("\n").trim(),
+        before: lines.slice(0, at).join("\n").trim(),
         after: lines.slice(end).join("\n").trim(),
       }
     : undefined;
