@@ -133,6 +133,22 @@ describe("specProblems", () => {
     expect(specProblems(withList("decide", { ...SPEC.lists.decide, "settled-by": "answer" }))).toEqual([]);
   });
 
+  test("finds a list other than Todo, or one with no settling words, settled by a settling word", () => {
+    expect(
+      specProblems(
+        withList("review", {
+          ...SPEC.lists.review,
+          "settled-by": "settling-word",
+          "settling-words": { reviewed: "settles it" },
+        }),
+      ),
+    ).toEqual(["review is settled by settling-word, which reads only the todo list's items"]);
+    expect(specProblems(withList("todo", { ...SPEC.lists.todo, "settling-words": {} }))).toEqual([
+      "todo is settled by settling-word, yet it has no settling-words",
+    ]);
+    expect(SPEC.lists.todo["settled-by"]).toBe("settling-word");
+  });
+
   test("finds a word that settles two lists differently", () => {
     const settling = withList("todo", {
       ...SPEC.lists.todo,
@@ -294,9 +310,9 @@ describe("the build step", () => {
       problems: [`${FRAGMENTS_DIR}/extra.md: no value in the spec for {{lists.decide.colour}}`],
     });
     expect(
-      compiled(edited("  todo:\n", "  chores:\n"), schemaText, { extra: "{{header.todo}}" }),
+      compiled(edited("  pending:\n", "  chores:\n"), schemaText, { extra: "{{header.pending}}" }),
     ).toEqual({
-      problems: [`${FRAGMENTS_DIR}/extra.md: no value in the spec for {{header.todo}}`],
+      problems: [`${FRAGMENTS_DIR}/extra.md: no value in the spec for {{header.pending}}`],
     });
   });
 

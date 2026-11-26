@@ -2,10 +2,10 @@
 // settled, as the tests ask after them.
 
 import { refOf } from "../../src/items/items.ts";
-import type { DecideItem, Raised, RaisedItem } from "../../types/index.d.ts";
+import type { ListedItem, Raised, RaisedItem } from "../../types/index.d.ts";
 
 /** Each of `items` raised, open. */
-export const openItems = (items: readonly DecideItem[]): readonly RaisedItem[] =>
+export const openItems = (items: readonly ListedItem[]): readonly RaisedItem[] =>
   items.map((item) => ({ item, state: { tag: "open" } }));
 
 /** The refs of the raised items settled, oldest first. */

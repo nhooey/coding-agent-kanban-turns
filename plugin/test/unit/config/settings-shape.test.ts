@@ -203,7 +203,7 @@ describe("the type a default gives its setting", () => {
     expect(
       loaded({ path: D, text: stringify(withoutLint) }, { path: U, text: "lint:\n  turn-end: false\n" }).problems,
     ).toEqual([
-      `${U}: lint is no setting; the keys here are counts, keys, pane, notes, marks, colors, roll-up`,
+      `${U}: lint is no setting; the keys here are counts, keys, pane, notes, actions, marks, colors, roll-up`,
     ]);
   });
 });

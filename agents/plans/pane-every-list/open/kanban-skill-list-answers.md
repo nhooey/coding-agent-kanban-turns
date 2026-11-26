@@ -28,4 +28,8 @@ The settling words for every list and the grouped answer syntax are written into
 
   They pass once [items-of-every-list](items-of-every-list.md) and [answers-grouped-by-turn-and-list](answers-grouped-by-turn-and-list.md) read the words and the grouped form, and the derived skill's examples show them.
 
+## Already true for Todo
+
+The spec's `todo` list holds its `settling-words`, `done` and `skip`, and its comment gives the word's form: alone after `: `, or followed by `: ` and a note, any other text a note that settles no item of a list with words. The case `plugin/spec/cases/todo-settling-words.yaml` shows both words and a note alone. Todo's `settled-by` is `settling-word`, so a word settles a Todo item in the pane, in the 📌 roll-up and in the count line alike, and `SETTLERS` in `plugin/src/items/outstanding.ts` holds its settler; the spec's consistency check refuses that way for a list with no words, or for a list other than Todo, the one whose words the core reads so far. Still to come: the other lists' words, the grouped form, and its cases.
+
 Checks: the spec's consistency test covers each word and finds no word that settles two lists differently; the generated module and JSON copy are up to date; the new cases are in `plugin/spec/cases/`.

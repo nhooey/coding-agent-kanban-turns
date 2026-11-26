@@ -17,6 +17,12 @@ export const SETTINGS_SHAPE: Shape = {
   },
   pane: { "close-when-all-submitted": "boolean" },
   notes: { rows: "number" },
+  actions: {
+    todo: {
+      done: { label: "string", settled: "string" },
+      skip: { label: "string", settled: "string" },
+    },
+  },
   marks: {
     sent: "mark",
     chosen: "mark",

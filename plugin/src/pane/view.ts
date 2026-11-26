@@ -5,11 +5,25 @@
 // item's notes are drawn, and whether the tool's row is plain enough to be
 // drawn as nothing, the buttons going under the reply instead.
 
-import type { DecideItem, Raised, Settings, Settlement } from "../../types/index.d.ts";
+import type {
+  DecideItem,
+  ListedItem,
+  Raised,
+  Settings,
+  Settlement,
+} from "../../types/index.d.ts";
 import { answersIn, hasReassess } from "../items/answers.ts";
-import { glyphOf, optionMark, refOf } from "../items/items.ts";
+import { glyphOf, isDecide, listOf, optionMark, refOf } from "../items/items.ts";
 import type { Ignored } from "../items/items.ts";
-import { DECIDE, DONE, REASSESS, itemLabel } from "../protocol/rules.ts";
+import {
+  DECIDE,
+  DONE,
+  PANE_LISTS,
+  REASSESS,
+  TODO,
+  itemLabel,
+  settlingWordsOf,
+} from "../protocol/rules.ts";
 import { problemsOf, stillOpen } from "../items/raised.ts";
 import { padToCells, widestCells } from "../text/cells.ts";
 import { capitalized } from "../text/words.ts";
@@ -21,13 +35,19 @@ import { doneLine } from "./sections.ts";
 export const noItemsText = (problem: string): string =>
   `No open ${DECIDE.header} items${problem ? `: ${problem}` : ""}.`;
 
-/** /answers's reply: the pane opened over the open items, or why there are none. */
+/** /answers's reply: the pane opened over every open item, counted list by list, a list with none left out, or why there are none. */
 export const answersText = (raised: Raised): string => {
-  const open = stillOpen(raised).length;
+  const open = stillOpen(raised);
+  const counts = PANE_LISTS.map((list) => ({
+    list,
+    count: open.filter((item) => listOf(item).header === list.header).length,
+  })).filter(({ count }) => count > 0);
 
-  return open === 0
+  return counts.length === 0
     ? noItemsText(problemsOf(raised))
-    : `${DECIDE.header} pane opened: ${open} open ${DECIDE.header} items.`;
+    : `${DECIDE.header} pane opened: ${counts
+        .map(({ list, count }) => `${count} open ${list.header} items`)
+        .join(", ")}.`;
 };
 
 /** /answers-config's reply: each setting in effect, then each file or value not used and why. */
@@ -157,7 +177,7 @@ export const submitStep = (draft: string, isBusy: boolean): SubmitStep =>
       : { send: draft };
 
 /** The key of an item's notes field in the pane. */
-export const notesKey = (item: DecideItem): string => `${refOf(item)}.notes`;
+export const notesKey = (item: ListedItem): string => `${refOf(item)}.notes`;
 
 /** How an item's notes are drawn: none once settled, a button under a reply, else the field, which takes the focus when `✏️ Add a note` asked for it. */
 export type NotesMode = "none" | "button" | "field" | "focused";
@@ -212,10 +232,10 @@ export const gutterStyle = (
  * same line, marked when the item is Done.
  */
 export const itemTitle = (
-  item: DecideItem,
+  item: ListedItem,
   isDone: boolean,
 ): Readonly<{ label: string; summary: string }> => ({
-  label: ` ${itemLabel(item.number)} `,
+  label: ` ${itemLabel(item.number, listOf(item))} `,
   summary: `${item.summary}${isDone ? " (done)" : ""}`,
 });
 
@@ -249,36 +269,104 @@ const lettersAndNote = (letters: readonly string[], note: string): string =>
     .filter((part) => part !== "")
     .join(LAYOUT.divider);
 
-/** The text for each way an item settles, saying a settlement of that way: one for every `how`, so a new one can't go unsaid. */
+/** What a Done row says a settling word did, `skip` as `skipped`: the `actions` settings' `settled`, by the word. */
+export type WordSaid = (word: string) => string;
+
+/** The text for each way an item settles, saying a settlement of that way, with what a settling word says it did: one for every `how`, so a new one can't go unsaid. */
 export type SettledTexts = {
   readonly [How in Settlement["how"]]: (
     settlement: Extract<Settlement, { how: How }>,
+    said: WordSaid,
   ) => string;
 };
+
+/** A settling word as a Done row says it, then its note after ` · `. */
+const wordAndNote = (word: string, note: string, said: WordSaid): string =>
+  [said(word), note].filter((part) => part !== "").join(LAYOUT.divider);
 
 /**
  * What made a Done item Done, by how: the answer, `Answered in <turn>:
  * <letters>`, its note after ` · ` or in place of the letters; the answer
  * Submit sent, `Sent: <letters>`, until the turn's end reads it; a later
  * `reassess`, `Done: reassessed`; or a later item that replaced it,
- * `Superseded by <ref>`. The pane's word for a settled item is the Done
- * list's name, so it follows the spec's header.
+ * `Superseded by <ref>`. A settling word says what it did, `Done:
+ * skipped`, its note after ` · `, or, sent by Submit until the turn's end
+ * reads it, `Sent: skipped`. The pane's word for a settled item is the
+ * Done list's name, so it follows the spec's header.
  */
 const SETTLED_TEXTS: SettledTexts = {
   answered: (s) => `Answered in ${s.turn}: ${lettersAndNote(s.letters, s.note)}`,
   sent: (s) => `Sent: ${lettersAndNote(s.letters, s.note)}`,
   reassessed: () => `${DONE.header}: ${REASSESS}ed`,
   superseded: (s) => `Superseded by ${s.by}`,
+  worded: (s, said) => `${DONE.header}: ${wordAndNote(s.word, s.note, said)}`,
+  "sent-word": (s, said) => `Sent: ${wordAndNote(s.word, s.note, said)}`,
 };
 
 /** What the settlement's `how` says of it. */
 const textOf = <How extends Settlement["how"]>(
   settlement: Extract<Settlement, { how: How }>,
-): string => SETTLED_TEXTS[settlement.how](settlement);
+  said: WordSaid,
+): string => SETTLED_TEXTS[settlement.how](settlement, said);
 
-/** The line under a Done item's title saying what made it Done, as `SETTLED_TEXTS` says, or `Done` where the transcript doesn't say. */
-export const settledText = (settlement: Settlement | undefined): string =>
-  settlement === undefined ? DONE.header : textOf(settlement);
+/** The line under a Done item's title saying what made it Done, as `SETTLED_TEXTS` says, a settling word as `said` says it, or `Done` where the transcript doesn't say. */
+export const settledText = (
+  settlement: Settlement | undefined,
+  said: WordSaid = (word) => word,
+): string => (settlement === undefined ? DONE.header : textOf(settlement, said));
+
+/** What a Done row says each settling word did, by the `actions` settings: the word's `settled`, else the word itself. */
+export const wordSaidBy =
+  (actions: Settings["actions"]): WordSaid =>
+  (word) =>
+    Object.values(actions).flatMap((list) =>
+      Object.entries(list).flatMap(([each, action]) => (each === word ? [action.settled] : [])),
+    )[0] ?? word;
+
+/** One of an item's actions: the settling word its button writes, and the button's label. */
+export type Action = Readonly<{ word: string; label: string }>;
+
+/** A Todo item's actions: each settling word the spec gives its list, in the spec's order, labelled as the `actions.todo` settings say, else by the word. */
+export const todoActions = (actions: Settings["actions"]): readonly Action[] => {
+  const labels: Readonly<Record<string, Readonly<{ label: string }>>> = actions.todo;
+
+  return settlingWordsOf(TODO).map((word) => ({
+    word,
+    label: Object.hasOwn(labels, word) ? (labels[word]?.label ?? word) : word,
+  }));
+};
+
+/**
+ * What a Todo item's notes field shows while it's empty: that a note goes
+ * with one of its actions, by label, or alone, and that a note alone
+ * settles nothing unless it opens with one of the actions' words, which
+ * it then reads back as.
+ */
+export const todoNotePlaceholder = (actions: readonly Action[]): string =>
+  `A note: with ${actions.map((action) => action.label).join(" or ")}, or alone, which settles nothing unless it opens with ${actions
+    .map((action) => `"${action.word}"`)
+    .join(" or ")}`;
+
+/**
+ * What an action's button opens on, `✅ Done`: `chosen`, the `marks.chosen`
+ * setting, while the draft gives its word; else `sent` where the answer that
+ * made the item Done gave it; else blanks as wide as the wider of the two,
+ * so a press moves no label.
+ */
+export const actionLead = (
+  is: Readonly<{ chosen: boolean; sent: boolean }>,
+  marks: Pick<Settings["marks"], "chosen" | "sent">,
+): string =>
+  padToCells(
+    is.chosen ? marks.chosen : is.sent ? marks.sent : "",
+    widestCells([marks.chosen, marks.sent]),
+  );
+
+/** The settling word the answer that made an item Done gave, sent or read; empty when something else did. */
+export const sentWord = (settlement: Settlement | undefined): string =>
+  settlement?.how === "worded" || settlement?.how === "sent-word"
+    ? settlement.word
+    : "";
 
 /** A line naming another item: its text, and the ref of the item a click on it shows. */
 export type ItemLink = Readonly<{ text: string; to: string }>;
@@ -297,15 +385,16 @@ export type DoneRow = Readonly<{
   link: ItemLink | undefined;
 }>;
 
-/** A Done item's row: its line saying what made it Done, or, where that's a link, its line up to the link, then the link. */
+/** A Done item's row: its line saying what made it Done, a settling word as `said` says it, or, where that's a link, its line up to the link, then the link. */
 export const doneRowOf = (
-  item: DecideItem,
+  item: ListedItem,
   settlement: Settlement | undefined,
+  said: WordSaid = (word) => word,
 ): DoneRow => {
   const link = settledLink(settlement);
 
   return {
-    line: doneLine(item, link === undefined ? settledText(settlement) : ""),
+    line: doneLine(item, link === undefined ? settledText(settlement, said) : ""),
     link,
   };
 };
@@ -319,17 +408,18 @@ export const supersedesLinks = (refs: readonly string[]): readonly ItemLink[] =>
  * the line saying what made a Done item Done, where that's no link, empty
  * otherwise; and `links`, the one saying what made it Done where it's a
  * link, `Superseded by <ref>`, then one per item in `supersedes`, the refs
- * of those it supersedes.
+ * of those it supersedes. A settling word reads as `said` says it.
  */
 export const boxLines = (
   isDone: boolean,
   settlement: Settlement | undefined,
   supersedes: readonly string[],
+  said: WordSaid = (word) => word,
 ): Readonly<{ settled: string; links: readonly ItemLink[] }> => {
   const link = isDone ? settledLink(settlement) : undefined;
 
   return {
-    settled: isDone && link === undefined ? settledText(settlement) : "",
+    settled: isDone && link === undefined ? settledText(settlement, said) : "",
     links: [...(link === undefined ? [] : [link]), ...supersedesLinks(supersedes)],
   };
 };

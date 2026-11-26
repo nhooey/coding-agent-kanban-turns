@@ -124,6 +124,12 @@ const DEFAULTS = JSON.stringify({
   keys: { dismiss: "q", next: "j", previous: "k", submit: "s", reassess: "r", help: "h" },
   pane: { "close-when-all-submitted": true },
   notes: { rows: 3 },
+  actions: {
+    todo: {
+      done: { label: "Done", settled: "done" },
+      skip: { label: "Skip", settled: "skipped" },
+    },
+  },
   marks: {
     sent: "✅",
     chosen: "✅",
@@ -2637,6 +2643,45 @@ test("a pane stored under the shape from before a superseded item named what sup
   await ui.unmount();
 });
 
+test("a pane stored under the shape from before it held Todo items and the actions settings is not used", async ($, on) => {
+  engine(on, () => ITEMS);
+  // What the plugin kept under the pane-6 shape, before a raised item could
+  // be a Todo item and the settings held `actions`: every item open, as a
+  // reload finds it. The store answers it whatever the plugin writes since.
+  const stale = {
+    shape: "pane-6",
+    value: {
+      presses: 1,
+      submit: { tag: "idle" },
+      overtaken: [],
+      aside: { said: "", presses: 0 },
+      refresh: { asked: 1, shown: 1, reads: [] },
+      raised: {
+        session: "session-1",
+        turns: [],
+        items: ITEMS.map((item) => ({ item, state: { tag: "open" } })),
+        seenRefs: [],
+        problem: "",
+        settingsProblems: [],
+      },
+      sent: [],
+      merged: [],
+      counts: "",
+      settings: { tag: "unread", asked: 0 },
+    },
+  };
+  on("state.get", (_, e, next) =>
+    e.key === "pane" ? { value: { value: stale, version: 1 } } : next(e),
+  );
+  await $.tool.call({ tool: TOOL, items: ITEMS } as never);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+
+  // Read as absent, the stale value draws nothing.
+  expect(await titles(ui)).toEqual([]);
+  expect(await ui.find({ type: "Text", text: /^No open Decide items/ })).toBeDefined();
+  await ui.unmount();
+});
+
 test("Submit moves the items its draft answers to Done at once, and the turn's end confirms them", async ($, on) => {
   const later: TranscriptRecord[] = [];
   const state = engine(on, () => ITEMS, listsText, () => later);
@@ -2668,6 +2713,237 @@ test("Submit moves the items its draft answers to Done at once, and the turn's e
   ]);
   expect(await countsOn(line)).toBe("📌 Outstanding: 🚧 1 · 🧠 1");
   await line.unmount();
+  await ui.unmount();
+});
+
+// A reply's own Todo list: two items, the first with a line under it.
+const TODO_LIST = [
+  "👉 **Todo:**  ",
+  "▔▔▔▔▔▔▔▔",
+  "1. **Rotate the deploy token**  ",
+  "   It expires on Friday.",
+  "   ⠀",
+  "2. **Announce the release**",
+  "",
+].join("\n");
+
+/** A reply printing listsText's lists of `items`, then the Todo list. */
+const withTodoList = (items: readonly Item[]): string => `${listsText(items)}\n${TODO_LIST}`;
+
+/** Every item's title line in the pane, of any list, in the order drawn, each as `label · summary`. */
+const listedTitles = async (ui: Drawing) =>
+  (await ui.findAll({ type: "Box", text: /^ (?:👉 Todo|🧠 Decide)\.\d+ / }))
+    .filter((found) => found.key?.endsWith(".title-hang"))
+    .map((found) => found.text.trim().replace(/^(\S+ \S+\.\d+)\s+/, "$1 · "));
+
+/** The Done rows of any list once their branch and turn are open, each as `label  text`. */
+const listedDoneLines = async (ui: Drawing) =>
+  (await ui.findAll({ type: "Box", text: /^(?:👉 Todo|🧠 Decide)\.\d+/ }))
+    .filter((found) => found.key?.endsWith(".line-hang"))
+    .map((found) => found.text.replace(/^(\S+ \S+\.\d+)/, "$1  "));
+
+test("a reply's Todo list shows its items in the pane, in their turn before its Decide items, each with its body, Done, Skip and a notes field", async ($, on) => {
+  engine(on, () => [ITEMS[0]], withTodoList);
+  await $.turn.complete(replyDone("t1"));
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+
+  expect(await listedTitles(ui)).toEqual([
+    "👉 Todo.1 · Rotate the deploy token",
+    "👉 Todo.2 · Announce the release",
+    "🧠 Decide.1 · Which cache to keep",
+  ]);
+  expect((await ui.find({ type: "Button", key: "open.9efb08a1" }))?.text).toBe("▾ ── 9efb08a1 ₀ (3) ──");
+  // Each list's run opens on a faint header naming it, Todo's first.
+  expect(
+    (await ui.findAll({ type: "Text", text: /^(?:👉 Todo|🧠 Decide)$/ })).map((found) => found.text),
+  ).toEqual(["👉 Todo", "🧠 Decide"]);
+  expect(await ui.find({ type: "Text", text: /^It expires on Friday\.$/ })).toBeDefined();
+  expect((await ui.find({ type: "Button", key: "9efb08a1.Todo.1.done" }))?.text.trim()).toBe("Done");
+  expect((await ui.find({ type: "Button", key: "9efb08a1.Todo.1.skip" }))?.text.trim()).toBe("Skip");
+  expect(await ui.find({ type: "Input", key: "9efb08a1.Todo.1.notes" })).toBeDefined();
+  expect(await ui.find({ type: "Text", text: /^0 of 3 answered$/ })).toBeDefined();
+  await ui.unmount();
+});
+
+test("Done on a Todo item writes its reference with done and moves it to Queued; a second press takes it out and puts it back", async ($, on) => {
+  const state = engine(on, () => [], withTodoList);
+  await $.turn.complete(replyDone("t1"));
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  const header = async (key: string) => (await ui.find({ type: "Button", key }))?.text;
+  // A click folds the turn under Open, which the moves leave folded.
+  await ui.press({ key: "open.9efb08a1" });
+  await ui.press({ key: "open.9efb08a1" });
+
+  await ui.press({ key: "9efb08a1.Todo.1.done" });
+  expect(state.box).toBe(`${HEADER}9efb08a1.Todo.1: done\n`);
+  expect(await header("open")).toBe("▾ Open (1)");
+  expect(await header("queued")).toBe("▾ Queued (1)");
+  expect(await header("queued.9efb08a1")).toBe("▾ ── 9efb08a1 ₀ (1) ──");
+  expect((await ui.find({ type: "Button", key: "9efb08a1.Todo.1.done" }))?.text).toBe("✅ Done");
+  expect(await ui.find({ type: "Text", text: /^1 of 2 answered$/ })).toBeDefined();
+
+  // Skip replaces the word, in place; the item stays Queued.
+  await ui.press({ key: "9efb08a1.Todo.1.skip" });
+  expect(state.box).toBe(`${HEADER}9efb08a1.Todo.1: skip\n`);
+  expect(await header("queued")).toBe("▾ Queued (1)");
+
+  // A second press on the word the draft holds takes it out, and the line
+  // naming the plugin with it; the item is back in Open.
+  await ui.press({ key: "9efb08a1.Todo.1.skip" });
+  expect(state.box).toBe("");
+  expect(await header("queued")).toBeUndefined();
+  expect(await header("open")).toBe("▾ Open (2)");
+  expect(state.sent).toEqual([]);
+  await ui.unmount();
+});
+
+test("a note alone on a Todo item writes it after the reference and keeps the item in Open; Done then keeps the note", async ($, on) => {
+  const state = engine(on, () => [], withTodoList);
+  await $.turn.complete(replyDone("t1"));
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  const header = async (key: string) => (await ui.find({ type: "Button", key }))?.text;
+
+  await ui.input({ key: "9efb08a1.Todo.2.notes", text: "after the deploy" });
+  expect(state.box).toBe(`${HEADER}9efb08a1.Todo.2: after the deploy\n`);
+  expect(await header("open")).toBe("▾ Open (2)");
+  expect(await header("queued")).toBeUndefined();
+
+  await ui.press({ key: "9efb08a1.Todo.2.done" });
+  expect(state.box).toBe(`${HEADER}9efb08a1.Todo.2: done: after the deploy\n`);
+  expect(await header("queued")).toBe("▾ Queued (1)");
+  await ui.unmount();
+});
+
+test("Submit moves a Todo item given done or skip to Done at once, and the turn's end confirms it; the count line drops it", async ($, on) => {
+  const later: TranscriptRecord[] = [];
+  const state = engine(on, () => [], withTodoList, () => later);
+  await $.turn.complete(replyDone("t1"));
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  await ui.press({ key: "9efb08a1.Todo.1.done" });
+  await ui.press({ key: "9efb08a1.Todo.2.skip" });
+  await ui.input({ key: "9efb08a1.Todo.2.notes", text: "not this week" });
+  await ui.press({ key: "submit" });
+
+  expect(state.sent).toEqual([`${HEADER}9efb08a1.Todo.1: done\n9efb08a1.Todo.2: skip: not this week\n`]);
+  expect(await listedTitles(ui)).toEqual([]);
+  await openDone(ui);
+  expect(await listedDoneLines(ui)).toEqual([
+    "👉 Todo.1  Rotate the deploy token · Sent: done",
+    "👉 Todo.2  Announce the release · Sent: skipped · not this week",
+  ]);
+
+  later.push(submitted("b2c3d4e5", state.sent[0] ?? ""), assistant("On it."));
+  await $.turn.start({ text: state.sent[0] ?? "", turnId: "t2" });
+  await $.turn.complete(replyDone("t2"));
+  const line = await $.ui.mount({ ...ABOVE_PROMPT, surface: "terminal" });
+
+  expect(await listedDoneLines(ui)).toEqual([
+    "👉 Todo.1  Rotate the deploy token · Done: done",
+    "👉 Todo.2  Announce the release · Done: skipped · not this week",
+  ]);
+  expect(await countsOn(line)).toBe("📌 Outstanding: 🚧 1");
+  await line.unmount();
+  await ui.unmount();
+});
+
+test("a Todo item's first action is its stop: ↓ Next is dim on the last one", async ($, on) => {
+  const state = engine(on, () => [], withTodoList);
+  await $.turn.complete(replyDone("t1"));
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  const dim = async (key: string) => (await ui.find({ type: "Button", key }))?.props["dimColor"];
+  state.isRingMovable = true;
+  const ringOn = (element: string) =>
+    $.ui.focus({ component: "Pane", requestId: "kanban-turns", element, origin: { kind: "person" } });
+
+  await ringOn("9efb08a1.Todo.1.done");
+  expect(await dim("previous")).toBe(false);
+  expect(await dim("next")).toBe(false);
+  // Any element of the last item is at its stop, the last.
+  await ringOn("9efb08a1.Todo.2.skip");
+  expect(await dim("next")).toBe(true);
+  expect(await dim("previous")).toBe(false);
+  await ui.unmount();
+});
+
+test("a Todo item a later reply prints again on its subject is Done, superseded, and the later box's link to it opens it", async ($, on) => {
+  const later: TranscriptRecord[] = [];
+  const state = engine(on, () => [], withTodoList, () => later);
+  await $.turn.complete(replyDone("t1"));
+  later.push(human("b2c3d4e5", "go on"), assistant(TODO_LIST));
+  await $.turn.complete(replyDone("t2"));
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+
+  expect(await listedTitles(ui)).toEqual([
+    "👉 Todo.1 · Rotate the deploy token",
+    "👉 Todo.2 · Announce the release",
+  ]);
+  const back = "b2c3d4e5.Todo.1.link.9efb08a1.Todo.1";
+  expect((await ui.find({ type: "Button", key: back }))?.text).toBe("Supersedes 9efb08a1.Todo.1");
+  expect((await ui.find({ type: "Button", key: "done" }))?.text).toBe("▸ Done (2)");
+  state.opens.length = 0;
+  await ui.press({ key: back });
+  expect((await ui.find({ type: "Button", key: "done" }))?.text).toBe("▾ Done (2)");
+  expect((await ui.find({ type: "Button", key: "done.9efb08a1" }))?.text).toContain("▾ ── 9efb08a1");
+  expect(state.opens).toEqual([true]);
+
+  // The older item's box says what superseded it, a link back.
+  const forth = "9efb08a1.Todo.1.link.b2c3d4e5.Todo.1";
+  expect((await ui.find({ type: "Button", key: forth }))?.text).toBe("Superseded by b2c3d4e5.Todo.1");
+  await ui.unmount();
+});
+
+test("/answers with only Todo items open counts them and opens the pane; a Submit leaving one open keeps it open", async ($, on) => {
+  const state = engine(on, () => ITEMS, withTodoList);
+  const answered = await $.command.run(ANSWERS);
+  expect(answered.text).toBe("Decide pane opened: 2 open Todo items, 3 open Decide items.");
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+
+  // Every Decide item answered, both Todo items still open: the pane stays.
+  await answerAll(ui);
+  await ui.press({ key: "submit" });
+  expect(state.sent).toHaveLength(1);
+  expect(state.isPaneOpen).toBe(true);
+
+  // A note alone answers neither; a word to each closes it.
+  await ui.input({ key: "9efb08a1.Todo.1.notes", text: "after the deploy" });
+  await ui.press({ key: "submit" });
+  expect(state.isPaneOpen).toBe(true);
+  await ui.press({ key: "9efb08a1.Todo.1.done" });
+  await ui.press({ key: "9efb08a1.Todo.2.skip" });
+  await ui.press({ key: "submit" });
+  expect(state.isPaneOpen).toBe(false);
+  await ui.unmount();
+});
+
+test("/answers over Todo items alone names them", async ($, on) => {
+  const state = engine(on, () => [], withTodoList);
+  await $.turn.complete(replyDone("t1"));
+
+  expect((await $.command.run(ANSWERS)).text).toBe("Decide pane opened: 2 open Todo items.");
+  expect(state.isPaneOpen).toBe(true);
+});
+
+test("a fenced command in a Todo item's body stays in its box, each line drawn as code", async ($, on) => {
+  const fenced = [
+    "👉 **Todo:**  ",
+    "▔▔▔▔▔▔▔▔",
+    "1. **Push the release tag**  ",
+    "   From the repository's root:",
+    "   ```sh",
+    "   git push origin v2.4",
+    "   ```",
+    "",
+  ].join("\n");
+  engine(on, () => [], () => fenced);
+  await $.turn.complete(replyDone("t1"));
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+
+  expect(await ui.find({ type: "Text", text: /^From the repository's root:$/ })).toBeDefined();
+  // The line's own span, inside the line's Text, is the code colour.
+  expect(
+    (await ui.findAll({ type: "Text", text: /^git push origin v2\.4$/ })).map((found) => found.props["color"]),
+  ).toContain("permission");
+  expect(await ui.find({ type: "Text", text: /```/ })).toBeUndefined();
   await ui.unmount();
 });
 

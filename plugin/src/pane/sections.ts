@@ -6,18 +6,27 @@
 // which toggles a click opened or closed, which no move of an item between
 // branches changes; where the ring goes when a pick moves its item out of
 // Open; and the stops the pane's j and k keys move the focus ring between.
-// No `$`, no I/O.
+// Within a turn's group the items come by list, in the spec's order, each
+// list's run under a faint header naming it. No `$`, no I/O.
 
-import { choiceTo, isAnswered } from "../items/answers.ts";
-import { isSameTurn, refOf } from "../items/items.ts";
-import { DONE, itemLabel } from "../protocol/rules.ts";
+import { isAnswered, settles } from "../items/answers.ts";
+import { isDecide, isSameTurn, listOf, refOf } from "../items/items.ts";
+import {
+  DECIDE,
+  DONE,
+  PANE_LISTS,
+  itemLabel,
+  paneListOf,
+  settlingWordsOf,
+} from "../protocol/rules.ts";
+import type { ListName } from "../protocol/rules.ts";
 import { SPEC } from "../protocol/spec.ts";
 import { padToCells, widestCells } from "../text/cells.ts";
 import { LAYOUT } from "./layout.ts";
 import type {
-  DecideItem,
   Folds,
   ItemState,
+  ListedItem,
   RaisedItem,
   Settings,
 } from "../../types/index.d.ts";
@@ -41,13 +50,39 @@ const BRANCH_OF_TAG: Readonly<Record<ItemState["tag"], Branch>> = {
   settled: "done",
 };
 
-/** One turn's items in one branch: its id, the key of its header's toggle, its id and index as the header names it, and its items, oldest first. */
+/** One turn's items in one branch: its id, the key of its header's toggle, its id and index as the header names it, and its items, by list in the spec's order, each list's oldest first. */
 export type TurnGroup = Readonly<{
   turn: string;
   key: string;
   label: string;
-  items: readonly DecideItem[];
+  items: readonly ListedItem[];
 }>;
+
+/** Where an item's list comes in the spec's order, among the lists the pane draws. */
+const listRank = (item: ListedItem): number =>
+  PANE_LISTS.findIndex((list) => list.header === item.list);
+
+/** The items by list, in the spec's order, each list's in the order given. */
+export const byList = (items: readonly ListedItem[]): readonly ListedItem[] =>
+  items.toSorted((a, b) => listRank(a) - listRank(b));
+
+/** One list's run of items in a turn's group: the list and its header's text, `👉 Todo`, and its items. */
+export type ListRun = Readonly<{
+  list: ListName;
+  header: string;
+  items: readonly ListedItem[];
+}>;
+
+/** A list's header in a turn's group: its glyph and its name, `👉 Todo`. */
+export const listHeader = (list: ListName): string => `${list.glyph} ${list.header}`;
+
+/** A turn's group's items as one run per list, in the spec's order, a list with no item left out. */
+export const listRuns = (items: readonly ListedItem[]): readonly ListRun[] =>
+  PANE_LISTS.map((list) => ({
+    list,
+    header: listHeader(list),
+    items: items.filter((item) => item.list === list.header),
+  })).filter((run) => run.items.length > 0);
 
 /** The pane's branches, each one group per turn with an item in it, newest first. */
 export type PaneGroups = Readonly<Record<Branch, readonly TurnGroup[]>>;
@@ -117,14 +152,16 @@ export const turnKey = (branch: Branch, turn: string): string =>
   `${branch}.${turn}`;
 
 /** The key of a Done item's line, or of its box's title once a click expands it. */
-export const lineKey = (item: DecideItem): string => `${refOf(item)}.line`;
+export const lineKey = (item: ListedItem): string => `${refOf(item)}.line`;
 
 /**
  * Where a raised item stands in the pane: Done once settled; Queued while
- * the draft answers it, a pick or a note waiting for Submit, unless it's
- * the one `heldAfterPick` holds in Open (`held`, its ref), or the draft's
- * line for it asks a question, which Submit sends without settling it;
- * else Open.
+ * the draft's choice would settle it, as `settles` says, a pick or a note
+ * to a Decide item, a settling word to a Todo item, waiting for Submit,
+ * unless it's the one `heldAfterPick` holds in Open (`held`, its ref), or
+ * the draft's line for it asks a question, which Submit sends without
+ * settling it; else Open, a Todo item the draft gives a note alone among
+ * them.
  */
 export const paneStateOf = (
   raised: RaisedItem,
@@ -134,7 +171,7 @@ export const paneStateOf = (
   const branch = BRANCH_OF_TAG[raised.state.tag];
 
   return branch === "open" &&
-    choiceTo(draft, raised.item) !== undefined &&
+    settles(draft, raised.item) &&
     refOf(raised.item) !== held
     ? "queued"
     : branch;
@@ -146,10 +183,12 @@ export const paneStateOf = (
  * under the person's hands until the ring leaves it; empty for any other.
  */
 export const heldAfterPick = (
-  item: DecideItem,
+  item: ListedItem,
   branch: Branch | undefined,
 ): string =>
-  item.kind === "checkbox" && branch === "open" ? refOf(item) : "";
+  isDecide(item) && item.kind === "checkbox" && branch === "open"
+    ? refOf(item)
+    : "";
 
 /** The item still held once the ring lands on `focused`: the held one while the ring is on one of its elements, else none. */
 export const heldAfterFocus = (held: string, focused: string): string =>
@@ -172,7 +211,7 @@ const rankOf = (
 
 /** The turns the items came from, newest first. */
 const turnsNewestFirst = (
-  items: readonly DecideItem[],
+  items: readonly ListedItem[],
   turns: readonly string[],
 ): readonly string[] =>
   [...new Set(items.map((item) => item.turn))]
@@ -180,10 +219,10 @@ const turnsNewestFirst = (
     .toSorted((a, b) => b.rank - a.rank)
     .map(({ turn }) => turn);
 
-/** A branch's groups: one per turn, in `order`, with the branch's items of that turn, a turn with none left out. */
+/** A branch's groups: one per turn, in `order`, with the branch's items of that turn by list, a turn with none left out. */
 const groupsOf = (
   branch: Branch,
-  items: readonly DecideItem[],
+  items: readonly ListedItem[],
   order: readonly string[],
   turns: readonly string[],
 ): readonly TurnGroup[] =>
@@ -192,14 +231,15 @@ const groupsOf = (
       turn,
       key: turnKey(branch, turn),
       label: turnLabel(turn, relativeIndex(turns, turn)),
-      items: items.filter((item) => item.turn === turn),
+      items: byList(items.filter((item) => item.turn === turn)),
     }))
     .filter((group) => group.items.length > 0);
 
 /**
  * The pane's groups: each branch the items `paneStateOf` puts there, one
- * group per turn with an item in it, newest first, its items in the order
- * they were raised.
+ * group per turn with an item in it, newest first, its items by list in
+ * the spec's order, Todo's before Decide's, each list's in the order they
+ * were raised.
  */
 export const paneGroups = (
   raised: readonly RaisedItem[],
@@ -227,7 +267,7 @@ export const paneGroups = (
 /** The branch whose groups hold `item`, by its ref; undefined for an item they don't. */
 export const branchOf = (
   groups: PaneGroups,
-  item: DecideItem,
+  item: ListedItem,
 ): Branch | undefined =>
   BRANCHES.find((branch) =>
     groups[branch].some((group) =>
@@ -239,24 +279,25 @@ export const branchOf = (
 export const countOf = (groups: readonly TurnGroup[]): number =>
   groups.reduce((sum, group) => sum + group.items.length, 0);
 
-/** Where /answers scrolls: the first item the draft doesn't mention, newest turn first, as the pane draws Open. */
+/** Where /answers scrolls: the first item the draft leaves to the person, newest turn first, as the pane draws Open: a Decide item it doesn't mention, a Todo item it gives no settling word. */
 export const firstUnansweredIn = (
   groups: PaneGroups,
   draft: string,
-): DecideItem | undefined =>
+): ListedItem | undefined =>
   groups.open
     .flatMap((group) => group.items)
-    .find((item) => !isAnswered(draft, item));
+    .find((item) => !(isDecide(item) ? isAnswered(draft, item) : settles(draft, item)));
 
 /**
- * A Done item's one line in its expanded group: its label, then its summary
- * and what made it Done, which wrap under the summary's start.
+ * A Done item's one line in its expanded group: its label, its list's
+ * glyph and name and its number, then its summary and what made it Done,
+ * which wrap under the summary's start.
  */
 export const doneLine = (
-  item: DecideItem,
+  item: ListedItem,
   done: string,
 ): Readonly<{ label: string; text: string }> => ({
-  label: itemLabel(item.number),
+  label: itemLabel(item.number, listOf(item)),
   text: `${item.summary}${LAYOUT.divider}${done}`,
 });
 
@@ -289,7 +330,7 @@ export const turnToggle = (group: Pick<TurnGroup, "key">): Toggle => ({
 });
 
 /** A Done item's box's toggle, by its ref: its line at first, its full box once clicked. */
-export const boxToggle = (item: DecideItem): Toggle => ({
+export const boxToggle = (item: ListedItem): Toggle => ({
   key: refOf(item),
   startsOpen: false,
 });
@@ -326,7 +367,7 @@ export const withOpened = (folds: Folds, toggles: readonly Toggle[]): Folds => (
  */
 export const withItemShown = (
   folds: Folds,
-  item: DecideItem,
+  item: ListedItem,
   branch: Branch,
 ): Folds =>
   withOpened(folds, [
@@ -358,18 +399,24 @@ export type Stop = Readonly<{ key: string; group: string }>;
 /** A toggle's stop: its key, which no other element shares. */
 const toggleStop = (key: string): Stop => ({ key, group: key });
 
-/** An open or queued item's stop: its first option, else its notes field. */
-const itemStop = (item: DecideItem): Stop => {
-  const first = item.options[0]?.letter;
+/** The element an item's box opens its answers on: a Decide item's first option, by its letter, another list's first action, by its settling word; none for an item with neither. */
+const firstAnswerOf = (item: ListedItem): string | undefined =>
+  isDecide(item)
+    ? item.options[0]?.letter
+    : settlingWordsOf(paneListOf(item.list) ?? DECIDE)[0];
 
-  return {
-    key: `${refOf(item)}.${first ?? "notes"}`,
-    group: refOf(item),
-  };
-};
+/** The key of an item's action, the button that writes `word` after its reference: `9efb08a1.Todo.3.done`. */
+export const actionKey = (item: ListedItem, word: string): string =>
+  `${refOf(item)}.${word}`;
+
+/** An open or queued item's stop: its first option or action, else its notes field. */
+const itemStop = (item: ListedItem): Stop => ({
+  key: actionKey(item, firstAnswerOf(item) ?? "notes"),
+  group: refOf(item),
+});
 
 /** A Done item's stop: its line, or its box's title. */
-const doneStop = (item: DecideItem): Stop => ({
+const doneStop = (item: ListedItem): Stop => ({
   key: lineKey(item),
   group: refOf(item),
 });
@@ -422,7 +469,7 @@ export const ringAfterMove = (
   before: PaneGroups,
   after: PaneGroups,
   folds: Folds,
-  item: DecideItem,
+  item: ListedItem,
   focused: string,
 ): string | undefined => {
   const ref = refOf(item);

@@ -37,6 +37,10 @@ The pane draws the State and Turn levels for Decide items: `paneGroups` in `plug
 - **Lists nothing settles are Done from the start.** The items of a list nothing settles, ✅ Done, 📝 Logged and ❓ Answers, need nothing of the person, so each sits under its turn in the Done branch as soon as it's raised, under its list's header, and keeps its Note button there. Open then holds only items that need the person, so `n of m answered` stays true.
 - **Hidden groups aren't drawn.** A list header whose items [the filters](pane-list-filters.md) all hide makes no header and no elements; a turn whose items in a branch they all hide has no header in that branch; and a branch whose items they all hide draws nothing, not even its toggle.
 
+### Already true for Todo items
+
+A turn's group in a branch holds its Todo items, then its Decide items, in the spec's order (`listRuns` in `plugin/src/pane/sections.ts`). Each list's run sits under a faint header, `👉 Todo` or `🧠 Decide`, keyed `<branch>.<turn>.<list>`, which a turn holding Decide items alone draws too. A Todo item's stop is its first action. The list headers aren't stops yet, and the other 7 lists are still to come.
+
 ## Rules that hold at every level
 
 - **Keys.** Each toggle has its own key: `open`, `queued` and `done` for the branches, `open.<turn>`, `queued.<turn>` and `done.<turn>` for a turn in each branch; a list header's key adds the list, `done.<turn>.<list>`. ↑ Previous and ↓ Next stop on each toggle and header, and on no item of a folded group. A ring on an element is at the stop with its exact key, else at the stop whose group is the longest prefix of its key, so `done.<turn>.<list>` is found under its turn, not under `done`. [pane-turn-navigation](pane-turn-navigation.md) scrolls to a turn's header, in the branch it names.

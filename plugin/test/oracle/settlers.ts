@@ -20,11 +20,10 @@ import {
   settlementsIn,
   subjectKey,
   summaryOf,
-  textsOf,
 } from "../../src/items/outstanding.ts";
 import type { ListItem, ListKey, Open } from "../../src/items/outstanding.ts";
 import { reportNamesItem } from "../../src/transcript/reports.ts";
-import { isOwn, reassessStart } from "../../src/transcript/turns.ts";
+import { isOwn, reassessStart, textsOf } from "../../src/transcript/turns.ts";
 import type { Turn } from "../../types/index.d.ts";
 
 const keyOf = (item: Readonly<{ list: ListKey; line: string }>): string =>

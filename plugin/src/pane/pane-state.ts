@@ -24,9 +24,11 @@ import type {
   SubmitStage,
   Turn,
 } from "../../types/index.d.ts";
+import { openTodoIn } from "../items/listed.ts";
 import {
   countLine,
-  openOf,
+  factsOf,
+  openIn,
   pullRequestsToAsk,
 } from "../items/outstanding.ts";
 import {
@@ -649,8 +651,10 @@ const settingsDropped = (state: PaneState, read: number): PaneState => ({
 
 /**
  * The count line and the raised items from what the turns leave open,
- * given the pull requests known merged: open items join the raised ones,
- * raised ones no longer open settle, and `gh` is asked which of the Review
+ * given the pull requests known merged: open items, the Decide items the
+ * `kanban_options` calls raised and the Todo items the replies' own lists
+ * print, join the raised ones, raised ones no longer open settle, each as
+ * its list's reading says, and `gh` is asked which of the Review
  * items' pull requests not yet known merged have, the pane and the count
  * line drawn without waiting for it.
  */
@@ -662,7 +666,9 @@ const settled = (
   settingsProblems: readonly string[],
 ): Stepped => {
   const known = new Set(state.merged);
-  const open = openOf(turns, counts.turns, known);
+  const facts = factsOf(turns);
+  const open = openIn(facts, counts.turns, known);
+  const todo = openTodoIn(facts);
   const refs = pullRequestsToAsk(turns, counts.turns, known);
 
   return {
@@ -671,8 +677,8 @@ const settled = (
       counts: open.counts,
       raised: refreshed(
         state.raised,
-        open.items,
-        open.settlements,
+        [...open.items, ...todo.items],
+        [...open.settlements, ...todo.settlements],
         settingsProblems,
         turns.map((turn) => turn.id),
       ),

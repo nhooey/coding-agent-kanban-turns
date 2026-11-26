@@ -48,8 +48,8 @@ const binary: DecideItem = {
 describe("reading the answers in a draft", () => {
   test("each answer is found with where it sits, its letters and its note", () => {
     expect(answersIn("ok 9efb08a1.Decide.2.A,C then 9efb08.Decide.1: why")).toEqual([
-      { start: 3, end: 24, turn: "9efb08a1", number: 2, letters: ["A", "C"], note: "" },
-      { start: 30, end: 50, turn: "9efb08", number: 1, letters: [], note: "why" },
+      { start: 3, end: 24, turn: "9efb08a1", list: "Decide", number: 2, letters: ["A", "C"], word: "", note: "" },
+      { start: 30, end: 50, turn: "9efb08", list: "Decide", number: 1, letters: [], word: "", note: "why" },
     ]);
   });
 
