@@ -33,13 +33,14 @@ import {
   settlingOf,
   subjectKey,
   summaryOf,
+  supersedersOf,
   unsettled,
   windowStart,
   withRepliedFrees,
   withResolvedFrees,
 } from "../../../src/items/outstanding.ts";
 import type { ListItem, ListKey, Settling } from "../../../src/items/outstanding.ts";
-import { itemsOf } from "../../../src/items/items.ts";
+import { itemsOf, reraisable } from "../../../src/items/items.ts";
 import { parseYaml } from "../../../src/config/config.ts";
 import { field } from "../../../src/json/fields.ts";
 import type { Owner, Turn } from "../../../types/index.d.ts";
@@ -427,7 +428,7 @@ describe("how a Decide item settled", () => {
     ]);
   });
 
-  test("an item asked again in a later turn settles as restated", () => {
+  test("an item a later one on its subject restates, giving no supersedes, is superseded by it", () => {
     expect(
       settlementsOf([
         decided(FIRST),
@@ -436,11 +437,211 @@ describe("how a Decide item settled", () => {
           decide: itemsOf(decideCall(SECOND, [4], SUMMARIES.slice(0, 1))),
         }),
       ]),
-    ).toEqual([{ ref: "9efb08a1.Decide.1", how: "restated" }]);
+    ).toEqual([{ ref: "9efb08a1.Decide.1", how: "superseded", by: "b2c3d4e5.Decide.4" }]);
   });
 
   test("an open item has none", () => {
     expect(settlementsOf([decided(FIRST)])).toEqual([]);
+  });
+});
+
+/** A turn whose reply raised one item, numbered `number` and summarised `summary`, superseding `supersedes` where given. */
+const raising = (
+  id: string,
+  number: number,
+  summary: string,
+  supersedes?: readonly unknown[],
+): Turn =>
+  turnOf(id, "more", {
+    replies: ["restated"],
+    decide: itemsOf({
+      items: decideCall(id, [number], [summary]).items.map((item) =>
+        supersedes === undefined ? item : { ...item, supersedes },
+      ),
+    }),
+  });
+
+describe("a Decide item superseded by a later one", () => {
+  test("is the one a later item names in supersedes, whatever its subject, the newer item open", () => {
+    const rows = [decided(FIRST), raising(SECOND, 1, "Which loader to keep", ["9efb08a1.Decide.2"])];
+    expect(settlementsOf(rows)).toEqual([{ ref: "9efb08a1.Decide.2", how: "superseded", by: "b2c3d4e5.Decide.1" }]);
+    expect(openRefs(rows)).toEqual(["9efb08a1.Decide.1", "9efb08a1.Decide.3", "b2c3d4e5.Decide.1"]);
+  });
+
+  test("an explicit supersedes wins over the subject: an item on the same subject it doesn't name stays open", () => {
+    const rows = [decided(FIRST), raising(SECOND, 1, SUMMARIES[0] ?? "", ["9efb08a1.Decide.3"])];
+    expect(settlementsOf(rows)).toEqual([{ ref: "9efb08a1.Decide.3", how: "superseded", by: "b2c3d4e5.Decide.1" }]);
+    expect(openRefs(rows)).toEqual(["9efb08a1.Decide.1", "9efb08a1.Decide.2", "b2c3d4e5.Decide.1"]);
+  });
+
+  test("an empty supersedes replaces none, not even an item on its subject", () => {
+    const rows = [decided(FIRST), raising(SECOND, 1, SUMMARIES[0] ?? "", [])];
+    expect(settlementsOf(rows)).toEqual([]);
+  });
+
+  test("names the latest later item that named it, over a later one on its subject that named nothing", () => {
+    const rows = [
+      decided(FIRST),
+      raising(SECOND, 1, "Which loader to keep", ["9efb08a1.Decide.1"]),
+      raising(THIRD, 1, SUMMARIES[0] ?? ""),
+    ];
+    expect(settlementsOf(rows)[0]).toEqual({ ref: "9efb08a1.Decide.1", how: "superseded", by: "b2c3d4e5.Decide.1" });
+  });
+
+  test("names the latest of two later items that both named it", () => {
+    const rows = [
+      decided(FIRST),
+      raising(SECOND, 1, "Which loader to keep", ["9efb08a1.Decide.1"]),
+      raising(THIRD, 1, "Which renderer to keep", ["9efb08a1.Decide.1"]),
+    ];
+    expect(settlementsOf(rows)).toEqual([{ ref: "9efb08a1.Decide.1", how: "superseded", by: "c3d4e5f6.Decide.1" }]);
+    expect(openRefs(rows)).toEqual(["9efb08a1.Decide.2", "9efb08a1.Decide.3", "b2c3d4e5.Decide.1", "c3d4e5f6.Decide.1"]);
+  });
+
+  test("an open item raised again from kanban_outstanding's items is listed once, with its supersedes or without", () => {
+    const rows = [decided(FIRST), raising(SECOND, 1, "Which loader to keep", ["9efb08a1.Decide.2"])];
+    const handed = JSON.parse(JSON.stringify({ items: openOf(numbered(rows), WINDOW).items.map(reraisable) }));
+    const kept = JSON.parse(JSON.stringify({ items: openOf(numbered(rows), WINDOW).items }));
+    const once = ["9efb08a1.Decide.1", "9efb08a1.Decide.3", "b2c3d4e5.Decide.1"];
+
+    expect(handed.items.some((item: object) => "supersedes" in item)).toBe(false);
+    for (const input of [handed, kept]) {
+      const again = [...rows, turnOf(THIRD, "go on", { replies: ["again"], decide: itemsOf(input) })];
+      expect(openRefs(again)).toEqual(once);
+      expect(openRefs([...again, turnOf(FOURTH, "go on", { replies: ["again"], decide: itemsOf(input) })])).toEqual(once);
+    }
+  });
+
+  test("an earlier raising of an item goes as its latest raising goes, by what replaced that one", () => {
+    const rows = [
+      decided(FIRST),
+      raising(SECOND, 1, "Which loader to keep", []),
+      raising(SECOND, 1, "Which loader to keep", []),
+      raising(THIRD, 1, "Which renderer to keep", ["b2c3d4e5.Decide.1"]),
+    ];
+    expect(settlementsOf(rows).filter((s) => s.ref === "b2c3d4e5.Decide.1")).toEqual([
+      { ref: "b2c3d4e5.Decide.1", how: "superseded", by: "c3d4e5f6.Decide.1" },
+      { ref: "b2c3d4e5.Decide.1", how: "superseded", by: "c3d4e5f6.Decide.1" },
+    ]);
+  });
+
+  test("an item a turn's second call raises again, naming another item the second time, is listed once", () => {
+    const call = (supersedes: readonly string[]) => ({
+      items: decideCall(SECOND, [1], ["Which loader to keep"]).items.map((item) => ({ ...item, supersedes })),
+    });
+    const rows = [
+      decided(FIRST),
+      turnOf(SECOND, "more", {
+        replies: ["restated"],
+        decide: [...itemsOf(call([])), ...itemsOf(call(["9efb08a1.Decide.2"]))],
+      }),
+    ];
+    expect(openRefs(rows)).toEqual(["9efb08a1.Decide.1", "9efb08a1.Decide.3", "b2c3d4e5.Decide.1"]);
+    expect(settlementsOf(rows)).toEqual([
+      { ref: "9efb08a1.Decide.2", how: "superseded", by: "b2c3d4e5.Decide.1" },
+      { ref: "b2c3d4e5.Decide.1", how: "superseded", by: "b2c3d4e5.Decide.1" },
+    ]);
+  });
+
+  test("one item supersedes several, by a turn id's prefix too, each once", () => {
+    const rows = [
+      decided(FIRST),
+      raising(SECOND, 1, "Which loader to keep", ["9efb08a1.Decide.1", "9efb08.Decide.2", " 9efb08a1.Decide.1 "]),
+    ];
+    expect(settlementsOf(rows)).toEqual([
+      { ref: "9efb08a1.Decide.1", how: "superseded", by: "b2c3d4e5.Decide.1" },
+      { ref: "9efb08a1.Decide.2", how: "superseded", by: "b2c3d4e5.Decide.1" },
+    ]);
+    expect(decideStates(numbered(rows)).at(-1)?.item.supersedes).toEqual(["9efb08a1.Decide.1", "9efb08.Decide.2"]);
+  });
+
+  test("a reference that names no Decide item, a later one, an unknown one or the item itself supersedes nothing", () => {
+    const rows = [
+      decided(FIRST),
+      raising(SECOND, 1, "Which loader to keep", [
+        "Decide.1",
+        "9efb08a1.Todo.2",
+        "9efb08a1.Decide.x",
+        3,
+        "c3d4e5f6.Decide.1",
+        "9efb08a1.Decide.9",
+        "b2c3d4e5.Decide.1",
+      ]),
+      raising(THIRD, 1, "Which renderer to keep"),
+    ];
+    expect(settlementsOf(rows)).toEqual([]);
+    expect(decideStates(numbered(rows))[3]?.item.supersedes).toEqual([
+      "c3d4e5f6.Decide.1",
+      "9efb08a1.Decide.9",
+      "b2c3d4e5.Decide.1",
+    ]);
+  });
+
+  test("a cycle settles only the older item: one naming a later item supersedes nothing", () => {
+    const rows = [
+      raising(FIRST, 1, "Which cache to keep", ["b2c3d4e5.Decide.1"]),
+      raising(SECOND, 1, "Which loader to keep", ["9efb08a1.Decide.1"]),
+    ];
+    expect(settlementsOf(rows)).toEqual([{ ref: "9efb08a1.Decide.1", how: "superseded", by: "b2c3d4e5.Decide.1" }]);
+    expect(openRefs(rows)).toEqual(["b2c3d4e5.Decide.1"]);
+  });
+
+  test("an answer to it settles it as answered all the same", () => {
+    const rows = [
+      decided(FIRST),
+      turnOf(SECOND, "9efb08a1.Decide.2.A", {
+        replies: ["restated"],
+        decide: itemsOf({
+          items: decideCall(SECOND, [1], ["Which loader to keep"]).items.map((item) => ({
+            ...item,
+            supersedes: ["9efb08a1.Decide.2"],
+          })),
+        }),
+      }),
+    ];
+    expect(settlementsOf(rows)).toEqual([
+      { ref: "9efb08a1.Decide.2", how: "answered", turn: SECOND, letters: ["A"], note: "" },
+    ]);
+  });
+
+  test("a reassess between them settles it as reassessed, before any supersedes", () => {
+    const rows = [
+      decided(FIRST),
+      turnOf(SECOND, "reassess", {
+        replies: ["restated"],
+        decide: itemsOf({
+          items: decideCall(SECOND, [1], ["Which loader to keep"]).items.map((item) => ({
+            ...item,
+            supersedes: ["9efb08a1.Decide.2"],
+          })),
+        }),
+      }),
+    ];
+    expect(settlementsOf(rows).map((s) => s.how)).toEqual(["reassessed", "reassessed", "reassessed"]);
+  });
+});
+
+describe("supersedersOf", () => {
+  const at = (item: unknown, place: number) => ({ item: itemsOf({ items: [item] })[0]!, at: place });
+  const item = (turn: string, number: number, summary: string, supersedes?: readonly string[]) => ({
+    ...decideCall(turn, [number], [summary]).items[0],
+    ...(supersedes === undefined ? {} : { supersedes }),
+  });
+
+  test("is the latest later item naming it, else the latest later one on its subject naming nothing, else none", () => {
+    const raised = [
+      at(item(FIRST, 1, "Which cache to keep"), 0),
+      at(item(SECOND, 1, "Which cache to keep"), 1),
+      at(item(THIRD, 1, "Which loader to keep", ["9efb08a1.Decide.1"]), 2),
+      at(item(FOURTH, 1, "Which cache to keep", ["b2c3d4e5.Decide.1"]), 3),
+    ];
+    expect(supersedersOf(raised)).toEqual([
+      "c3d4e5f6.Decide.1",
+      "d4e5f6a7.Decide.1",
+      undefined,
+      undefined,
+    ]);
+    expect(supersedersOf([])).toEqual([]);
   });
 });
 

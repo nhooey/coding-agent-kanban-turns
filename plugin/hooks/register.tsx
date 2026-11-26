@@ -65,7 +65,7 @@ import {
   replyLintText,
 } from "../src/lint/reply.ts";
 import { outstandingText, unreadText } from "../src/items/roll-up.ts";
-import { itemsOf, refOf } from "../src/items/items.ts";
+import { ignoredSupersedes, itemsOf, refOf } from "../src/items/items.ts";
 import { freesLineOf } from "../src/items/frees.ts";
 import { LAYOUT, codeSpans } from "../src/pane/layout.ts";
 import { cellWidth } from "../src/text/cells.ts";
@@ -74,9 +74,10 @@ import { capitalized } from "../src/text/words.ts";
 import { SPEC } from "../src/protocol/spec.ts";
 import {
   decideListCut,
-  itemOfLink,
+  itemOfRef,
   linkedItems,
   linkedQuestions,
+  refOfLink,
 } from "../src/pane/links.ts";
 import {
   isMergeKnown,
@@ -90,6 +91,7 @@ import {
   isSettled,
   problemsOf,
   settlementOf,
+  supersedesOf,
 } from "../src/items/raised.ts";
 import {
   INITIAL_PANE,
@@ -111,7 +113,6 @@ import {
   branchToggle,
   countOf,
   countedLabel,
-  doneLine,
   firstUnansweredIn,
   heldAfterFocus,
   heldAfterPick,
@@ -156,11 +157,12 @@ import {
   notesMode,
   optionLead,
   pickedText,
+  boxLines,
+  doneRowOf,
   sentLetters,
-  settledText,
   submitStep,
 } from "../src/pane/view.ts";
-import type { NotesMode } from "../src/pane/view.ts";
+import type { DoneRow, ItemLink, NotesMode } from "../src/pane/view.ts";
 import type {
   DecideItem,
   Folds,
@@ -235,7 +237,7 @@ const noting = atom(
 const pane = atom(
   { plugin: "coding-agent-kanban-turns", key: "pane" } as const,
   INITIAL_PANE,
-  { shape: "pane-5" },
+  { shape: "pane-6" },
 );
 
 // What the reply lint found in the main loop's last final response, for the
@@ -848,11 +850,20 @@ const reopen = async ($: EngineInterface): Promise<Raised> => {
   return shown;
 };
 
-/** A question's link pressed: the pane, with the keyboard, scrolled to its item, every level it's under opened, and its box when it's Done. */
-const showItem = async ($: EngineInterface, href: string): Promise<void> => {
+/** A question's link pressed: its item shown, as showRef shows it. */
+const showItem = ($: EngineInterface, href: string): Promise<void> =>
+  showRef($, refOfLink(href));
+
+/**
+ * A link to the item `ref` names pressed, a question's or one between a
+ * superseded item and the item that replaced it: the pane, with the
+ * keyboard, scrolled to the item, every level it's under opened, as
+ * showLevels opens them, and its box when it's Done.
+ */
+const showRef = async ($: EngineInterface, ref: string): Promise<void> => {
   const r = await shownNow($);
   const items = decideItemsOf(r);
-  const item = items[itemOfLink(items, href)];
+  const item = items[itemOfRef(items, ref)];
   await openPane($, true);
 
   if (item !== undefined) {
@@ -991,7 +1002,7 @@ export const register: Register = (on) => {
     const items = itemsOf(e);
     await dispatch($, { type: "items-drawn", items });
 
-    return { result: drewText(items) };
+    return { result: drewText(items, ignoredSupersedes(e)) };
   }).catch(() => ({
     result: "The buttons could not be drawn; the reply reads as before.",
   }));
@@ -1538,19 +1549,52 @@ const keysPanel = (elements: Pick<Elements, "Box" | "Text">, s: Settings) => {
 };
 
 /**
+ * A line naming another item, `Superseded by <ref>` or `Supersedes <ref>`,
+ * drawn underlined: a button that shows that item, as showRef does.
+ */
+const itemLink = (
+  $: EngineInterface,
+  elements: Pick<Elements, "Button" | "Text">,
+  key: string,
+  link: ItemLink,
+) => {
+  const { Button, Text } = elements;
+
+  return (
+    <Button key={key} label={link.text} plain dimColor onPress={() => showRef($, link.to)}>
+      <Text key={`${key}-text`} dimColor underline>
+        {link.text}
+      </Text>
+    </Button>
+  );
+};
+
+/**
  * A Done item's one dim line in its open group, `▌🧠 Decide.1  <summary> ·
  * <what made it Done>`, the summary wrapping under its own start; a click on
- * it, the summary's button, opens the item's full box.
+ * it, the summary's button, opens the item's full box. Where what made it
+ * Done is a link, the link follows the summary.
  */
 const doneRow = (
   $: EngineInterface,
   elements: Elements,
   s: Settings,
   item: DecideItem,
-  line: Readonly<{ label: string; text: string }>,
+  { line, link }: DoneRow,
 ) => {
   const { Box, Button, Text } = elements;
   const key = lineKey(item);
+  const summary = (
+    <Button
+      key={key}
+      label={item.summary}
+      plain
+      dimColor
+      onPress={() => fold($, boxToggle(item))}
+    >
+      {line.text}
+    </Button>
+  );
 
   return (
     <Box key={`${refOf(item)}.row`}>
@@ -1564,15 +1608,14 @@ const doneRow = (
           width: cellWidth(line.label) + LAYOUT.labelGap,
           node: <Text dimColor>{line.label}</Text>,
         },
-        <Button
-          key={key}
-          label={item.summary}
-          plain
-          dimColor
-          onPress={() => fold($, boxToggle(item))}
-        >
-          {line.text}
-        </Button>,
+        link === undefined ? (
+          summary
+        ) : (
+          <Box key={`${key}-linked`} flexWrap="wrap">
+            {summary}
+            {itemLink($, elements, `${refOf(item)}.superseded-by`, link)}
+          </Box>
+        ),
       )}
     </Box>
   );
@@ -1690,13 +1733,7 @@ const doneItems = (
             })}
           </Box>
         ) : (
-          doneRow(
-            $,
-            elements,
-            s,
-            item,
-            doneLine(item, settledText(settlementOf(r, item))),
-          )
+          doneRow($, elements, s, item, doneRowOf(item, settlementOf(r, item)))
         ),
       )}
     </Box>
@@ -1748,7 +1785,8 @@ const itemBoxes = (
               title: itemTitle(item, isDone),
               chosen: lettersFor(at.text, item),
               sent: sentLetters(settlement),
-              settled: isDone ? settledText(settlement) : "",
+              ...boxLines(isDone, settlement, supersedesOf(r, item)),
+              link: (key, link) => itemLink($, elements, key, link),
               note: isDone ? "" : noteFor(at.text, item),
               isSettled: isDone,
               notes: notesMode({
@@ -1784,8 +1822,12 @@ const itemView = (
     chosen: readonly string[];
     /** The letters the answer that made the item Done picked. */
     sent: readonly string[];
-    /** What made the item Done, the line under its title; empty while open. */
+    /** What made the item Done, the line under its title; empty while open, or where that's a link. */
     settled: string;
+    /** The lines under it naming other items, each a link: the item that superseded it, then those it supersedes. */
+    links: readonly ItemLink[];
+    /** A link's line, as a button keyed `key`. */
+    link: (key: string, link: ItemLink) => RenderNode;
     note: string;
     isSettled?: boolean;
     /** The notes: none, the field, the field taking the focus, or a button that opens the pane at it. */
@@ -1887,6 +1929,11 @@ const itemView = (
           </Text>
         </Box>
       ) : null}
+      {view.links.map((link) => (
+        <Box key={`${ref}.link.${link.to}-box`} marginLeft={LAYOUT.indent}>
+          {view.link(`${ref}.link.${link.to}`, link)}
+        </Box>
+      ))}
       {lines("", item.note, undefined, "note")}
       {item.options.map((option) => {
         const isChosen = view.chosen.includes(option.letter);

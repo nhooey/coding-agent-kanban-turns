@@ -18,7 +18,11 @@
 #     the count line still carry, and is apart from settling-words, which a
 #     prompt writes after an item's reference:
 #     answer: the user's answer to its latest restatement, by an option
-#       letter or in words; only Decide's items take an answer;
+#       letter or in words; only Decide's items take an answer. A Decide
+#       item a `kanban_options` call raised is also settled, superseded, by
+#       a later item that names it in its `supersedes`, or, where that later
+#       item gives no `supersedes`, by one on its subject; an answer to it
+#       still settles it as answered;
 #     merged-pull-request: every pull request it names with its repository,
 #       as a GitHub URL or `owner/repo#N`, having merged; a bare `#N` is
 #       never looked up, so an item naming only that never settles;
@@ -197,7 +201,8 @@ frees:
 
 # An item's subject key, which matches it across rewordings of its summary:
 # two items in one list with one key are one item, so a later item on a
-# Decide item's subject settles it, and an answer to one answers the other.
+# Decide item's subject settles it, unless that later item names the items
+# it supersedes itself, and an answer to one answers the other.
 # The first of these a summary holds gives its key: a backlog entry, then a
 # branch-shaped code span, then its first words, then, where it holds no
 # word, every letter and digit it holds, lowercased.

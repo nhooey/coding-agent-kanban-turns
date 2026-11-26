@@ -6,9 +6,10 @@
 
 - [The pane's state is one value that a pure step function moves, and the hooks only dispatch events and run the effects it returns](pane-every-list/open/pane-state-reducer.md) `pane-state-reducer`, part of [The pane and the boxes under replies hold every list's items, grouped by state, turn and list, filtered, and answered in grouped references](pane-every-list/open/pane-every-list.md), pane-state-reducer
 
-## Ready (4)
+## Ready (5)
 
 - [The pane's header row and footer stay in sight while its items scroll](open/pane-controls-stay-visible.md) `pane-controls-stay-visible`
+- [A Decide item a later one restates is Done, superseded, and each of the two links to the other](pane-every-list/open/decide-superseded.md) `decide-superseded`, part of [The pane and the boxes under replies hold every list's items, grouped by state, turn and list, filtered, and answered in grouped references](pane-every-list/open/pane-every-list.md)
 - [The pane and the boxes under replies hold every list's items, grouped by state, turn and list, filtered, and answered in grouped references](pane-every-list/open/pane-every-list.md) `pane-every-list`
 - [The coding-agent-kanban-turn-responses skill is retired, and no repository or session installs it](plugin-sole-source/open/kanban-skill-retired.md) `kanban-skill-retired`, part of [The plugin is the only source of the kanban turn-response protocol, and carries a skill derived from it, built deterministically](plugin-sole-source/open/plugin-sole-source.md)
 - [The plugin is the only source of the kanban turn-response protocol, and carries a skill derived from it, built deterministically](plugin-sole-source/open/plugin-sole-source.md) `plugin-sole-source`

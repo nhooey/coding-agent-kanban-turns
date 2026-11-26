@@ -143,10 +143,13 @@ describe("turnAt", () => {
     ]);
   });
 
-  test("refuses an item's note or frees that isn't a list of strings", () => {
-    expect(itemProblems([{ ...ITEM, note: "a line", frees: ["0f311c94.Todo.1", 2] }])).toEqual([
+  test("refuses an item's note, frees or supersedes that isn't a list of strings", () => {
+    expect(
+      itemProblems([{ ...ITEM, note: "a line", frees: ["0f311c94.Todo.1", 2], supersedes: "0f311c94.Decide.1" }]),
+    ).toEqual([
       `t.decide[0].note isn't a list of strings: "a line"`,
       `t.decide[0].frees isn't a list of strings: ["0f311c94.Todo.1",2]`,
+      `t.decide[0].supersedes isn't a list of strings: "0f311c94.Decide.1"`,
     ]);
   });
 
@@ -173,6 +176,7 @@ describe("turnAt", () => {
       turn: "1a2b3c4d",
       note: ["a line"],
       frees: ["0f311c94.Todo.1"],
+      supersedes: ["0f311c94.Decide.1"],
       options: [{ letter: "A", name: "This", glyph: "🔘", consequence: "ships", pros: ["fast"], cons: [], notes: ["n"] }],
     };
 

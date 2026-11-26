@@ -1,6 +1,7 @@
 // What the `kanban_outstanding` tool gives the agent: the count line, a
 // draft of the full 📌 roll-up, each item ending in its 🔖 tag, and the open
-// Decide items as the `kanban_options` tool takes them; the kanban skill's
+// Decide items as the `kanban_options` tool takes them, each to raise again
+// with no `supersedes`, since what it named is settled; the kanban skill's
 // `outstanding.py render` and `decide --json`, in TypeScript. No `$`, no
 // I/O: the hook reads the turns, asks GitHub which pull requests merged,
 // and hands both here.
@@ -25,6 +26,7 @@ import {
   windowStart,
 } from "./outstanding.ts";
 import type { ListItem } from "./outstanding.ts";
+import { reraisable } from "./items.ts";
 import { cellWidth } from "../text/cells.ts";
 import { subscriptOf } from "../pane/sections.ts";
 import { TOOL_CALLED } from "../protocol/instructions.ts";
@@ -273,6 +275,6 @@ export const outstandingText = (
     draft === ""
       ? "Roll-up: none, since nothing is outstanding."
       : `Roll-up draft, for a reply that prints it in full; leave out what is settled:\n${draft}`,
-    `Open ${SPEC.lists.decide.header} items, the input for \`${TOOL_CALLED}\` when the reply prints them again:\n${JSON.stringify({ items: open.items })}`,
+    `Open ${SPEC.lists.decide.header} items, the input for \`${TOOL_CALLED}\` when the reply prints them again:\n${JSON.stringify({ items: open.items.map(reraisable) })}`,
   ].join("\n\n");
 };

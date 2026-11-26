@@ -16,13 +16,17 @@
 //   nothing, and only the user's own text answers.
 // - `report`: a report is the prompt of a turn, or a message sent while a
 //   turn ran, that goes by names; no text of the user's own is one.
+// - A Decide item a `kanban_options` call raised is superseded by a later
+//   one that names it in `supersedes`, else by a later one on its subject
+//   that gives none; an answer to it, or a later `reassess` turn, settles
+//   it first.
 //
 // A 📌 roll-up's restatement of a settled item reopens nothing.
 
 import { answersOfLine } from "./answer-lines.ts";
 import type { LineAnswer } from "./answer-lines.ts";
 import { freesOfLine, isFreesLine, refText, resolvedRefs } from "./frees.ts";
-import { refOf } from "./items.ts";
+import { decideRefOf, isSameTurn, refOf } from "./items.ts";
 import { branchSpans, reportNamesItem } from "../transcript/reports.ts";
 import { isObject, parsedJson } from "../json/fields.ts";
 import { escaped } from "../text/patterns.ts";
@@ -834,12 +838,12 @@ const countLineIn = (
   merged: ReadonlySet<string>,
 ): string => countsOf(unsettledIn(facts, rollUpIn(facts, window), merged));
 
-/** How a Decide item stopped being open: by an answer, a later `reassess` turn, or a later item on its subject; undefined while it's open. */
+/** How a Decide item stopped being open: by an answer, a later `reassess` turn, or a later item that replaced it, `by`, by its ref; undefined while it's open. */
 const settlementOf = (
   item: DecideItem,
   answer: Answer | undefined,
   isBeforeReassess: boolean,
-  isRestated: boolean,
+  by: string | undefined,
 ): Settlement | undefined =>
   answer !== undefined
     ? {
@@ -851,9 +855,72 @@ const settlementOf = (
       }
     : isBeforeReassess
       ? { ref: refOf(item), how: "reassessed" }
-      : isRestated
-        ? { ref: refOf(item), how: "restated" }
+      : by !== undefined
+        ? { ref: refOf(item), how: "superseded", by }
         : undefined;
+
+/** Whether `newer`'s `supersedes` names `older`, by its turn and number; an item never names itself. */
+const supersedes = (newer: DecideItem, older: DecideItem): boolean =>
+  refOf(newer) !== refOf(older) &&
+  (newer.supersedes ?? []).some((text) => {
+    const ref = decideRefOf(text);
+
+    return (
+      ref !== undefined &&
+      ref.number === older.number &&
+      isSameTurn(ref.turn, older.turn)
+    );
+  });
+
+/**
+ * The ref of the item that replaced each of `raised`, the Decide items
+ * oldest first, in their order. A later raising of an item's own ref, as
+ * when the agent raises an open item again, replaces it whatever that
+ * one's `supersedes`: the item then goes as its latest raising goes, by
+ * the item that replaced that one, else by its own ref. Else it's the
+ * latest later item whose `supersedes` names it; else the latest later
+ * item on its subject that gave no `supersedes`; undefined where none did.
+ * Only a later item replaces one, so a reference to a later item, to an
+ * unknown one or back round a cycle replaces nothing. Each item's ref and
+ * subject key is worked out once, latest first, so a raising's own
+ * replacer is known before an earlier raising of it asks.
+ */
+export const supersedersOf = (
+  raised: readonly Raising[],
+): readonly (string | undefined)[] => {
+  const items = raised.map(({ item }) => item);
+  const refs = items.map(refOf);
+  const keys = items.map((item) => subjectKey(item.summary));
+  const latestAfter = (n: number, is: (later: DecideItem, m: number) => boolean) =>
+    items.findLastIndex((later, m) => m > n && is(later, m));
+  const byOf = (older: DecideItem, n: number): number => {
+    const named = latestAfter(n, (later) => supersedes(later, older));
+
+    return named >= 0
+      ? named
+      : latestAfter(n, (later, m) => later.supersedes === undefined && keys[m] === keys[n]);
+  };
+
+  const replacerOf = (
+    after: readonly (string | undefined)[],
+    older: DecideItem,
+    n: number,
+  ): string | undefined => {
+    const again = latestAfter(n, (_, m) => refs[m] === refs[n]);
+    const by = again >= 0 ? -1 : byOf(older, n);
+
+    return again >= 0
+      ? (after[again - n - 1] ?? refs[again])
+      : by < 0
+        ? undefined
+        : refs[by];
+  };
+
+  return items.reduceRight<readonly (string | undefined)[]>(
+    (after, older, n) => [replacerOf(after, older, n), ...after],
+    [],
+  );
+};
 
 /** A Decide item a `kanban_options` call raised, and how it settled, if it did. */
 export type DecideState = Readonly<{
@@ -864,9 +931,10 @@ export type DecideState = Readonly<{
 /**
  * Every Decide item the `kanban_options` calls raised, oldest first, and how
  * it settled, if it did: by the latest of the user's answers to it, else by
- * a later `reassess` turn, else by a later item on its subject. A turn that
- * reassesses applies its own answers first, so an item it answers settles
- * as answered. Each frees what withRepliedFrees gives it.
+ * a later `reassess` turn, else by a later item that replaced it, as
+ * supersedersOf finds it. A turn that reassesses applies its own answers
+ * first, so an item it answers settles as answered. Each frees what
+ * withRepliedFrees gives it.
  */
 export const decideStates = (turns: readonly Turn[]): readonly DecideState[] =>
   decideStatesIn(factsOf(turns));
@@ -883,12 +951,7 @@ const decideStatesIn = ({
     items,
     turns.flatMap((turn, at) => turn.decide.map((item) => ({ item, at }))),
   );
-  const last = new Map(
-    raised
-      .map(({ item, at }, n) => ({ key: subjectKey(item.summary), at, n }))
-      .filter(({ at }) => at >= start)
-      .map(({ key, n }) => [key, n] as const),
-  );
+  const superseders = supersedersOf(raised);
 
   return raised.map(({ item, at }, n) => ({
     item,
@@ -896,15 +959,15 @@ const decideStatesIn = ({
       item,
       answerFor(answers, item.turn, at, item.number),
       at < start,
-      last.get(subjectKey(item.summary)) !== n,
+      superseders[n],
     ),
   }));
 };
 
 /**
  * The open Decide items, oldest first: those the `kanban_options` calls
- * raised since the latest `reassess` turn, each subject's latest only, none
- * the user answered.
+ * raised since the latest `reassess` turn that no later item replaced,
+ * none the user answered.
  */
 export const openDecideItems = (
   turns: readonly Turn[],

@@ -2,7 +2,8 @@
 // an option is clicked or a note written. No `$`, no I/O: register.tsx reads
 // the draft, calls these, and writes what they return.
 
-import { refOf } from "./items.ts";
+import { asksQuestion } from "./answer-lines.ts";
+import { isSameTurn, refOf } from "./items.ts";
 import { DECIDE, LETTER, REASSESS, TURN_ID_PREFIX } from "../protocol/rules.ts";
 import { SPEC } from "../protocol/spec.ts";
 import { escaped } from "../text/patterns.ts";
@@ -60,8 +61,7 @@ export const answersIn = (draft: string): readonly Answer[] =>
     .map(answerOf);
 
 const isFor = (answer: Answer, item: DecideItem): boolean =>
-  answer.number === item.number &&
-  (item.turn.startsWith(answer.turn) || answer.turn.startsWith(item.turn));
+  answer.number === item.number && isSameTurn(answer.turn, item.turn);
 
 /** The draft's answer to the item, if it holds one. */
 export const answerTo = (draft: string, item: DecideItem): Answer | undefined =>
@@ -79,6 +79,27 @@ export const noteFor = (draft: string, item: DecideItem): string =>
 
 export const isAnswered = (draft: string, item: DecideItem): boolean =>
   answerTo(draft, item) !== undefined;
+
+/** The draft's line the answer sits on. */
+const lineOf = (draft: string, answer: Answer): string => {
+  const end = draft.indexOf("\n", answer.end);
+
+  return draft.slice(
+    draft.lastIndexOf("\n", answer.start - 1) + 1,
+    end < 0 ? draft.length : end,
+  );
+};
+
+/**
+ * The draft's answer to the item where it picks: the latest of its answers
+ * to the item on a line that asks no question, as the turn's end reads
+ * them, since it reads a line that asks one as a question about the item
+ * that picks nothing; none where no such answer is left.
+ */
+export const choiceTo = (draft: string, item: DecideItem): Answer | undefined =>
+  answersIn(draft).findLast(
+    (answer) => isFor(answer, item) && !asksQuestion(lineOf(draft, answer)),
+  );
 
 /** An answer as the draft holds it: the letters, then the note. */
 const written = (
