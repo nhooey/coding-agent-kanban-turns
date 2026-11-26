@@ -1731,9 +1731,13 @@ const itemView = (
         // A Button holds only text, so each of the option's lines is a button
         // of its own that picks it. They share a hover group, so the pointer
         // on any of them lights the gutter beside every one: a bar the
-        // option's height. A Done option's gutter stays lit in the
-        // settled colour instead, and never hovers.
-        const gutter = gutterStyle(dim, key, colors);
+        // option's height. A Done item's gutter stays lit in the settled
+        // colour instead beside an option its answer picked, is unlit
+        // beside the others, and never hovers.
+        const gutter = gutterStyle(
+          { isSettled: dim, answered: view.sent, letter: option.letter, scope: key },
+          colors,
+        );
         // Every option picks, a Done item's too, so none is dim.
         const press = {
           plain: true,
@@ -1754,13 +1758,15 @@ const itemView = (
                 { width: cellWidth(lead), node: <Text>{lead}</Text> },
                 body,
               );
-        // One line of the option: the gutter cell, then the line, which wraps
-        // beside it; the gutter's Box stretches to the line's rows.
+        // One line of the option: the gutter cell, a blank gap, then the
+        // line, which wraps beside them; the gutter's Box stretches to the
+        // line's rows.
         const row = (rowKey: string, content: RenderNode) => (
           <Box key={`${rowKey}-row`}>
             <Box
               key={`${rowKey}-gutter`}
               width={LAYOUT.gutter}
+              marginRight={LAYOUT.gutterGap}
               flexShrink={0}
               {...gutter}
             >
@@ -1793,7 +1799,7 @@ const itemView = (
           <Box
             key={`${key}-box`}
             flexDirection="column"
-            marginLeft={LAYOUT.indent - LAYOUT.gutter}
+            marginLeft={LAYOUT.indent - LAYOUT.gutter - LAYOUT.gutterGap}
           >
             {row(
               key,

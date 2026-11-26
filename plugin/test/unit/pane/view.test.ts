@@ -338,16 +338,40 @@ describe("the notes field's rows", () => {
 describe("the column left of an option", () => {
   const colors = { hover: "suggestion", settled: "ide" };
 
-  test("lights in the hover colour under the pointer while the item is open", () => {
-    expect(gutterStyle(false, "9efb08a1.Decide.1.A", colors)).toEqual({
+  const settled = (answered: readonly string[], letter: string) =>
+    gutterStyle(
+      { isSettled: true, answered, letter, scope: `9efb08a1.Decide.1.${letter}` },
+      colors,
+    );
+
+  test("lights in the hover colour under the pointer while the item is open, each option in its own scope", () => {
+    expect(
+      gutterStyle({ isSettled: false, answered: [], letter: "A", scope: "9efb08a1.Decide.1.A" }, colors),
+    ).toEqual({
       hover: { scope: "9efb08a1.Decide.1.A", backgroundColor: "suggestion" },
+    });
+    expect(
+      gutterStyle({ isSettled: false, answered: ["A"], letter: "B", scope: "9efb08a1.Decide.1.B" }, colors),
+    ).toEqual({
+      hover: { scope: "9efb08a1.Decide.1.B", backgroundColor: "suggestion" },
     });
   });
 
-  test("stays lit in the settled colour, and never hovers, once the item is settled", () => {
-    expect(gutterStyle(true, "9efb08a1.Decide.1.A", colors)).toEqual({
-      backgroundColor: "ide",
-    });
+  test("stays lit in the settled colour beside the one answered option, and never hovers", () => {
+    expect(settled(["A"], "A")).toEqual({ backgroundColor: "ide" });
+    expect(settled(["A"], "B")).toEqual({});
+    expect(settled(["A"], "C")).toEqual({});
+  });
+
+  test("stays lit beside each of a checkbox item's answered letters, and no other", () => {
+    expect(settled(["A", "C"], "A")).toEqual({ backgroundColor: "ide" });
+    expect(settled(["A", "C"], "B")).toEqual({});
+    expect(settled(["A", "C"], "C")).toEqual({ backgroundColor: "ide" });
+  });
+
+  test("lights beside no option of an item settled with no letters", () => {
+    expect(settled([], "A")).toEqual({});
+    expect(settled([], "B")).toEqual({});
   });
 });
 
@@ -406,7 +430,7 @@ describe("an option's lead", () => {
   test("is its mark and its letter, the marks as wide as the kind glyph needing no padding", () => {
     expect(optionLead(item, "A", not, SETTINGS.marks)).toBe("🔘 A. ");
     expect(optionLead(item, "A", { chosen: true, sent: false }, SETTINGS.marks)).toBe("✅ A. ");
-    expect(optionLead(item, "A", { chosen: false, sent: true }, SETTINGS.marks)).toBe("☑️ A. ");
+    expect(optionLead(item, "A", { chosen: false, sent: true }, SETTINGS.marks)).toBe("✅ A. ");
   });
 
   test("pads a narrower mark to the item's widest, so a pick moves no text", () => {

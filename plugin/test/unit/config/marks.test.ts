@@ -16,9 +16,10 @@ const defaults = {
 const U = "~/.config/x/config.yaml";
 const user = (text: string) => ({ path: U, text });
 
-// The marks the pane drew before they were settings.
+// The marks the pane drew before they were settings, but `sent`, which
+// ☑️ was until common terminals were found drawing it grey.
 const TODAY = {
-  sent: "☑️",
+  sent: "✅",
   chosen: "✅",
   note: "✏️",
   "settled-bar": "▌",
@@ -40,6 +41,15 @@ describe("the shipped marks", () => {
     const got = loaded(defaults, undefined);
     expect(got.problems).toEqual([]);
     expect(got.settings?.marks).toEqual(TODAY);
+  });
+
+  test("mark an answered option as a picked one, the sent mark being the chosen mark", () => {
+    const marks = loaded(defaults, undefined).settings?.marks;
+    expect(marks?.sent).toBe(marks?.chosen);
+  });
+
+  test("give the sent mark back to a user who sets it", () => {
+    expect(loaded(defaults, user("marks:\n  sent: ☑️\n")).settings?.marks.sent).toBe("☑️");
   });
 });
 

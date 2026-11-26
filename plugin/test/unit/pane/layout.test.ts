@@ -11,6 +11,7 @@ describe("the pane's layout", () => {
     expect(LAYOUT).toEqual({
       indent: 3,
       gutter: 1,
+      gutterGap: 1,
       titleGap: 1,
       labelGap: 2,
       boxPadding: 1,
@@ -23,8 +24,12 @@ describe("the pane's layout", () => {
     });
   });
 
-  test("leaves an option's gutter inside its indent, so its text stays put", () => {
-    expect(LAYOUT.indent - LAYOUT.gutter).toBeGreaterThanOrEqual(0);
+  test("leaves an option's gutter and the gap after it inside its indent, so its text stays put", () => {
+    expect(LAYOUT.indent - LAYOUT.gutter - LAYOUT.gutterGap).toBeGreaterThanOrEqual(0);
+  });
+
+  test("leaves a blank cell between the gutter and an option's mark", () => {
+    expect(LAYOUT.gutterGap).toBe(1);
   });
 });
 

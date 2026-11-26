@@ -153,20 +153,30 @@ export const noteRows = (rows: number): number =>
     : LAYOUT.fewestNoteRows;
 
 /**
- * The style of the column left of an option's lines: a settled item's
- * stays lit in the settled colour, and an open one's lights in the hover
- * colour while the pointer is over any line of the option `scope` names.
+ * The style of the column left of an option's lines: an open item's lights
+ * in the hover colour while the pointer is over any line of the option
+ * `scope` names; a settled item's stays lit in the settled colour beside an
+ * option its answer picked, one of the `answered` letters the settlement or
+ * the sent answer gives, and is unlit beside the others, never hovering. An
+ * item settled with no letters lights none.
  */
 export const gutterStyle = (
-  isSettled: boolean,
-  scope: string,
+  option: Readonly<{
+    isSettled: boolean;
+    answered: readonly string[];
+    letter: string;
+    scope: string;
+  }>,
   colors: Readonly<{ hover: string; settled: string }>,
 ):
   | Readonly<{ backgroundColor: string }>
-  | Readonly<{ hover: Readonly<{ scope: string; backgroundColor: string }> }> =>
-  isSettled
-    ? { backgroundColor: colors.settled }
-    : { hover: { scope, backgroundColor: colors.hover } };
+  | Readonly<{ hover: Readonly<{ scope: string; backgroundColor: string }> }>
+  | Readonly<Record<never, never>> =>
+  !option.isSettled
+    ? { hover: { scope: option.scope, backgroundColor: colors.hover } }
+    : option.answered.includes(option.letter)
+      ? { backgroundColor: colors.settled }
+      : {};
 
 /**
  * An item's title line in its box: the label, its list and number, drawn
