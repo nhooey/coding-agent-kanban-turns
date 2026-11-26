@@ -40,6 +40,7 @@ import {
   walk,
 } from "../../fixtures/submit.ts";
 import { BROKEN, withClosing, withSettings } from "../../fixtures/settings.ts";
+import { settledRefsOf } from "../../fixtures/raised.ts";
 
 /** The close setting the named sequences step under, unless one says otherwise. */
 const CLOSES = true;
@@ -492,7 +493,7 @@ describe("a press a session's start overtook", () => {
 
     // Press 1's refusal leaves press 2's answers to both items held.
     expect(last?.state.sent).toEqual(later);
-    expect(shownOf(last?.state ?? START).settledRefs).toEqual(ITEMS.map((i) => i.ref));
+    expect(settledRefsOf(shownOf(last?.state ?? START))).toEqual(ITEMS.map((i) => i.ref));
     // Press 1's draft goes into the box press 2 emptied as it sends.
     expect(last?.effects).toEqual([{ kind: "set-draft", text: BOXES.first }]);
     // Press 2 sends on, saying nothing; press 1's refusal is said apart.

@@ -211,24 +211,36 @@ const lettersAndNote = (letters: readonly string[], note: string): string =>
     .filter((part) => part !== "")
     .join(LAYOUT.divider);
 
+/** The text for each way an item settles, saying a settlement of that way: one for every `how`, so a new one can't go unsaid. */
+export type SettledTexts = {
+  readonly [How in Settlement["how"]]: (
+    settlement: Extract<Settlement, { how: How }>,
+  ) => string;
+};
+
 /**
- * The line under a Done item's title saying what made it Done: the answer,
- * `Answered in <turn>: <letters>`, its note after ` · ` or in place of the
- * letters; the answer Submit sent, `Sent: <letters>`, until the turn's end
- * reads it; else `Done: reassessed`, `Done: asked again`, or `Done` where
- * the transcript doesn't say. The pane's word for a settled item is the
- * Done list's name, so it follows the spec's header.
+ * What made a Done item Done, by how: the answer, `Answered in <turn>:
+ * <letters>`, its note after ` · ` or in place of the letters; the answer
+ * Submit sent, `Sent: <letters>`, until the turn's end reads it; a later
+ * `reassess`, `Done: reassessed`; or a later item on its subject, `Done:
+ * asked again`. The pane's word for a settled item is the Done list's name,
+ * so it follows the spec's header.
  */
-export const settledText =(settlement: Settlement | undefined): string =>
-  settlement === undefined
-    ? DONE.header
-    : settlement.how === "answered"
-      ? `Answered in ${settlement.turn}: ${lettersAndNote(settlement.letters, settlement.note)}`
-      : settlement.how === "sent"
-        ? `Sent: ${lettersAndNote(settlement.letters, settlement.note)}`
-        : settlement.how === "reassessed"
-          ? `${DONE.header}: ${REASSESS}ed`
-          : `${DONE.header}: asked again`;
+const SETTLED_TEXTS: SettledTexts = {
+  answered: (s) => `Answered in ${s.turn}: ${lettersAndNote(s.letters, s.note)}`,
+  sent: (s) => `Sent: ${lettersAndNote(s.letters, s.note)}`,
+  reassessed: () => `${DONE.header}: ${REASSESS}ed`,
+  restated: () => `${DONE.header}: asked again`,
+};
+
+/** What the settlement's `how` says of it. */
+const textOf = <How extends Settlement["how"]>(
+  settlement: Extract<Settlement, { how: How }>,
+): string => SETTLED_TEXTS[settlement.how](settlement);
+
+/** The line under a Done item's title saying what made it Done, as `SETTLED_TEXTS` says, or `Done` where the transcript doesn't say. */
+export const settledText = (settlement: Settlement | undefined): string =>
+  settlement === undefined ? DONE.header : textOf(settlement);
 
 /** The letters the answer that made an item Done picked, sent or read; none when something else did. */
 export const sentLetters = (
