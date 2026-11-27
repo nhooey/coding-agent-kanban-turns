@@ -121,7 +121,7 @@ const LATER = {
 // which YAML reads too.
 const DEFAULTS = JSON.stringify({
   counts: { turns: 20, "gh-timeout-ms": 20000 },
-  keys: { dismiss: "q", next: "j", previous: "k", submit: "s", reassess: "r", help: "h" },
+  keys: { next: "j", previous: "k", submit: "s", reassess: "r", help: "h" },
   pane: { "close-when-all-submitted": true },
   notes: { rows: 3 },
   actions: {
@@ -139,7 +139,6 @@ const DEFAULTS = JSON.stringify({
     collapsed: "▸",
     expanded: "▾",
     buttons: {
-      dismiss: "✖",
       next: "↓",
       previous: "↑",
       submit: "📤",
@@ -155,7 +154,6 @@ const DEFAULTS = JSON.stringify({
     code: "permission",
     hover: "suggestion",
     settled: "ide",
-    close: "error",
     kanban: "claude",
   },
   "roll-up": { "summary-width": 100 },
@@ -255,6 +253,7 @@ const base64Of = (bytes: Uint8Array): string =>
  * file whose first turn raises the items `open` holds, in a reply `text`
  * writes, then the records `later` holds, the prompts the plugin submits in `sent`,
  * each pane open with whether it asked for the keyboard in `opens`, and
+ * whether it asked that Escape close it in `escapes`, and
  * each command run in `runs`, `gh` answering with what `gh` gives, or
  * failing to start where it gives undefined. The kit has no layout to
  * scroll a pane by, so `$.ui.scroll` is refused here, as on a pane not
@@ -283,6 +282,8 @@ const engine = (
     asUser: [] as boolean[],
     isPaneOpen: false,
     opens: [] as boolean[],
+    // Whether each pane open asked that Escape close it.
+    escapes: [] as boolean[],
     runs: [] as (readonly string[])[],
     isUnreadable: false,
     isFillRefused: false,
@@ -348,6 +349,7 @@ const engine = (
   on("ui.open", (_, e) => {
     state.isPaneOpen = true;
     state.opens.push(e.focus === true);
+    state.escapes.push(e.closeOnEscape === true);
 
     return { value: { isPlaced: true } };
   });
@@ -571,51 +573,107 @@ for (const surface of ["terminal", "desktop"] as const) {
   });
 }
 
-test("/answers opens the pane with the keyboard, and ✖ Close closes it", async ($, on) => {
+// A plugin beside this one that closes the pane, as the person's close mark
+// or Escape does: the close reaches this plugin at ui.close alone, not
+// through its own close after a Submit, which clears the wait itself. The
+// kit's `$` has no `ui.close` to raise.
+const CLOSER = {
+  name: "closer",
+  register: ((on) => {
+    on("command.run", { command: "close-kanban" }, async ($) => {
+      await $.ui.close({ id: "kanban-turns" });
+
+      return { text: "" };
+    });
+  }) satisfies Register,
+};
+
+test("/answers opens the pane with the keyboard, its header has no close button, and a close from outside the plugin, as the person's mark makes, closes its Keys panel with it", { plugins: [CLOSER] }, async ($, on) => {
   const state = engine(on, () => ITEMS);
   await $.command.run(ANSWERS);
   expect(state.isPaneOpen).toBe(true);
   expect(state.opens).toEqual([true]);
   const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
 
-  // `glyph label` as every button is, the ✖ in the close colour, on no
-  // background.
-  const close = await ui.find({ type: "Button", key: "dismiss" });
-  expect(close?.text).toBe("✖ Close");
-  expect(close?.props).toMatchObject({ role: "dismiss", hotkey: "q", plain: true, dimColor: false });
-  const glyph = await ui.find({ type: "Text", text: /^✖$/ });
-  expect(glyph?.props).toMatchObject({ color: "error" });
-  expect(glyph?.props).not.toHaveProperty("backgroundColor");
-  expect(JSON.stringify(await ui.drawn())).not.toContain("❌");
+  expect(await ui.find({ type: "Button", key: "dismiss" })).toBeUndefined();
+  expect(
+    (await ui.findAll({ type: "Button" })).filter((found) => found.props["role"] === "dismiss"),
+  ).toEqual([]);
+  expect(JSON.stringify(await ui.drawn())).not.toContain("✖");
+  expect(JSON.stringify(await ui.drawn())).not.toContain("Close");
 
-  await ui.press({ key: "dismiss" });
+  await ui.press({ key: "keys" });
+  expect(await ui.find({ type: "Box", key: "keys-panel" })).toBeDefined();
+  await $.command.run({ ...ANSWERS, command: "close-kanban" });
   expect(state.isPaneOpen).toBe(false);
+  await $.command.run(ANSWERS);
+  expect(await ui.find({ type: "Box", key: "keys-panel" })).toBeUndefined();
+  await ui.unmount();
+});
+
+test("every open of the pane asks that Escape close it, a turn's opening without the keyboard and /answers's with it alike", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  await $.turn.complete(replyDone("t1"));
+  await $.command.run(ANSWERS);
+  expect(state.opens).toEqual([false, true]);
+  expect(state.escapes).toEqual([true, true]);
+});
+
+test("each of the pane's keyed controls is drawn in the engine's brackets, which hint at no key, not plain, whose `k: ` would", async ($, on) => {
+  engine(on, () => ITEMS);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+
+  for (const [key, text, hotkey] of [
+    ["previous", "↑ Previous", "k"],
+    ["next", "↓ Next", "j"],
+    ["keys", "? Keys", "h"],
+    ["reassess", "🔄 Reassess", "r"],
+    ["submit", "📤 Submit", "s"],
+  ] as const) {
+    const control = await ui.find({ type: "Button", key });
+    expect(control?.text).toBe(text);
+    expect(control?.props["hotkey"]).toBe(hotkey);
+    expect(control?.props).not.toHaveProperty("plain");
+  }
   await ui.unmount();
 });
 
 test("/answers-config lists each setting in effect and its file", async ($, on) => {
   engine(on, () => ITEMS);
   const shown = await $.command.run({ ...ANSWERS, command: "answers-config" });
-  expect(JSON.stringify(shown)).toContain('keys.dismiss = \\"q\\"  # defaults: ');
+  expect(JSON.stringify(shown)).toContain('keys.help = \\"h\\"  # defaults: ');
 });
 
 test("a user's config.yaml is read", async ($, on) => {
   const state = engine(on, () => ITEMS);
-  state.userFiles = { "config.yaml": "keys:\n  dismiss: x # mine\n" };
+  state.userFiles = { "config.yaml": "keys:\n  help: x # mine\n" };
   const shown = JSON.stringify(
     await $.command.run({ ...ANSWERS, command: "answers-config" }),
   );
 
   expect(shown).toContain(
-    `keys.dismiss = \\"x\\"  # user: ${USER_FOLDER}config.yaml`,
+    `keys.help = \\"x\\"  # user: ${USER_FOLDER}config.yaml`,
   );
   expect(shown).not.toContain("Not used");
+});
+
+test("a user's ✖ Close settings, the button gone, are left out with a warning, the rest of the file used", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  state.userFiles = { "config.yaml": "keys:\n  dismiss: x\n  help: o\ncolors:\n  close: warning\n" };
+  const lines = ((await $.command.run({ ...ANSWERS, command: "answers-config" })).text ?? "").split("\n");
+
+  expect(lines).toContain(`keys.help = "o"  # user: ${USER_FOLDER}config.yaml`);
+  expect(lines.filter((line) => line.startsWith("Not used"))).toEqual([
+    expect.stringMatching(/config\.yaml: colors\.close is no longer read and is left out: /),
+    expect.stringMatching(/config\.yaml: keys\.dismiss is no longer read and is left out: /),
+  ]);
 });
 
 test("with no defaults file, no settings are used, and /answers, the pane and /answers-config say it's missing", async ($, on) => {
   const state = engine(on, () => ITEMS);
   state.isDefaultsMissing = true;
-  state.userFiles = { "config.yaml": "keys:\n  dismiss: x\n" };
+  state.userFiles = { "config.yaml": "keys:\n  help: x\n" };
   const missing = "/defaults/config.yaml: is missing";
 
   const answered = (await $.command.run(ANSWERS)).text ?? "";
@@ -685,12 +743,12 @@ test("a settings read whose answer can't be written is dropped: its refresh wait
 
 test("a user's config.jsonc is not read: the defaults are in effect", async ($, on) => {
   const state = engine(on, () => []);
-  state.userFiles = { "config.jsonc": '{"keys": {"dismiss": "z"}}' };
+  state.userFiles = { "config.jsonc": '{"keys": {"help": "z"}}' };
   const shown = await $.command.run({ ...ANSWERS, command: "answers-config" });
   const lines = (shown.text ?? "").split("\n");
 
-  expect(lines.find((line) => line.startsWith("keys.dismiss = "))).toMatch(
-    /^keys\.dismiss = "q"  # defaults: /,
+  expect(lines.find((line) => line.startsWith("keys.help = "))).toMatch(
+    /^keys\.help = "h"  # defaults: /,
   );
   expect(lines.filter((line) => line.startsWith("Not used"))).toEqual([]);
 
@@ -972,6 +1030,32 @@ test("a pick under the ring moves a radio item to Queued at once; a checkbox ite
   await ui.unmount();
 });
 
+test("a checkbox item held in Open while the ring is on it goes to Queued once a close from outside the plugin ends the pane", { plugins: [CLOSER] }, async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  state.isRingMovable = true;
+  await $.ui.focus({ component: "Pane", requestId: "kanban-turns", element: "9efb08a1.Decide.2.A", origin: { kind: "person" } });
+  await ui.press({ key: "9efb08a1.Decide.2.A" });
+  expect(await titles(ui)).toEqual([
+    "🧠 Decide.1 · Which cache to keep",
+    "🧠 Decide.2 · Cleanups to start",
+    "🧠 Decide.3 · Ship tonight?",
+  ]);
+  expect(await ui.find({ type: "Button", key: "queued" })).toBeUndefined();
+
+  await $.command.run({ ...ANSWERS, command: "close-kanban" });
+  expect(state.isPaneOpen).toBe(false);
+  await $.command.run(ANSWERS);
+  expect((await ui.find({ type: "Button", key: "queued" }))?.text).toBe("▾ Queued (1)");
+  expect(await titles(ui)).toEqual([
+    "🧠 Decide.1 · Which cache to keep",
+    "🧠 Decide.3 · Ship tonight?",
+    "🧠 Decide.2 · Cleanups to start",
+  ]);
+  await ui.unmount();
+});
+
 test("/answers opens the turn its first unanswered item is under, where a click folded it", async ($, on) => {
   engine(on, () => ITEMS);
   await $.command.run(ANSWERS);
@@ -1065,7 +1149,7 @@ test("every key the pane takes is a setting: each button's hotkey, rebound by th
   const hotkeys = async () =>
     Object.fromEntries(
       await Promise.all(
-        ["previous", "next", "keys", "dismiss", "reassess", "submit"].map(async (key) => [
+        ["previous", "next", "keys", "reassess", "submit"].map(async (key) => [
           key,
           (await ui.find({ type: "Button", key }))?.props["hotkey"],
         ]),
@@ -1076,7 +1160,6 @@ test("every key the pane takes is a setting: each button's hotkey, rebound by th
     previous: "k",
     next: "j",
     keys: "h",
-    dismiss: "q",
     reassess: "r",
     submit: "s",
   });
@@ -1087,14 +1170,13 @@ test("every key the pane takes is a setting: each button's hotkey, rebound by th
   // lists the rebound key.
   state.userFiles = {
     "config.yaml":
-      "keys:\n  dismiss: x\n  next: n\n  previous: p\n  submit: u\n  reassess: e\n  help: o\n",
+      "keys:\n  next: n\n  previous: p\n  submit: u\n  reassess: e\n  help: o\n",
   };
   await $.command.run(ANSWERS);
   expect(await hotkeys()).toEqual({
     previous: "p",
     next: "n",
     keys: "o",
-    dismiss: "x",
     reassess: "e",
     submit: "u",
   });
@@ -1105,7 +1187,7 @@ test("every key the pane takes is a setting: each button's hotkey, rebound by th
   expect(await row(2)).toBe("u📤 Submit: send the draft");
   expect(await row(3)).toBe("e🔄 Reassess: add or take out the reassess line");
   expect(await row(4)).toBe("o? Keys: open or close this panel");
-  expect(await row(5)).toBe("x✖ Close: close the pane");
+  expect(await row(8)).toBe("ctrl+x xclose the pane, as the x in its top right does");
   await ui.unmount();
 });
 
@@ -1121,7 +1203,7 @@ test("the pane draws no hint row", async ($, on) => {
   await ui.unmount();
 });
 
-test("? Keys opens a panel under the header listing every key, and a second press closes it", async ($, on) => {
+test("? Keys opens a panel under the header listing every key, and a second press closes it", { plugins: [CLOSER] }, async ($, on) => {
   engine(on, () => ITEMS);
   await $.command.run(ANSWERS);
   const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
@@ -1134,7 +1216,7 @@ test("? Keys opens a panel under the header listing every key, and a second pres
   const panel = await ui.find({ type: "Box", key: "keys-panel" });
   expect(panel?.text).toContain("s📤 Submit: send the draft");
   expect(panel?.text).toContain("h? Keys: open or close this panel");
-  expect(panel?.text).toContain("escgive the keyboard back to the prompt");
+  expect(panel?.text).toContain("escclose the pane, giving the keyboard back to the prompt");
   // Under the header, above the items.
   const drawn = JSON.stringify(await ui.drawn());
   expect(drawn.indexOf("keys-panel")).toBeGreaterThan(drawn.indexOf("header-controls"));
@@ -1145,7 +1227,7 @@ test("? Keys opens a panel under the header listing every key, and a second pres
 
   // Closing the pane closes the panel too.
   await ui.press({ key: "keys" });
-  await ui.press({ key: "dismiss" });
+  await $.command.run({ ...ANSWERS, command: "close-kanban" });
   await ui.unmount();
   const again = await $.ui.mount({ ...PANE, surface: "terminal" });
   expect(await again.find({ type: "Box", key: "keys-panel" })).toBeUndefined();
@@ -1772,6 +1854,39 @@ const REPLY = {
     isFirstOfReply: true,
   },
 } as const;
+
+test("no button anywhere carries both plain and a hotkey, which would draw its key as a hint", async ($, on) => {
+  const later: TranscriptRecord[] = [];
+  engine(on, () => ITEMS, listsText, () => later);
+  await $.tool.call({ tool: TOOL, items: ITEMS } as never);
+  await $.turn.complete(replyDone("t1"));
+  later.push(human("b2c3d4e5", "9efb08a1.Decide.1.A"), replyRecord([LATER], listsText([LATER])));
+  await $.turn.complete(replyDone("t2"));
+
+  // The pane with its Keys panel open and the Done branch expanded, a Done
+  // item's box open; a reply's boxes; the line above the prompt.
+  const pane = await $.ui.mount({ ...PANE, surface: "terminal" });
+  await pane.press({ key: "keys" });
+  await pane.press({ key: "done" });
+  await pane.press({ key: "9efb08a1.Decide.1.line" });
+  expect(await pane.find({ type: "Box", key: "keys-panel" })).toBeDefined();
+  expect(await titles(pane)).toContain("🧠 Decide.1 · Which cache to keep (done)");
+  const reply = await $.ui.mount(REPLY);
+  const line = await $.ui.mount({ ...ABOVE_PROMPT, surface: "terminal" });
+
+  for (const drawing of [pane, reply, line]) {
+    const buttons = await drawing.findAll({ type: "Button" });
+    expect(buttons.length).toBeGreaterThan(0);
+    expect(
+      buttons
+        .filter((found) => found.props["plain"] === true && found.props["hotkey"] !== undefined)
+        .map((found) => found.key),
+    ).toEqual([]);
+  }
+  await line.unmount();
+  await reply.unmount();
+  await pane.unmount();
+});
 
 test("a Decide item's box draws the Frees: line naming what it frees, under its options, and none for an item that frees nothing", async ($, on) => {
   const freeing = [{ ...ITEMS[0], frees: ["9efb08a1.Todo.1", "9efb08a1.Review.2"] }, ITEMS[2]];
@@ -3401,7 +3516,6 @@ const OWN_MARKS = [
   "  collapsed: '+'",
   "  expanded: '-'",
   "  buttons:",
-  "    dismiss: X",
   "    next: v",
   "    previous: '^'",
   "    submit: '>'",
@@ -3429,13 +3543,12 @@ test("a user's marks draw every surface in their own glyphs, an option's lead pa
   expect(await button(ui, "previous")).toBe("^ Previous");
   expect(await button(ui, "next")).toBe("v Next");
   expect(await button(ui, "keys")).toBe("H Keys");
-  expect(await button(ui, "dismiss")).toBe("X Close");
   expect(await button(ui, "submit")).toBe("> Submit");
   expect(await button(ui, "reassess")).toBe("R Reassess");
   expect(await button(line, "kanban")).toBe("K Kanban");
   await ui.press({ key: "keys" });
   expect(await ui.find({ type: "Text", text: /^v Next: the next item/ })).toBeDefined();
-  expect(await ui.find({ type: "Text", text: /^X Close: close the pane$/ })).toBeDefined();
+  expect(await ui.find({ type: "Text", text: /^H Keys: open or close this panel$/ })).toBeDefined();
 
   // The Done branch's header and a turn's, closed and open, and the bar
   // opening a Done line.
@@ -3694,7 +3807,7 @@ test("the pane's notes field is several rows tall, from the setting", async ($, 
   await ui.unmount();
 });
 
-test("under a reply, ✏️ Add a note opens the pane with the keyboard at the item's notes field", async ($, on) => {
+test("under a reply, ✏️ Add a note opens the pane with the keyboard at the item's notes field", { plugins: [CLOSER] }, async ($, on) => {
   const state = engine(on, () => ITEMS);
   await $.tool.call({ tool: TOOL, items: ITEMS } as never);
   await $.turn.complete(replyDone("t0"));
@@ -3721,7 +3834,7 @@ test("under a reply, ✏️ Add a note opens the pane with the keyboard at the i
 
   // Once the pane closes, the field no longer waits for the focus: /answers
   // opens it with nothing focused.
-  await ui.press({ key: "dismiss" });
+  await $.command.run({ ...ANSWERS, command: "close-kanban" });
   await $.command.run(ANSWERS);
   expect(
     (await ui.findAll({ type: "Input" })).filter((found) => found.props.autoFocus === true),
@@ -3790,21 +3903,7 @@ const focusedFields = async (ui: Mounted) =>
     .filter((found) => found.props.autoFocus === true)
     .map((found) => found.key);
 
-// A plugin beside this one that closes the pane, as the person's Escape
-// does: the close reaches this plugin at ui.close alone, not through ✖,
-// which clears the wait itself. The kit's `$` has no `ui.close` to raise.
-const CLOSER = {
-  name: "closer",
-  register: ((on) => {
-    on("command.run", { command: "close-kanban" }, async ($) => {
-      await $.ui.close({ id: "kanban-turns" });
-
-      return { text: "" };
-    });
-  }) satisfies Register,
-};
-
-test("the pane closed by anything but ✖ leaves no field waiting for the focus", { plugins: [CLOSER] }, async ($, on) => {
+test("the pane closed by anything but the plugin itself leaves no field waiting for the focus", { plugins: [CLOSER] }, async ($, on) => {
   const state = engine(on, () => ITEMS);
   await $.tool.call({ tool: TOOL, items: ITEMS } as never);
   await $.turn.complete(replyDone("t0"));

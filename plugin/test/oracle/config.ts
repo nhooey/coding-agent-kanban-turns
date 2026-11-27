@@ -1,9 +1,9 @@
 // The settings differential test's oracle: src/config/config.ts as it was
 // while it checked both files against a hand-written SETTINGS_SHAPE, copied
 // below this header from commit fc64639, unchanged but for SETTINGS_SHAPE,
-// which gains each section added since (roll-up, lint) and each setting
-// added to one (marks' chosen to buttons), and the `mark` kind those
-// marks have, checked as src/config/config.ts checks it.
+// which holds the shipped defaults' sections and settings, the `mark` kind
+// the marks have, checked as src/config/config.ts checks it, and RETIRED,
+// which holds src/config/config.ts's.
 //
 // Temporary: the oracle and its test are deleted once the derived shape has
 // shipped in a release.
@@ -50,7 +50,6 @@ const UNDRAWABLE = /[\p{Cc}\u{2028}\u{2029}]/u;
 export const SETTINGS_SHAPE: Shape = {
   counts: { turns: "number", "gh-timeout-ms": "number" },
   keys: {
-    dismiss: "key",
     next: "key",
     previous: "key",
     submit: "key",
@@ -74,7 +73,6 @@ export const SETTINGS_SHAPE: Shape = {
     collapsed: "mark",
     expanded: "mark",
     buttons: {
-      dismiss: "mark",
       next: "mark",
       previous: "mark",
       submit: "mark",
@@ -90,14 +88,17 @@ export const SETTINGS_SHAPE: Shape = {
     code: "string",
     hover: "string",
     settled: "string",
-    close: "string",
     kanban: "string",
   },
   "roll-up": { "summary-width": "number" },
   lint: { "turn-end": "boolean" },
 };
 
-/** The sections and settings the plugin no longer reads, by dotted key, each with what to set instead. */
+/** What closes the pane, which has no close button of its own: what to use instead of that button's settings. */
+const CLOSED_BY_ENGINE =
+  "the pane has no ✖ Close button; Claude Code's close mark in its top right, ctrl+x x or esc closes it";
+
+/** The sections and settings the plugin no longer reads, by dotted key, each with what to set or use instead. */
 export const RETIRED: Readonly<Record<string, string>> = {
   outstanding:
     "the plugin reads the transcript itself; counts.turns sets how many turns the count line reads",
@@ -105,8 +106,10 @@ export const RETIRED: Readonly<Record<string, string>> = {
     "an item's title is now a label on a background, then the summary in plain text; colors.title-label and colors.title-background colour the label",
   "colors.expand":
     "the ↗ beside the count line is gone; colors.kanban colours the 🖥️ Kanban button that opens the pane",
-  "colors.close-x":
-    "the ✖ is drawn in colors.close, on no background, as every button is",
+  "colors.close-x": CLOSED_BY_ENGINE,
+  "colors.close": CLOSED_BY_ENGINE,
+  "keys.dismiss": CLOSED_BY_ENGINE,
+  "marks.buttons.dismiss": CLOSED_BY_ENGINE,
   "pane.hints":
     "the pane draws no hint row; its ? Keys button, or keys.help, opens a panel listing every key",
 };

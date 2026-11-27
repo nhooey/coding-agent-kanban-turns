@@ -116,11 +116,11 @@ describe("/answers-config's reply", () => {
   test("lists the settings in effect, then what wasn't used", () => {
     expect(
       configText(
-        ["keys.dismiss = q", "colors.title = claude"],
+        ["keys.help = h", "colors.title = claude"],
         ["bad.yaml: parse error"],
       ),
     ).toBe(
-      "keys.dismiss = q\ncolors.title = claude\nNot used: bad.yaml: parse error",
+      "keys.help = h\ncolors.title = claude\nNot used: bad.yaml: parse error",
     );
   });
 
@@ -590,19 +590,19 @@ describe("an option's lead", () => {
 });
 
 describe("the keys panel", () => {
-  const keys = { dismiss: "q", next: "j", previous: "k", submit: "s", reassess: "r", help: "?" };
+  const keys = { next: "j", previous: "k", submit: "s", reassess: "r", help: "?" };
 
-  test("lists each key the pane takes and what it does, then the engine's", () => {
+  test("lists each key the pane takes and what it does, then the engine's, Escape and its close key closing the pane", () => {
     expect(keyRows(keys, SETTINGS.marks.buttons)).toEqual([
       { key: "j", does: "↓ Next: the next item, or header" },
       { key: "k", does: "↑ Previous: the item before" },
       { key: "s", does: "📤 Submit: send the draft" },
       { key: "r", does: "🔄 Reassess: add or take out the reassess line" },
       { key: "?", does: "? Keys: open or close this panel" },
-      { key: "q", does: "✖ Close: close the pane" },
       { key: "↑ ↓ tab", does: "move between options and fields" },
       { key: "enter", does: "pick the option the ring is on" },
-      { key: "esc", does: "give the keyboard back to the prompt" },
+      { key: "esc", does: "close the pane, giving the keyboard back to the prompt" },
+      { key: "ctrl+x x", does: "close the pane, as the x in its top right does" },
     ]);
   });
 
@@ -611,14 +611,13 @@ describe("the keys panel", () => {
   });
 
   test("draws each button's glyph as it's given", () => {
-    const glyphs = { dismiss: "X", next: "v", previous: "^", submit: ">", reassess: "R", help: "H", kanban: "K" };
-    expect(keyRows(keys, glyphs).slice(0, 6)).toEqual([
+    const glyphs = { next: "v", previous: "^", submit: ">", reassess: "R", help: "H", kanban: "K" };
+    expect(keyRows(keys, glyphs).slice(0, 5)).toEqual([
       { key: "j", does: "v Next: the next item, or header" },
       { key: "k", does: "^ Previous: the item before" },
       { key: "s", does: "> Submit: send the draft" },
       { key: "r", does: "R Reassess: add or take out the reassess line" },
       { key: "?", does: "H Keys: open or close this panel" },
-      { key: "q", does: "X Close: close the pane" },
     ]);
   });
 });

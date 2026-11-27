@@ -8,7 +8,6 @@ import type { Shape } from "../../src/config/config.ts";
 export const SETTINGS_SHAPE: Shape = {
   counts: { turns: "number", "gh-timeout-ms": "number" },
   keys: {
-    dismiss: "key",
     next: "key",
     previous: "key",
     submit: "key",
@@ -32,7 +31,6 @@ export const SETTINGS_SHAPE: Shape = {
     collapsed: "mark",
     expanded: "mark",
     buttons: {
-      dismiss: "mark",
       next: "mark",
       previous: "mark",
       submit: "mark",
@@ -48,7 +46,6 @@ export const SETTINGS_SHAPE: Shape = {
     code: "string",
     hover: "string",
     settled: "string",
-    close: "string",
     kanban: "string",
   },
   "roll-up": { "summary-width": "number" },

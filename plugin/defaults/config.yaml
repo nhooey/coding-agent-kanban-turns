@@ -8,7 +8,7 @@
 # is unset), such as
 #
 #   keys:
-#     dismiss: x
+#     help: o
 #
 # Both files are YAML 1.2, read under its core schema: `on` and `yes` are
 # strings, a key written twice refuses the file, and quoting a value keeps
@@ -17,10 +17,12 @@
 # here, or a value of the wrong type, refuses your whole file: the plugin
 # uses these defaults and says why in the pane and in /answers-config,
 # which lists every setting in effect and the file it came from. An
-# `outstanding` section, or a `pane.hints`, `colors.title`,
-# `colors.expand` or `colors.close-x` setting, which the plugin no longer
-# reads, is left out with a warning instead, and the rest of your file is
-# used. Your own file is `config.yaml`; no other name is read.
+# `outstanding` section, or a `pane.hints`, `keys.dismiss`,
+# `marks.buttons.dismiss`, `colors.title`, `colors.expand`,
+# `colors.close` or `colors.close-x` setting, which the plugin no longer
+# reads, is left out with a warning naming what to set or use instead,
+# and the rest of your file is used. Your own file is `config.yaml`; no
+# other name is read.
 
 # The count line above the prompt, such as `📌 Outstanding: 🚧 2 · 🧠 3`,
 # which the plugin works out from this session's transcript.
@@ -39,11 +41,11 @@ counts:
 # The pane's keys, pressed while the pane holds the keyboard (as it
 # opens from /answers or the line above the prompt, or after a click).
 # Each is one lowercase letter or one digit, the only keys the engine
-# takes, drawn before its button, such as `s: 📤 Submit`, and listed in
-# the panel `? Keys` opens. Options take no key of their own.
+# takes. A button draws no hint of its key, such as `[ 📤 Submit ]`; the
+# panel `? Keys` opens lists them. Options take no key of their own. The
+# pane has no close key of its own: Claude Code's ctrl+x x and Escape
+# close it, as its close mark in the pane's top right does.
 keys:
-  # ✖ Close: close the pane.
-  dismiss: q
   # ↓ Next: move the focus ring to the next item, or header.
   next: j
   # ↑ Previous: move the focus ring to the item before.
@@ -134,8 +136,6 @@ marks:
   # and beside its key in the panel ? Keys opens; a keyed button's by the
   # name of its key in `keys`.
   buttons:
-    # ✖ Close.
-    dismiss: ✖
     # ↓ Next.
     next: ↓
     # ↑ Previous.
@@ -170,9 +170,6 @@ colors:
   # Done item's line under the Done branch; a Done item lights no
   # hover bar.
   settled: ide
-  # marks.buttons.dismiss, the glyph of the ✖ Close button that closes
-  # the pane.
-  close: error
   # The word Kanban in 🖥️ Kanban, above the prompt and atop the pane.
   kanban: claude
 

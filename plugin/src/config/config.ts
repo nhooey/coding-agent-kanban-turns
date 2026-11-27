@@ -17,6 +17,7 @@
 import { parseAllDocuments } from "../../vendor/yaml/yaml.js";
 import type { ParsedDocument } from "../../vendor/yaml/yaml.js";
 import { isObject } from "../json/fields.ts";
+import { ENGINE_KEYS } from "../pane/engine-keys.ts";
 import type { Json, Loaded, Settings } from "../../types/index.d.ts";
 
 /**
@@ -121,7 +122,10 @@ export const shapeOf = (defaults: Json): Derived => {
   return problems.length > 0 ? { problems } : derived;
 };
 
-/** The sections and settings the plugin no longer reads, by dotted key, each with what to set instead. */
+/** What closes the pane, which has no close button of its own: what to use instead of that button's settings. */
+const CLOSED_BY_ENGINE = `the pane has no ✖ Close button; Claude Code's close mark in its top right, ${ENGINE_KEYS.close} or ${ENGINE_KEYS.escape} closes it`;
+
+/** The sections and settings the plugin no longer reads, by dotted key, each with what to set or use instead. */
 export const RETIRED: Readonly<Record<string, string>> = {
   outstanding:
     "the plugin reads the transcript itself; counts.turns sets how many turns the count line reads",
@@ -129,8 +133,10 @@ export const RETIRED: Readonly<Record<string, string>> = {
     "an item's title is now a label on a background, then the summary in plain text; colors.title-label and colors.title-background colour the label",
   "colors.expand":
     "the ↗ beside the count line is gone; colors.kanban colours the 🖥️ Kanban button that opens the pane",
-  "colors.close-x":
-    "the ✖ is drawn in colors.close, on no background, as every button is",
+  "colors.close-x": CLOSED_BY_ENGINE,
+  "colors.close": CLOSED_BY_ENGINE,
+  "keys.dismiss": CLOSED_BY_ENGINE,
+  "marks.buttons.dismiss": CLOSED_BY_ENGINE,
   "pane.hints":
     "the pane draws no hint row; its ? Keys button, or keys.help, opens a panel listing every key",
 };

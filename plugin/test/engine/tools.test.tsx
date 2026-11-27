@@ -84,7 +84,7 @@ const SHORT_UNDERLINE = REPLY.replace("▔▔▔▔▔▔▔▔▔▔▔\n1. **R
 
 const DEFAULTS = JSON.stringify({
   counts: { turns: 20, "gh-timeout-ms": 20000 },
-  keys: { dismiss: "q", next: "j", previous: "k", submit: "s", reassess: "r", help: "h" },
+  keys: { next: "j", previous: "k", submit: "s", reassess: "r", help: "h" },
   pane: { "close-when-all-submitted": true },
   notes: { rows: 3 },
   actions: {
@@ -102,7 +102,6 @@ const DEFAULTS = JSON.stringify({
     collapsed: "▸",
     expanded: "▾",
     buttons: {
-      dismiss: "✖",
       next: "↓",
       previous: "↑",
       submit: "📤",
@@ -118,7 +117,6 @@ const DEFAULTS = JSON.stringify({
     code: "permission",
     hover: "suggestion",
     settled: "ide",
-    close: "error",
     kanban: "claude",
   },
   "roll-up": { "summary-width": 100 },

@@ -36,6 +36,7 @@ import { problemsOf, stillOpen } from "../items/raised.ts";
 import { padToCells, widestCells } from "../text/cells.ts";
 import { capitalized } from "../text/words.ts";
 import { isReassessLine, withoutDraftHeader } from "../transcript/turns.ts";
+import { ENGINE_KEYS } from "./engine-keys.ts";
 import { LAYOUT } from "./layout.ts";
 import { doneLine } from "./sections.ts";
 
@@ -513,7 +514,9 @@ export type KeyRow = Readonly<{ key: string; does: string }>;
  * it holds the keyboard and what it does, the pane's own read from the
  * `keys` settings, so a rebound key shows as rebound, each beside its
  * button's glyph from the `marks.buttons` settings, then the keys Claude
- * Code moves the focus ring and the keyboard with.
+ * Code moves the focus ring and the keyboard with, and closes the pane
+ * with. The pane's buttons draw no key of their own, so this panel is
+ * where the keys are read.
  */
 export const keyRows = (
   keys: Settings["keys"],
@@ -530,10 +533,16 @@ export const keyRows = (
     does: `${glyphs.reassess} ${capitalized(REASSESS)}: add or take out the ${REASSESS} line`,
   },
   { key: keys.help, does: `${glyphs.help} Keys: open or close this panel` },
-  { key: keys.dismiss, does: `${glyphs.dismiss} Close: close the pane` },
-  { key: "↑ ↓ tab", does: "move between options and fields" },
-  { key: "enter", does: "pick the option the ring is on" },
-  { key: "esc", does: "give the keyboard back to the prompt" },
+  { key: ENGINE_KEYS.move, does: "move between options and fields" },
+  { key: ENGINE_KEYS.press, does: "pick the option the ring is on" },
+  {
+    key: ENGINE_KEYS.escape,
+    does: "close the pane, giving the keyboard back to the prompt",
+  },
+  {
+    key: ENGINE_KEYS.close,
+    does: "close the pane, as the x in its top right does",
+  },
 ];
 
 /** What the engine says of a tool row or its result line. */

@@ -35,10 +35,10 @@ Every setting, with its default and what it does, is in [`plugin/defaults/config
 
 ```yaml
 keys:
-  dismiss: x
+  help: o
 ```
 
-Both files are YAML 1.2, read strictly under its core schema: `on` and `yes` are strings, and a key written twice refuses the file. Sections merge key by key, so everything else follows the defaults as they change. A key that's no setting, a value of the wrong type, a key under `keys` that isn't one lowercase letter or digit, two settings under `keys` bound to the same key, or a mark under `marks` that's empty or holds a control character or a line break refuses your whole file: the plugin uses the defaults and says why in the pane. An `outstanding` section, or a `pane.hints`, `colors.title`, `colors.expand` or `colors.close-x` setting, which the plugin no longer reads, is the exception: it's left out with a warning naming what to set instead, and the rest of your file is used. Your own file is `config.yaml`; no other name is read. `/answers-config` lists every setting in effect and the file it came from. Both files are read again whenever the items refresh.
+Both files are YAML 1.2, read strictly under its core schema: `on` and `yes` are strings, and a key written twice refuses the file. Sections merge key by key, so everything else follows the defaults as they change. A key that's no setting, a value of the wrong type, a key under `keys` that isn't one lowercase letter or digit, two settings under `keys` bound to the same key, or a mark under `marks` that's empty or holds a control character or a line break refuses your whole file: the plugin uses the defaults and says why in the pane. An `outstanding` section, or a `pane.hints`, `keys.dismiss`, `marks.buttons.dismiss`, `colors.title`, `colors.expand`, `colors.close` or `colors.close-x` setting, which the plugin no longer reads, is the exception: it's left out with a warning naming what to set or use instead, and the rest of your file is used. Your own file is `config.yaml`; no other name is read. `/answers-config` lists every setting in effect and the file it came from. Both files are read again whenever the items refresh.
 
 ## What it draws
 
@@ -46,22 +46,23 @@ Both files are YAML 1.2, read strictly under its core schema: `on` and `yes` are
 
 The pane, `🧠 Decide`, lists every Decide item raised in the session, top to bottom:
 
-- **The header row:** `🖥️ Kanban · 📌 <count line>`, the same text and colours as the line above the prompt, then `n of m answered`, the queued items out of every open and queued item, then `↑ Previous`, `↓ Next`, `? Keys` and `✖ Close`. Claude Code has no sticky rows, so it's simply the pane's first row, and scrolls away with the rest.
-- **The keys panel,** once `? Keys` opens it: a row per key the pane takes and what it does, read from the `keys` settings, so a key you rebound shows as you bound it. A second press of `? Keys`, or its key, closes it; a closed panel draws nothing. Escape can't close it: Claude Code keeps Escape for giving the keyboard back to the prompt, and never passes it to the pane.
+- **The header row:** `🖥️ Kanban · 📌 <count line>`, the same text and colours as the line above the prompt, then `n of m answered`, the queued items out of every open and queued item, then `[ ↑ Previous ]`, `[ ↓ Next ]` and `[ ? Keys ]`. Claude Code has no sticky rows, so it's simply the pane's first row, and scrolls away with the rest.
+- **No close button of its own:** in the terminal, the x in the pane's top right is Claude Code's own close mark, drawn on its frame; ctrl+x x and Escape do the same. Claude Code gives a plugin no way to change that mark's glyph, size or padding, so the plugin can't make it bigger. Claude Code's plugin API doesn't say how the desktop app draws a pane's close, and the plugin draws none there either.
+- **The keys panel,** once `? Keys` opens it: a row per key the pane takes and what it does, read from the `keys` settings, so a key you rebound shows as you bound it, then Claude Code's own keys for the pane. A second press of `? Keys`, or its key, closes it; a closed panel draws nothing. Escape closes the whole pane, the panel with it, and gives the keyboard back to the prompt.
 - **Three branches, each a toggle with its count:**
   - **Open,** `▾ Open (n)`, expanded at first: the items the draft doesn't answer yet.
   - **Queued,** `▾ Queued (n)`, expanded at first: the items the draft answers, by a picked option or a note, not yet sent. Each is drawn in full, its options live, so you can change a pick or add a note before Submit.
   - **Done,** `▸ Done (n)`, collapsed at first.
 
   A branch with no item draws nothing. In each branch, each turn with an item there opens on a faint header, a toggle, naming its id, its index counting back from the latest turn and its items' count in that branch, `▾ ── 9efb08a1 ₋₂ (1) ──`, the index in Unicode subscript as the kanban skill's 🔖 tag writes it, the latest turn `₀`. The turns come newest first; a turn the transcript doesn't hold yet, such as the one whose reply is still being drawn, has no index and comes first. Under Open and Queued, a turn's items follow, each drawn in full in its own rounded border, as the skill writes it; under Done, one dim line each.
-- **The footer row:** what Submit will send, `Draft: 2 answers · 1 note · reassess`, naming words of your own as `your words`, or `Draft: empty`; then `🔄 Reassess` and `📤 Submit`.
+- **The footer row:** what Submit will send, `Draft: 2 answers · 1 note · reassess`, naming words of your own as `your words`, or `Draft: empty`; then `[ 🔄 Reassess ]` and `[ 📤 Submit ]`.
 
 With nothing open, `Nothing open` stands under the header row. The space under the header row is kept for the filters to come.
 
 ```text
 ╭──────────────────────────────────────────────────────────────────╮
 │ 🖥️ Kanban · 📌 Outstanding: 🚧 1 · 🧠 2   1 of 2 answered        │
-│             k: ↑ Previous  j: ↓ Next  h: ? Keys  q: ✖ Close      │
+│                     [ ↑ Previous ]  [ ↓ Next ]  [ ? Keys ]       │
 │                                                                  │
 │ ▾ Open (1)                                                       │
 │ ▾ ── 9efb08a1 ₋₂ (1) ──                                          │
@@ -90,7 +91,7 @@ With nothing open, `Nothing open` stands under the header row. The space under t
 │ ▾ ── 9efb08a1 ₋₂ (1) ──                                          │
 │ ▌🧠 Decide.1  Which cache to keep · Answered in 4a2206b0: A      │
 │                                                                  │
-│ Draft: 1 answer                      r: 🔄 Reassess  s: 📤 Submit │
+│ Draft: 1 answer                  [ 🔄 Reassess ]  [ 📤 Submit ]  │
 ╰──────────────────────────────────────────────────────────────────╯
 ```
 
@@ -116,13 +117,12 @@ Each part has its own colour from the theme, so it reads in light and dark theme
 | `↑ Previous`, `↓ Next`   | move the focus ring to the stop before or after the one it's on, a branch's header, a turn's header, an open or queued item's first option, or a Done line, the pane scrolled to show it; a folded branch or turn hides its stops. From no stop, `↓` goes to the first, the Open branch's header, and `↑` to the last. Each is dim at its end of the stops                                                          |
 | `🔄 Reassess`            | a toggle: adds `reassess` as the draft's last line, once, below the line naming the plugin and the answers, and sends nothing; a second press takes it out again. Its glyph is `✅` (`marks.chosen`) while the line is there, and later clicks and notes write their answers above it, so it stays last. Submit then sends any answers and the reassess in one prompt, which makes what it answers Done, then works the open items out afresh |
 | `📤 Submit`              | sends what the prompt box holds, as your own words, and empties the box: the answers you picked, a `reassess` line, and anything you wrote. The items it answers move from Queued to their turns under Done at once, saying `Sent: <letters>`, the Done branch staying folded if it was; the transcript read at the turn's end keeps each there as answered, or puts it back under Open. A Submit whose answers leave no item open closes the pane, as `pane.close-when-all-submitted` says. It's drawn dim, and does nothing, while the box is empty or holds only the line naming the plugin, while a turn runs, and while an earlier Submit is under way, so a double press sends once. Pasted text, images and file mentions need Enter, since only Enter expands them: a draft holding collapsed pasted text's `[Pasted text #n +k lines]`, a pasted image's `[Image #n]`, or an `@` mention that looks like a file (one starting `./`, `../`, `~/`, `/` or a quote, or ending in an extension, such as `@src/x.ts`; not `@alice` or `@types/node`) stays in the box, the pane saying to press Enter in the prompt. When the box can't be emptied first, nothing is sent and the draft stays. When the engine refuses the prompt, the draft goes back in the box, after anything typed there meanwhile, or, where the box can't take it back, into what the pane says, so it isn't lost. Either way nothing moves to Done, and the pane says why |
-| `✖ Close`                | closes the pane, until a reply raises a Decide item it hasn't shown, or you open it. The `✖` is in the `colors.close` colour                                                                                                                                                                                                                                                         |
 
 Submit is the only button that sends a prompt. It goes as the plugin's prompt on your behalf, which the transcript names as this plugin's, so the plugin reads it as your own text: a submitted answer makes its item Done, a submitted `reassess` line replaces every earlier item, and it's never read as a report. Another mod's prompt is never your own text. A prompt Submit sends is a turn of its own: Claude Code queues it until the session is idle, rather than joining a running turn as a message typed with Enter does, which is why Submit waits out a running turn.
 
 ### Keys
 
-The keys work only where the keyboard is. The prompt holds it by default, so letters typed there stay in the prompt. The pane takes the keyboard when it opens from `/answers`, `🖥️ Kanban`, the count line, `✏️ n picked`, a question or `✏️ Add a note`; else press ctrl+x then tab, or click it. Then each key presses its button, which draws it before its glyph, as `s: 📤 Submit`; each is a setting under `keys`:
+The keys work only where the keyboard is. The prompt holds it by default, so letters typed there stay in the prompt. The pane takes the keyboard when it opens from `/answers`, `🖥️ Kanban`, the count line, `✏️ n picked`, a question or `✏️ Add a note`; else press ctrl+x then tab, or click it. Then each key presses its button. A button draws no hint of its key: it's drawn in Claude Code's brackets, `[ 📤 Submit ]`, since a plain button would draw its key before it, as `s: 📤 Submit`, and the panel `? Keys` opens lists the keys instead. Each is a setting under `keys`:
 
 | Key | Setting         | Presses       |
 | --- | --------------- | ------------- |
@@ -131,9 +131,10 @@ The keys work only where the keyboard is. The prompt holds it by default, so let
 | `s` | `keys.submit`   | `📤 Submit`   |
 | `r` | `keys.reassess` | `🔄 Reassess` |
 | `h` | `keys.help`     | `? Keys`      |
-| `q` | `keys.dismiss`  | `✖ Close`     |
 
-Each key is one lowercase letter or digit, the only keys Claude Code lets a button take, so `? Keys` can't be bound to `?` itself; no two settings may share one. The arrow keys and Tab move the focus ring as Claude Code moves it, from one button or field to the next, so through each option of an item; `j` and `k` move by stops, the headers and whole items. Enter presses the button the ring is on, so on a branch's or a turn's header it folds or opens that branch or turn: from no stop, `j` reaches the Open branch's header first, and Enter there folds every open turn. Escape gives the keyboard back to the prompt. Options have no key of their own, so they read exactly as the skill writes them. The items refresh when a reply finishes.
+The pane has no close key of its own: Claude Code's ctrl+x x closes it, as its close mark in the pane's top right does, and so does Escape, while the pane holds the keyboard or at an idle, empty prompt. Each closes it until a reply raises an item it hasn't shown, or you open it. A close lets go of what the pane held: a checkbox item you were picking moves to Queued, the keys panel closes, and no notes field waits for the focus.
+
+Each key is one lowercase letter or digit, the only keys Claude Code lets a button take, so `? Keys` can't be bound to `?` itself; no two settings may share one. The arrow keys and Tab move the focus ring as Claude Code moves it, from one button or field to the next, so through each option of an item; `j` and `k` move by stops, the headers and whole items. Enter presses the button the ring is on, so on a branch's or a turn's header it folds or opens that branch or turn: from no stop, `j` reaches the Open branch's header first, and Enter there folds every open turn. Escape closes the pane and gives the keyboard back to the prompt. Options have no key of their own, so they read exactly as the skill writes them. The items refresh when a reply finishes.
 
 ### The line above the prompt
 
@@ -212,7 +213,7 @@ Where a reply's list isn't cut out, each summary line in it that names a raised 
 
 The pane, the line above the prompt and the boxes under a reply share one style:
 
-- **Buttons:** every button is `glyph label`, such as `📤 Submit` or `▸ Done (2)`, drawn plain, with no chrome or padding of its own, its key before it where it has one, and inverted under the pointer. A button that can't act now is dim, and pressing it does nothing.
+- **Buttons:** every button is `glyph label`, such as `▸ Done (2)`, inverted under the pointer. One without a key is drawn plain, with no chrome or padding of its own; one with a key, the pane's header and footer controls, in Claude Code's brackets, `[ 📤 Submit ]`, which draw no hint of the key. A button that can't act now is dim, and pressing it does nothing.
 - **Dim** means "not actionable now" or "Done": a button that can't act, the pane's faint text, a turn's header and `Nothing open`, and a Done item's title, its one-line row and the line saying what made it Done. A Done item's row and title stay clickable, to open and close its box; its options, which still pick, are at full strength.
 - **Wrapping:** a line that wraps continues under its text, never under its lead, a glyph, a letter or a label.
 - **Labels:** a list's label is the skill's glyph and name, `🧠 Decide.1`, as the skill writes it.

@@ -343,7 +343,6 @@ export type Json =
 export type Settings = Readonly<{
   counts: Readonly<{ turns: number; "gh-timeout-ms": number }>;
   keys: Readonly<{
-    dismiss: string;
     next: string;
     previous: string;
     submit: string;
@@ -368,7 +367,6 @@ export type Settings = Readonly<{
     collapsed: string;
     expanded: string;
     buttons: Readonly<{
-      dismiss: string;
       next: string;
       previous: string;
       submit: string;
@@ -384,7 +382,6 @@ export type Settings = Readonly<{
     code: string;
     hover: string;
     settled: string;
-    close: string;
     kanban: string;
   }>;
   "roll-up": Readonly<{ "summary-width": number }>;
