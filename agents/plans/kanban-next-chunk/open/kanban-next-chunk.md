@@ -24,5 +24,5 @@ Checks: the plugin's repository's checks pass with a test for each bullet above;
 For Neil to look at afresh, before approving:
 
 - **The spec holds the command.** The chunk's size, its lists and its tie-break order move from the plugin's settings and this node's prose into the spec, so they're the same for every user. Whether the size stays a user setting instead is open.
-- **No script of the old skill runs it.** Where the hooks don't load, the chunk comes from the CLI the skill inside the plugin carries, so a session needs Node or the CLI's standalone binary.
+- **No script of the old skill runs it.** Where the hooks don't load, the chunk comes from the CLI the skill inside the plugin carries, so a session needs Node.
 - **The picker's answers are read by the core.** AskUserQuestion results become part of what the neutral turns carry, or the Claude Code adapter reads them; which one is open.

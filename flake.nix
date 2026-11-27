@@ -80,11 +80,9 @@
           # dev shell and the checks run it.
           nodejs = pkgs.nodejs_26;
 
-          # The package nodejs's own `node` is, without npm: the binary the
-          # standalone CLI is built from, and whose path it cuts out of it.
+          # The package nodejs's own `node` is, without npm: the one the
+          # skill's wrapper runs kanban.js with.
           nodejsSlim = pkgs."nodejs-slim_${lib.versions.major nodejs.version}";
-
-          inherit (pkgs.stdenv.hostPlatform) isDarwin;
 
           # plugin/'s npm dependencies (the YAML parser, and for
           # development TypeScript, Node's types, Jest's expect, fast-check,
@@ -145,33 +143,6 @@
             bundledDefaults = builtins.toJSON (builtins.readFile ./plugin/defaults/config.yaml);
             meta.mainProgram = "kanban.js";
           } (builtins.readFile ./nix/scripts/cli/bundle.sh);
-
-          # The same CLI as a standalone binary, bin/kanban, for this
-          # system: a Node single executable application, which needs no
-          # Node installed, but does need its Nix closure, the libraries
-          # Node links to; Node's own package is cut out of it.
-          # packages.kanban, for a PATH; the skill runs kanban.js instead.
-          kanbanBin = pkgs.runCommand "coding-agent-kanban-turns-kanban" {
-            # macOS signs the binary again: sigtool's codesign, which runs
-            # cctools' codesign_allocate.
-            nativeBuildInputs = [
-              nodejsSlim
-              pkgs.removeReferencesTo
-            ]
-            ++ lib.optionals isDarwin [
-              pkgs.darwin.sigtool
-              pkgs.cctools
-            ];
-            node = nodejsSlim;
-            disallowedReferences = [
-              nodejs
-              nodejsSlim
-            ];
-            inherit kanbanJs;
-            seaConfig = ./nix/scripts/cli/sea.json;
-            signs = isDarwin;
-            meta.mainProgram = "kanban";
-          } (builtins.readFile ./nix/scripts/cli/binary.sh);
 
           # The skill's name, its folder's and its frontmatter's, as the
           # spec gives it and tools/skill/render.ts reads it.
@@ -304,7 +275,6 @@
             plugin = lib.mkForce plugin;
             default = config.packages.plugin;
             kanban-js = kanbanJs;
-            kanban = kanbanBin;
             # The derived skill alone, the folder packages.plugin copies
             # into skills/, for a harness that loads skills but not Claude
             # Code plugins; not for beside the plugin, where it would load
@@ -406,8 +376,7 @@
           # What a build can run: the core's type-check and its tests, the
           # committed bundles against the flake's, and the module and JSON
           # copy the protocol's spec compiles to against the committed ones;
-          # kanban.js and the binary, each run on every golden case, apart
-          # so they run side by side; the plugin with its skill under
+          # kanban.js, run on every golden case; the plugin with its skill under
           # skills/, which `claude plugin validate` accepts, its script the
           # same as kanban.js and its wrapper running it; and the committed
           # skill against the flake's. The hooks' type-check and
@@ -454,7 +423,6 @@
             typecheck = pluginCheck "typecheck" "typecheck";
             tests = pluginCheck "tests" "test";
             cli-js = pluginCheckWith { KANBAN_JS = "${kanbanJs}/bin/kanban.js"; } "cli-js" "test:built";
-            cli-bin = pluginCheckWith { KANBAN_BIN = "${kanbanBin}/bin/kanban"; } "cli-bin" "test:built";
           };
 
           treefmt = {
