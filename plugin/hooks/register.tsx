@@ -1,6 +1,7 @@
 // Clickable answers to the kanban turn responses' Decide items: a pane that
 // lists every item raised in the session, newest turn first, and the same
-// boxes under the reply that raised them, in place of its Decide list. The
+// boxes under the reply that raised them, in place of its Decide and Todo
+// lists. The
 // pane opens by itself, without the keyboard, at session start when items
 // are open and when a reply raises a new one; 🖥️ Kanban and the skill's
 // count line above the prompt, and /answers, open it with the keyboard. A
@@ -71,16 +72,20 @@ import { ignoredSupersedes, isDecide, itemsOf, refOf } from "../src/items/items.
 import { freesLineOf } from "../src/items/frees.ts";
 import { LAYOUT, codeSpans } from "../src/pane/layout.ts";
 import { cellWidth } from "../src/text/cells.ts";
-import { DECIDE, REASSESS } from "../src/protocol/rules.ts";
+import { DECIDE, PANE_LISTS, REASSESS, TODO } from "../src/protocol/rules.ts";
 import { capitalized } from "../src/text/words.ts";
 import { SPEC } from "../src/protocol/spec.ts";
 import {
-  decideListCut,
+  decideListSpan,
   itemOfRef,
   linkedItems,
   linkedQuestions,
+  printedTodoItems,
   refOfLink,
+  replyParts,
+  todoListSpan,
 } from "../src/pane/links.ts";
+import type { ListSpan } from "../src/pane/links.ts";
 import {
   isMergeKnown,
   mergedOfResponse,
@@ -1167,54 +1172,76 @@ export const register: Register = (on) => {
     );
   });
 
-  // A reply's Decide questions: the items the reply names are drawn in place
-  // of its Decide list, each in its box, the text either side of the list
-  // kept. Where the list isn't found intact, each raised item's summary line
-  // becomes a link that opens the pane at that item, and the items are drawn
-  // under the whole text instead.
+  // A reply's Decide questions and Todo items: the items of each list the
+  // reply prints are drawn in place of that list, each in its box, the text
+  // round the lists kept. A list not found intact is drawn as written, its
+  // items' boxes under the whole text instead, Todo's before Decide's, as
+  // the pane orders them; there each Decide item's summary line becomes a
+  // link that opens the pane at that item.
   on("ui.render", { component: "AssistantMessage" }, async ($, e, next) => {
     const r = await shownNow($);
     const raisedItems = decideItemsOf(r);
     const linked = linkedQuestions(e.props.text, raisedItems);
+    const decide = linkedItems(raisedItems, linked.hrefs);
+    const todo = printedTodoItems(e.props.text, listedItemsOf(r));
 
-    if (linked.hrefs.length === 0) {
+    if (decide.length === 0 && todo.length === 0) {
       return next(e);
     }
 
     const s = await settingsNow($);
     const elements = $.ui.resolve(e);
     const { Box, Markdown } = elements;
-    const items = linkedItems(raisedItems, linked.hrefs);
-    const boxes =
-      s === null
+    const text = await read($, draft);
+    // Each list's items the reply prints, by its header, and where the
+    // list stands, where it's found intact; without settings, no list is
+    // cut, and no boxes are drawn.
+    const lists: ReadonlyMap<
+      string,
+      Readonly<{ items: readonly ListedItem[]; span: ListSpan | undefined }>
+    > = new Map(
+      [
+        { list: TODO.header, items: todo, span: todoListSpan(e.props.text, todo) },
+        { list: DECIDE.header, items: decide, span: decideListSpan(e.props.text, decide) },
+      ].map((each) => [each.list, s === null ? { ...each, span: undefined } : each]),
+    );
+    const boxesOf = (list: string) => {
+      const items = lists.get(list)?.items ?? [];
+
+      return s === null || items.length === 0
         ? null
         : itemBoxes($, elements, s, r, items, {
-            key: "kanban-items",
-            text: await read($, draft),
+            key: `kanban-items-${list}`,
+            text,
             isPane: false,
             noting: "",
           });
-    const cut = s === null ? undefined : decideListCut(e.props.text, items);
+    };
+    // The Decide summaries are links only while the Decide list is drawn as
+    // written; linking keeps every line where it was, so the Todo list's
+    // span still holds.
+    const isLinked = decide.length > 0 && lists.get(DECIDE.header)?.span === undefined;
+    const spans = [...lists.values()].flatMap((each) => each.span ?? []);
+    const parts = replyParts(isLinked ? linked.text : e.props.text, spans);
+    const uncut = PANE_LISTS.filter((list) => lists.get(list.header)?.span === undefined);
 
-    return cut === undefined ? (
+    return (
       <Box flexDirection="column">
-        <Markdown
-          key="kanban-questions"
-          text={linked.text}
-          pressableLinks={linked.hrefs}
-          onLinkPress={(link) => showItem($, link.href)}
-        />
-        {boxes}
-      </Box>
-    ) : (
-      <Box flexDirection="column">
-        {cut.before === "" ? null : (
-          <Markdown key="kanban-before" text={cut.before} />
+        {parts.map((part) =>
+          part.kind === "list" ? (
+            boxesOf(part.list)
+          ) : isLinked ? (
+            <Markdown
+              key={`kanban-${part.key}`}
+              text={part.text}
+              pressableLinks={linked.hrefs}
+              onLinkPress={(link) => showItem($, link.href)}
+            />
+          ) : (
+            <Markdown key={`kanban-${part.key}`} text={part.text} />
+          ),
         )}
-        {boxes}
-        {cut.after === "" ? null : (
-          <Markdown key="kanban-after" text={cut.after} />
-        )}
+        {uncut.map((list) => boxesOf(list.header))}
       </Box>
     );
   });

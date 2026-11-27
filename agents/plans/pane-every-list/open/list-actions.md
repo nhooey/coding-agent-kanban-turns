@@ -4,7 +4,7 @@ state: approved
 kind: implementation
 part-of: pane-every-list
 needs: [items-of-every-list, answers-grouped-by-turn-and-list, pane-ui-harmonize, pane-state-reducer]
-touches: [plugin/hooks/register.tsx, plugin/src/pane/view.ts, plugin/src/items/items.ts, plugin/defaults/config.yaml, plugin/test/engine/]
+touches: [plugin/hooks/register.tsx, plugin/src/pane/links.ts, plugin/src/pane/view.ts, plugin/src/items/items.ts, plugin/defaults/config.yaml, plugin/test/engine/]
 ---
 
 # Each item's box, in the pane and in its reply, carries its list's actions
@@ -22,9 +22,16 @@ touches: [plugin/hooks/register.tsx, plugin/src/pane/view.ts, plugin/src/items/i
 - The notes field writes the note after the word, or alone.
 - A Done Todo item's box is dimmed and says `Done: done` or `Done: skipped`, with any note, and its actions still write the draft.
 
+## Already true for Todo, in the reply
+
+- A reply's Todo list found intact is cut out and its items' boxes drawn in its place, with **Done**, **Skip** and `✏️ Add a note`, which opens the pane at the item's notes field. Intact is Decide's rule: exactly one Todo list before any 📌 roll-up, its numbered summaries, each alone on its line, naming the items, every one and no other, in order (`todoListSpan` in `plugin/src/pane/links.ts`).
+- A Todo list that isn't intact is drawn as written, its boxes under the reply, before the Decide boxes there.
+- A reply with both lists intact has each cut out, each list's boxes in its own place (`replyParts`).
+- The reply's boxes are the pane's `itemBoxes`, so both write the same draft lines and each shows the other's presses.
+- A reply block's Todo items are those of the newest turn that raised every one it prints, by number and summary (`printedTodoItems`), since the engine doesn't say which turn drew the block.
+
 Still to come:
 
-- the boxes under a reply, where a Todo list is drawn as the reply wrote it;
 - the outline per turn;
 - the other lists' actions;
 - a Note button in place of the field that the pane always draws.
