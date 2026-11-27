@@ -6,11 +6,10 @@
 
 None.
 
-## Ready (9)
+## Ready (8)
 
 - [The pane's header row and footer stay in sight while its items scroll](open/pane-controls-stay-visible.md) `pane-controls-stay-visible`
 - [Items are one type changed only by events, and every view is a pure function of them and the view state](items-events-views/open/items-events-views.md) `items-events-views`
-- [Every move of an item between lists in the fixture transcripts is one event of the transition table, or a report names the verb it lacks](items-events-views/open/list-moves-fit-transitions.md) `list-moves-fit-transitions`, part of [Items are one type changed only by events, and every view is a pure function of them and the view state](items-events-views/open/items-events-views.md)
 - [Every list item in the fixture transcripts fits one row of the filter table, or a report names the field it lacks](items-events-views/open/lists-fit-filter-table.md) `lists-fit-filter-table`, part of [Items are one type changed only by events, and every view is a pure function of them and the view state](items-events-views/open/items-events-views.md)
 - [No code is kept for an older setting, reply or stored shape](items-events-views-refactor/open/compatibility-code-deleted.md) `compatibility-code-deleted`, part of [The plugin's code is one module per layer with imports one way, effects only in the hooks, and nothing kept for what came before or left unused](items-events-views-refactor/open/items-events-views-refactor.md)
 - [The plugin's code is one module per layer with imports one way, effects only in the hooks, and nothing kept for what came before or left unused](items-events-views-refactor/open/items-events-views-refactor.md) `items-events-views-refactor`
@@ -26,7 +25,7 @@ None.
 - [What the harness and the trackers report, a finished shell, a subagent's end or a merged pull request, reaches the fold as observations](items-events-views/open/harness-observations-as-events.md) `harness-observations-as-events`, part of [Items are one type changed only by events, and every view is a pure function of them and the view state](items-events-views/open/items-events-views.md), waiting on `item-event-reducer`
 - [The hooks are a module per concern, and `register.tsx` only registers them](items-events-views-refactor/open/hooks-split-by-concern.md) `hooks-split-by-concern`, part of [The plugin's code is one module per layer with imports one way, effects only in the hooks, and nothing kept for what came before or left unused](items-events-views-refactor/open/items-events-views-refactor.md), waiting on `core-folders-are-layers`
 - [One pure fold over the event log gives the session's items, and refuses an event the transition table doesn't allow](items-events-views/open/item-event-reducer.md) `item-event-reducer`, part of [Items are one type changed only by events, and every view is a pure function of them and the view state](items-events-views/open/items-events-views.md), waiting on `item-model-in-spec`, `core-folders-are-layers`
-- [The spec holds the item model as data, its kinds, presets, states, outcomes, events and who may fire them, relations, facets, controls and what's special](items-events-views/open/item-model-in-spec.md) `item-model-in-spec`, part of [Items are one type changed only by events, and every view is a pure function of them and the view state](items-events-views/open/items-events-views.md), waiting on `lists-fit-filter-table`, `list-moves-fit-transitions`, `compatibility-code-deleted`
+- [The spec holds the item model as data, its kinds, presets, states, outcomes, events and who may fire them, relations, facets, controls and what's special](items-events-views/open/item-model-in-spec.md) `item-model-in-spec`, part of [Items are one type changed only by events, and every view is a pure function of them and the view state](items-events-views/open/items-events-views.md), waiting on `lists-fit-filter-table`, `compatibility-code-deleted`
 - [The person's own text names an item by its ordinal, and one parser reads each reference, such as `12.B` or `12 done`, as one event](items-events-views/open/item-reference-grammar.md) `item-reference-grammar`, part of [Items are one type changed only by events, and every view is a pure function of them and the view state](items-events-views/open/items-events-views.md), waiting on `item-model-in-spec`
 - [One renderer draws an item as a chip, a line or a card, its marks from the spec and its controls from the transition table](items-events-views/open/item-renderer-densities.md) `item-renderer-densities`, part of [Items are one type changed only by events, and every view is a pure function of them and the view state](items-events-views/open/items-events-views.md), waiting on `item-event-reducer`, `hooks-split-by-concern`
 - [The agent declares items and their changes through one tool, which checks each event against the transition table and gives back the ids](items-events-views/open/item-tool-declares-events.md) `item-tool-declares-events`, part of [Items are one type changed only by events, and every view is a pure function of them and the view state](items-events-views/open/items-events-views.md), waiting on `item-event-reducer`, `hooks-split-by-concern`
@@ -48,4 +47,4 @@ None.
 
 ## Closed
 
-49 in [closed/](closed/): 26 implemented, 1 rejected, 1 abandoned, 21 superseded.
+50 in [closed/](closed/): 27 implemented, 1 rejected, 1 abandoned, 21 superseded.

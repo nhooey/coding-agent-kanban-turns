@@ -1,21 +1,22 @@
 ---
 title: Every move of an item between lists in the fixture transcripts is one event of the transition table, or a report names the verb it lacks
-state: approved
+state: implemented
 kind: implementation
 part-of: items-events-views
 touches: [agents/reports/, plugin/spec/cases/, plugin/test/fixtures/]
+implemented-by: items-events-views-build
 ---
 
 # Every move of an item between lists in the fixture transcripts is one event of the transition table, or a report names the verb it lacks
 
 The model says an item moving between lists is an unnamed event: Todo to Pending is `assign`, Pending to Done is `resolve`, and a Decide item that leaves is a `resolve` by the person.
-This check names the event behind every such move in real transcripts, against the transition table in [item-model-in-spec](item-model-in-spec.md), before that node writes the table into the spec.
+This check names the event behind every such move in real transcripts, against the transition table in [item-model-in-spec](../open/item-model-in-spec.md), before that node writes the table into the spec.
 It writes no code.
 
 ## What it does
 
 - **The transcripts.**
-  The same as [lists-fit-filter-table](lists-fit-filter-table.md) reads: the golden cases and the fixtures' transcripts, with a live session's read for counts alone.
+  The same as [lists-fit-filter-table](../open/lists-fit-filter-table.md) reads: the golden cases and the fixtures' transcripts, with a live session's read for counts alone.
 - **The moves.**
   For each pair of consecutive turns in which an item, matched by its subject, is in a different list, has left every list, or is settled by the person's text, a report or a merged pull request, the check names the verb, who fired it and the evidence the transcript holds for it.
 - **The finding.**
@@ -27,7 +28,7 @@ It writes no code.
 The table's rows for these are the least tested, and the transcripts show each:
 
 - **A note.**
-  `Todo.3: after the deploy` changes no state, and the table gives it `note` (open question 6 in [the end state](items-events-views.md)).
+  `Todo.3: after the deploy` changes no state, and the table gives it `note` (open question 6 in [the end state](../open/items-events-views.md)).
 - **Keeping an item through `reassess`.**
   A `reassess` turn closes every item the agent raised that it neither raised again nor kept.
   The table gives "kept" the verb `keep`, and the transcripts say how often a reassess reply restates an item unchanged, which is what `keep` stands for.
@@ -48,4 +49,4 @@ A dated report, `agents/reports/<date>-list-moves-fit-transitions.md`, `state: c
 Checks:
 
 - the report exists and names a verb, or a misfit, for every move in the golden cases;
-- each misfit is answered by an edit to the transition table in [item-model-in-spec](item-model-in-spec.md), in the commit that adds the report, or the report says why none is needed.
+- each misfit is answered by an edit to the transition table in [item-model-in-spec](../open/item-model-in-spec.md), in the commit that adds the report, or the report says why none is needed.

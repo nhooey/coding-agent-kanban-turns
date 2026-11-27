@@ -145,7 +145,7 @@ A picked answer that isn't sent is no item state: it's a line of the draft's tex
 Three checks of the model come first, each cheap, and each can change the model before anything is built on it:
 
 1. [lists-fit-filter-table](lists-fit-filter-table.md): every item in the fixture transcripts fits one row of the filter table.
-2. [list-moves-fit-transitions](list-moves-fit-transitions.md): every move between lists is one event of the transition table.
+2. [list-moves-fit-transitions](../closed/list-moves-fit-transitions.md): every move between lists is one event of the transition table.
 3. [task-list-matches-pending](../closed/task-list-matches-pending.md): whether the agent's Pending items are the harness's task list.
 
 Beside them, [the refactor plan](../../items-events-views-refactor/open/items-events-views-refactor.md)'s five nodes clear the ground the model is built on, and need no answer from the checks.
