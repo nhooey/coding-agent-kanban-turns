@@ -180,7 +180,7 @@ describe("the tool's input schema", () => {
       "The item number in the Decide list.",
     );
     expect(option.letter.description).toBe(
-      "The capital letter, A, B, C, or Y and N.",
+      "The capital letter, A, B, C and on, in the options' order.",
     );
     expect(option.pros.description).toBe("The option's ➕ lines, without the ➕.");
     expect(option.cons.description).toBe("The option's ➖ lines, without the ➖.");
@@ -274,19 +274,15 @@ describe("the tool's schema", () => {
     ).toEqual([...options.required]);
   });
 
-  test("takes every kind the spec reads, and the instructions teach only the taught ones", () => {
+  test("takes every kind the spec holds, and the instructions teach each of them", () => {
     const kinds = Object.entries(SPEC.options.kinds);
 
     expect(ITEM_SCHEMA.properties.kind.enum).toEqual(KINDS);
     expect(KINDS).toEqual(kinds.map(([name]) => name));
-    kinds
-      .filter(([, kind]) => kind.taught)
-      .forEach(([name, kind]) => {
-        expect(INSTRUCTIONS).toContain(`\`${name}\``);
-        expect(INSTRUCTIONS).toContain(kind.glyph);
-      });
-    expect(INSTRUCTIONS).not.toContain("`binary`");
-    expect(INSTRUCTIONS).not.toContain("👍 Y.");
+    kinds.forEach(([name, kind]) => {
+      expect(INSTRUCTIONS).toContain(`\`${name}\``);
+      expect(INSTRUCTIONS).toContain(kind.glyph);
+    });
   });
 
   test("gives the kind an item takes when it names none, the one itemsOf fills in", () => {

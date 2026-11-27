@@ -18,8 +18,8 @@ export type DecideOption = Readonly<{
   notes?: readonly string[];
 }>;
 
-/** radio: exactly one letter; checkbox: any number; binary: Y or N. */
-export type DecideKind = "radio" | "checkbox" | "binary";
+/** radio: exactly one letter; checkbox: any number. */
+export type DecideKind = "radio" | "checkbox";
 
 /**
  * One open Decide item, as the `kanban_options` tool takes it, in the shape

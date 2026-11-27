@@ -1,7 +1,7 @@
 // A reply's text read once, into the blocks the protocol draws it with: a
-// list's header, an item with the lines under it, the 📌 roll-up's start, an
-// older roll-up header that ends a section, a topic header and its rule, an
-// underline, a separator, a code block, a blank line and a line of prose.
+// list's header, an item with the lines under it, the 📌 roll-up's start, a
+// topic header and its rule, an underline, a separator, a code block, a
+// blank line and a line of prose.
 // No `$`, no I/O. The readers of a reply, its sections, the items of its
 // lists, its Decide items, its Decide list cut out and its questions as
 // links, read these blocks rather than its lines again; the reply lint reads
@@ -15,12 +15,10 @@
 //   item's text may open on one. It closes on a line of the same character
 //   alone, at least as long. Every line of it is code, and nothing else. A
 //   fence less indented than an item's text ends the item.
-// - A list's header is any glyph, then a list's name or alias in bold with
-//   a colon, `🧠 **Decide:**`.
-// - The 📌 roll-up starts on its header or an older one, with its glyph, in
-//   bold with a colon.
-// - An older roll-up header bare, alone on its line at its start, a colon
-//   after it or not, ends a list's section and nothing more.
+// - A list's header is any glyph, then a list's name in bold with a colon,
+//   `🧠 **Decide:**`.
+// - The 📌 roll-up starts on its header, with its glyph, in bold with a
+//   colon.
 // - A topic header is a line of `═` alone, and the line above it, its title,
 //   unless that line is blank, a header, the roll-up's start or a rule.
 // - An item is a bullet, `-` or `*`, or a number with `.` or `)`, at most 2
@@ -34,7 +32,7 @@
 // Every glyph, name and rule character comes from the spec.
 
 import { optionGlyphs } from "../protocol/kinds.ts";
-import { LETTER, SECTION_NAMES, isLineOf, namesOf } from "../protocol/rules.ts";
+import { LETTER, SECTION_NAMES, isLineOf } from "../protocol/rules.ts";
 import { SPEC } from "../protocol/spec.ts";
 import { escaped } from "../text/patterns.ts";
 
@@ -45,18 +43,11 @@ const HEADER = new RegExp(
 
 const ROLL_UP = SPEC["roll-up"];
 
-/** The 📌 roll-up's header, or an older one, with its glyph, in bold with a colon. */
+/** The 📌 roll-up's header, with its glyph, in bold with a colon. */
 const PIN = new RegExp(
-  String.raw`^\s*${escaped(ROLL_UP.glyph)}\s+\*\*(${namesOf(ROLL_UP).map(escaped).join("|")}):\*\*`,
+  String.raw`^\s*${escaped(ROLL_UP.glyph)}\s+\*\*${escaped(ROLL_UP.header)}:\*\*`,
   "u",
 );
-
-/** Whether a line is an older roll-up header bare, alone on its line at its start, a colon after it or not. */
-const isOlderRollUp = (line: string): boolean => {
-  const end = line.trimEnd();
-
-  return ROLL_UP.aliases.some((older) => end === older || end === `${older}:`);
-};
 
 /** The count line's opening, `📌 Outstanding:`. */
 const COUNT_LINE = `${ROLL_UP.glyph} ${ROLL_UP["count-label"]}:`;
@@ -118,8 +109,7 @@ const BARE = /^ {0,2}(\d+)[.)]\s*$/;
 /** The bold text a text opens on, and what follows it. */
 const BOLD = /^\*\*(.+?)\*\*/;
 
-// An option, `🔘 A. **Disk**`: any glyph the spec's kinds draw one with, a
-// kind not taught's among them so an older reply's options still read, its
+// An option, `🔘 A. **Disk**`: any glyph the spec's kinds draw one with, its
 // letter and its bold name.
 const OPTION = new RegExp(
   String.raw`^\s*(${optionGlyphs(SPEC.options.kinds).map(escaped).join("|")})\s+(${LETTER})\.\s+\*\*(.+?)\*\*`,
@@ -155,10 +145,8 @@ export type LineFacts = Readonly<{
   bold: string | undefined;
 }>;
 
-/** A line under an item, as written: whether it's code, whether it's an older roll-up header, and, outside code, what else it's read as. */
-export type BodyLine = Readonly<
-  { line: string; isCode: boolean; isStop: boolean } & LineFacts
->;
+/** A line under an item, as written: whether it's code, and, outside code, what else it's read as. */
+export type BodyLine = Readonly<{ line: string; isCode: boolean } & LineFacts>;
 
 type Of<K extends string, Fields = unknown> = Readonly<
   { kind: K; at: number; lines: readonly string[] } & Fields
@@ -174,7 +162,6 @@ type Of<K extends string, Fields = unknown> = Readonly<
 export type Block =
   | Of<"header", Readonly<{ name: string }>>
   | Of<"roll-up">
-  | Of<"stop">
   | Of<"topic", Readonly<{ isTitled: boolean }>>
   | Of<"underline", Readonly<{ char: string }>>
   | Of<"separator">
@@ -194,7 +181,7 @@ type Lexeme =
   | Readonly<{ kind: "text"; line: string; facts: LineFacts }>
   | Readonly<{ kind: "code"; line: string; opens: boolean }>
   | Readonly<{
-      kind: "roll-up" | "stop" | "rule" | "title" | "separator" | "blank";
+      kind: "roll-up" | "rule" | "title" | "separator" | "blank";
       line: string;
     }>;
 
@@ -249,21 +236,19 @@ const lexeme = (raw: string): Lexeme => {
     ? { kind: "header", line: raw, name }
     : PIN.test(line)
       ? { kind: "roll-up", line: raw }
-      : isOlderRollUp(line)
-        ? { kind: "stop", line: raw }
-        : isTopicRule(line)
-          ? { kind: "rule", line: raw }
-          : char !== undefined
-            ? { kind: "underline", line: raw, char }
-            : line.trim() === ""
-              ? { kind: "blank", line: raw }
-              : line.trim() === CHARS.separator
-                ? { kind: "separator", line: raw }
-                : head !== undefined
-                  ? { kind: "item", line: raw, head }
-                  : fenceOpening(line) !== undefined
-                    ? { kind: "code", line: raw, opens: true }
-                    : { kind: "text", line: raw, facts: factsOf(line) };
+      : isTopicRule(line)
+        ? { kind: "rule", line: raw }
+        : char !== undefined
+          ? { kind: "underline", line: raw, char }
+          : line.trim() === ""
+            ? { kind: "blank", line: raw }
+            : line.trim() === CHARS.separator
+              ? { kind: "separator", line: raw }
+              : head !== undefined
+                ? { kind: "item", line: raw, head }
+                : fenceOpening(line) !== undefined
+                  ? { kind: "code", line: raw, opens: true }
+                  : { kind: "text", line: raw, facts: factsOf(line) };
 };
 
 type Lexing = Readonly<{ fence: Fence | undefined; done: readonly Lexeme[] }>;
@@ -297,7 +282,6 @@ const TITLES: readonly Lexeme["kind"][] = [
   "item",
   "separator",
   "underline",
-  "stop",
 ];
 
 /** Each line's lexeme, a line above a topic rule made its title. */
@@ -314,18 +298,16 @@ const lexemesOf = (lines: readonly string[]): readonly Lexeme[] => {
 /** How many characters of whitespace a line opens with. */
 const indentOf = (line: string): number => line.length - line.trimStart().length;
 
-/** Whether a line is the item's own: prose, an underline, an older roll-up header, or code, unless it's a fence less indented than the item's text. */
+/** Whether a line is the item's own: prose, an underline, or code, unless it's a fence less indented than the item's text. */
 const isUnder = (head: ItemHead, lex: Lexeme): boolean =>
   lex.kind === "text" ||
   lex.kind === "underline" ||
-  lex.kind === "stop" ||
   (lex.kind === "code" && !(lex.opens && indentOf(lex.line) < head.lead.length));
 
 /** A line under an item, read. */
 const bodyLineOf = (lex: Lexeme): BodyLine => ({
   line: lex.line,
   isCode: lex.kind === "code",
-  isStop: lex.kind === "stop",
   ...(lex.kind === "text" ? lex.facts : NO_FACTS),
 });
 
@@ -409,16 +391,6 @@ export type SectionBlocks = Readonly<{ name: string; blocks: readonly Block[] }>
 
 type Sectioning = Readonly<{ isOpen: boolean; done: readonly SectionBlocks[] }>;
 
-/** Where an older roll-up header stands among an item's lines under it; -1 where none does. */
-const stopAt = (block: Block): number =>
-  block.kind === "item" ? block.body.findIndex((under) => under.isStop) : -1;
-
-/** An item cut before the line under it at `at`. */
-const cutAt = (block: Block, at: number): Block =>
-  block.kind === "item"
-    ? { ...block, lines: block.lines.slice(0, 1 + at), body: block.body.slice(0, at) }
-    : block;
-
 /** The sections with `block` the last one's last. */
 const appended = (
   done: readonly SectionBlocks[],
@@ -430,28 +402,23 @@ const appended = (
       : section,
   );
 
-/** Whether a block ends the section it's in and opens none: the 📌 roll-up's start, an older roll-up header bare, or a topic header. */
+/** Whether a block ends the section it's in and opens none: the 📌 roll-up's start or a topic header. */
 const endsSection = (block: Block): boolean =>
-  block.kind === "roll-up" || block.kind === "stop" || block.kind === "topic";
+  block.kind === "roll-up" || block.kind === "topic";
 
-const sectioned = ({ isOpen, done }: Sectioning, block: Block): Sectioning => {
-  const stop = stopAt(block);
-
-  return block.kind === "header"
+const sectioned = ({ isOpen, done }: Sectioning, block: Block): Sectioning =>
+  block.kind === "header"
     ? { isOpen: true, done: [...done, { name: block.name, blocks: [block] }] }
     : endsSection(block)
       ? { isOpen: false, done }
       : !isOpen
         ? { isOpen, done }
-        : stop >= 0
-          ? { isOpen: false, done: appended(done, cutAt(block, stop)) }
-          : { isOpen, done: appended(done, block) };
-};
+        : { isOpen, done: appended(done, block) };
 
 /**
  * Each list's section of the blocks, in order: a header and the blocks
- * after it, up to the next header, the 📌 roll-up's start, an older roll-up
- * header bare, even among an item's lines, or a topic header.
+ * after it, up to the next header, the 📌 roll-up's start or a topic
+ * header.
  */
 export const sectionsIn = (blocks: readonly Block[]): readonly SectionBlocks[] =>
   blocks.reduce(sectioned, { isOpen: false, done: [] }).done;
@@ -461,7 +428,7 @@ type Naming = Readonly<{ open: string | undefined; names: readonly (string | und
 const named = ({ open, names }: Naming, block: Block): Naming => {
   const name = block.kind === "header" ? block.name : endsSection(block) ? undefined : open;
 
-  return { open: stopAt(block) >= 0 ? undefined : name, names: [...names, name] };
+  return { open: name, names: [...names, name] };
 };
 
 /**

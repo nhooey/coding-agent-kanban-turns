@@ -231,21 +231,20 @@ describe("turnAt", () => {
   });
 
   test("refuses a kind the spec doesn't name", () => {
-    expect(itemProblems([{ ...ITEM, kind: "dial" }])).toEqual([
-      `t.decide[0].kind names no option kind of the spec: "dial"; give one of radio, checkbox, binary`,
+    expect(itemProblems([{ ...ITEM, kind: "dial" }, { ...ITEM, number: 2, kind: "slider" }])).toEqual([
+      `t.decide[0].kind names no option kind of the spec: "dial"; give one of radio, checkbox`,
+      `t.decide[1].kind names no option kind of the spec: "slider"; give one of radio, checkbox`,
     ]);
   });
 
-  test("refuses a letter outside the grammar's, one its kind doesn't take, and one given twice", () => {
+  test("refuses a letter outside the grammar's, and one given twice", () => {
     expect(
       itemProblems([
         { ...ITEM, options: [{ letter: "a", name: "x" }, { letter: "B", name: "y" }, { letter: "B", name: "z" }] },
-        { ...ITEM, number: 2, kind: "binary", options: [{ letter: "A", name: "x" }] },
       ]),
     ).toEqual([
       `t.decide[0].options[0].letter "a" isn't one of A to Z`,
       "t.decide[0].options give the letter B more than once",
-      "t.decide[1].options[0].letter A isn't one a binary item takes: Y, N",
     ]);
   });
 });

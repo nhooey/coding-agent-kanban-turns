@@ -54,7 +54,7 @@ In the plugin's code:
 
 Each `needs` the ones before it that it builds on:
 
-1. [compatibility-code-deleted](compatibility-code-deleted.md): the retired settings' warnings, the aliases and the untaught option kind go.
+1. [compatibility-code-deleted](../closed/compatibility-code-deleted.md): the retired settings' warnings, the aliases and the untaught option kind go.
 2. [refactor-oracles-deleted](../closed/refactor-oracles-deleted.md): the tests' copies of replaced code go.
 3. [core-folders-are-layers](core-folders-are-layers.md), after both: the core's folders are the layers, and a check holds the imports one way.
 4. [hooks-split-by-concern](hooks-split-by-concern.md), after that: `register.tsx` is a module per concern.
@@ -83,7 +83,7 @@ What is better refactored by the node that rewrites it stays in [items-events-vi
 
 | Node of items-events-views                                                                       | Needs                                                     | Why                                                    |
 | ------------------------------------------------------------------------------------------------ | --------------------------------------------------------- | ------------------------------------------------------ |
-| [item-model-in-spec](../../items-events-views/open/item-model-in-spec.md)                         | [compatibility-code-deleted](compatibility-code-deleted.md) | the spec it extends has no alias and no untaught kind  |
+| [item-model-in-spec](../../items-events-views/open/item-model-in-spec.md)                         | [compatibility-code-deleted](../closed/compatibility-code-deleted.md) | the spec it extends has no alias and no untaught kind  |
 | [item-event-reducer](../../items-events-views/open/item-event-reducer.md)                         | [core-folders-are-layers](core-folders-are-layers.md)     | the fold lands in the items layer, under the check     |
 | [item-tool-declares-events](../../items-events-views/open/item-tool-declares-events.md)           | [hooks-split-by-concern](hooks-split-by-concern.md)       | the tool's handler lands in the tools' module          |
 | [item-renderer-densities](../../items-events-views/open/item-renderer-densities.md)               | [hooks-split-by-concern](hooks-split-by-concern.md)       | the renderer's elements land in a module of their own  |

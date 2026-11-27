@@ -16,7 +16,6 @@ import {
   PLUGIN,
   PLUGIN_SKILL,
 } from "../../../src/protocol/instructions.ts";
-import { optionGlyphs, taughtKinds } from "../../../src/protocol/kinds.ts";
 import { filled, placeholderValues, unusedFragments } from "../../../src/protocol/prose.ts";
 import { SPEC } from "../../../src/protocol/spec.ts";
 import { LINT_TOOL, OPTIONS_TOOL, OUTSTANDING_TOOL } from "../../../src/protocol/tools.ts";
@@ -28,13 +27,11 @@ import {
   SKILL_NAME,
   SKILL_OWN,
   exampleFile,
-  exampleProblems,
   exampleText,
   examplesOf,
   fenced,
   frontmatterOf,
   skillFiles,
-  untaughtUses,
 } from "../../../tools/skill/render.ts";
 import type { NamedCase } from "../../../tools/skill/render.ts";
 import type { GoldenCase } from "../../../tools/spec/cases.ts";
@@ -43,25 +40,16 @@ import { goldenCases } from "../../fixtures/cli.ts";
 const CASES: readonly NamedCase[] = goldenCases();
 const VALUES = placeholderValues(SPEC, SKILL_OWN);
 
-/** The files the skill is made of, or a test fails on the build's problems. */
-const FILES: Readonly<Record<string, string>> = (() => {
-  const result = skillFiles(CASES);
-
-  return "files" in result ? result.files : {};
-})();
+/** The files the skill is made of. */
+const FILES: Readonly<Record<string, string>> = skillFiles(CASES);
 const SKILL = FILES[SKILL_FILE] ?? "";
-
-/** The glyphs and letters only an untaught kind's options are drawn or lettered with. */
-const UNTAUGHT_GLYPHS = optionGlyphs(SPEC.options.kinds).filter(
-  (glyph) => !optionGlyphs(taughtKinds(SPEC.options.kinds)).includes(glyph),
-);
 
 /** Every fenced block's body in a Markdown text, fences of 3 or more backticks. */
 const fencedBlocks = (text: string): readonly string[] =>
   [...text.matchAll(/^(`{3,})[^\n]*\n([\s\S]*?)^\1$/gm)].map((match) => match[2] ?? "");
 
-/** A one-turn case raising a Decide item of `kind`, its option drawn with `glyph` and lettered `letter`. */
-const caseWith = (kind: string, glyph: string, letter: string, example?: boolean): GoldenCase => ({
+/** A one-turn case raising a radio Decide item, its one option lettered `A`. */
+const caseWith = (example?: boolean): GoldenCase => ({
   title: "One Decide item",
   ...(example === undefined ? {} : { example }),
   turns: [
@@ -74,7 +62,7 @@ const caseWith = (kind: string, glyph: string, letter: string, example?: boolean
             "🧠 **Decide:**  ",
             "▔▔▔▔▔▔▔▔▔▔",
             "1. **Ship tonight?**  ",
-            `   ${glyph} ${letter}. **Ship it**: it goes out.`,
+            "   🔘 A. **Ship it**: it goes out.",
             "      ➕ Users get it.",
             "      ➖ Risk.",
             "",
@@ -82,7 +70,7 @@ const caseWith = (kind: string, glyph: string, letter: string, example?: boolean
           lint: [],
         },
       ],
-      decide: [{ number: 1, summary: "Ship tonight?", kind, options: [{ letter, name: "Ship it" }] }],
+      decide: [{ number: 1, summary: "Ship tonight?", kind: "radio", options: [{ letter: "A", name: "Ship it" }] }],
     },
   ],
   expect: { open: ["9efb08a1.Decide.1"], outstanding: [], counts: "" },
@@ -109,25 +97,10 @@ describe("the skill's fragments", () => {
 });
 
 describe("skillFiles", () => {
-  test("builds the skill from the golden cases, with no problem", () => {
-    expect(skillFiles(CASES)).toHaveProperty("files");
-  });
-
   test("gives SKILL.md and one example per worked example, and nothing else", () => {
     expect(Object.keys(FILES).toSorted()).toEqual(
       [SKILL_FILE, ...examplesOf(CASES).map(({ name }) => exampleFile(name))].toSorted(),
     );
-  });
-
-  test("refuses a worked example that draws an untaught kind, naming it", () => {
-    const binary = { name: "binary.yaml", golden: caseWith("binary", "👍", "Y") };
-
-    expect(skillFiles([...CASES, binary])).toEqual({
-      problems: [
-        "spec/cases/binary.yaml: turns[0].decide[0] is a binary item, a kind the instructions don't teach; mark the case example: false",
-        "spec/cases/binary.yaml: turns[0].replies[0] line 4 draws an option of a kind the instructions don't teach; mark the case example: false",
-      ],
-    });
   });
 });
 
@@ -243,13 +216,6 @@ describe("the worked examples", () => {
     expect(Object.values(FILES).filter((text) => /Open Decide items|What Decide frees/.test(text))).toEqual([]);
   });
 
-  test("draw only the kinds the instructions teach, in every fenced block", () => {
-    const blocks = Object.values(FILES).flatMap(fencedBlocks);
-
-    expect(blocks.length).toBeGreaterThan(0);
-    expect(blocks.filter((block) => UNTAUGHT_GLYPHS.some((glyph) => block.includes(glyph)))).toEqual([]);
-  });
-
   test("give responses the lint finds nothing in", () => {
     expect(
       examplesOf(CASES).flatMap(({ name, golden }) =>
@@ -261,44 +227,11 @@ describe("the worked examples", () => {
   });
 });
 
-describe("the golden cases", () => {
-  test("draw an untaught kind only where marked example: false", () => {
-    expect(
-      CASES.filter(({ golden }) => golden.example !== false && untaughtUses(golden).length > 0).map(
-        ({ name }) => name,
-      ),
-    ).toEqual([]);
-  });
-
-  test("of those, some draw it, so the lint's untaught-option rule has a case", () => {
-    expect(CASES.some(({ golden }) => golden.example === false && untaughtUses(golden).length > 0)).toBe(true);
-  });
-});
-
-describe("untaughtUses", () => {
-  test("finds an item of an untaught kind and the option line that draws it", () => {
-    expect(untaughtUses(caseWith("binary", "👍", "Y"))).toEqual([
-      "turns[0].decide[0] is a binary item, a kind the instructions don't teach",
-      "turns[0].replies[0] line 4 draws an option of a kind the instructions don't teach",
-    ]);
-  });
-
-  test("finds nothing in a taught kind", () => {
-    expect(untaughtUses(caseWith("radio", "🔘", "A"))).toEqual([]);
-  });
-});
-
-describe("exampleProblems", () => {
-  test("passes over a case marked example: false", () => {
-    expect(exampleProblems([{ name: "binary.yaml", golden: caseWith("binary", "👍", "Y", false) }])).toEqual([]);
-  });
-});
-
 describe("examplesOf", () => {
   test("keeps a case unmarked or marked example: true, and drops one marked false", () => {
     const named = (name: string, example?: boolean): NamedCase => ({
       name,
-      golden: caseWith("radio", "🔘", "A", example),
+      golden: caseWith(example),
     });
 
     expect(examplesOf([named("a.yaml"), named("b.yaml", false), named("c.yaml", true)]).map(({ name }) => name)).toEqual([
@@ -339,7 +272,7 @@ describe("frontmatterOf", () => {
 });
 
 describe("exampleText", () => {
-  const golden = caseWith("radio", "🔘", "A");
+  const golden = caseWith();
   const text = exampleText({ name: "one-item.yaml", golden });
 
   test("opens on the case's name, then its title", () => {

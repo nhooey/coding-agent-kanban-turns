@@ -32,7 +32,6 @@ Before sending a final response, check the draft for each of these and fix every
 - a missing or misplaced separator line, a line of other whitespace where one belongs, or a blank line beside one inside a list;
 - text after a numbered item's summary on its line, or a summary line with no hard line break;
 - a list among a {{lists.decide.header}} item's options;
-- a {{untaught.glyphs}} option, or one lettered {{untaught.letters}};
 - a header or topic underline of the wrong width;
 - a list under a topic that does not number on from the topics before;
 - a header written directly under a list, with no blank line between;

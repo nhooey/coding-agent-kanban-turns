@@ -39,7 +39,6 @@ describe("the random replies reach", () => {
     const kinds: readonly BlockKind[] = [
       "header",
       "roll-up",
-      "stop",
       "topic",
       "underline",
       "separator",

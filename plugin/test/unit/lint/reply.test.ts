@@ -15,7 +15,6 @@ import {
   isKanbanReply,
   lintReply,
   replyLintText,
-  untaughtMarks,
 } from "../../../src/lint/reply.ts";
 import { cellWidth } from "../../../src/text/cells.ts";
 import { CASE_SCHEMA_FILE } from "../../../tools/spec/cases.ts";
@@ -188,77 +187,15 @@ describe("lintReply", () => {
     ]);
   });
 
-  test("finds an option of a kind the instructions no longer teach, by its glyph or its letters", () => {
+  test("finds nothing in an option's letters, any of the reference grammar's, Y and N among them", () => {
     const DECIDE = ["🧠 **Decide:**  ", "▔▔▔▔▔▔▔▔▔▔", "1. **Ship tonight?**  "];
 
     expect(
-      lintReply(
-        lines(...DECIDE, "   👍 Y. **Ship it**: it goes out.", "   👎 N. **Hold it**: it waits."),
-      ),
-    ).toEqual([
-      { line: 4, rule: "untaught-option" },
-      { line: 5, rule: "untaught-option" },
-    ]);
-    expect(
       lintReply(lines(...DECIDE, "   🔘 Y. **Ship it**: it goes out.", "   🔘 N. **Hold it**: it waits.")),
-    ).toEqual([
-      { line: 4, rule: "untaught-option" },
-      { line: 5, rule: "untaught-option" },
-    ]);
-    expect(
-      lintReply(lines(...DECIDE, "   👍 A. **Ship it**: it goes out.", "   🔘 B. **Hold it**: it waits.")),
-    ).toEqual([{ line: 4, rule: "untaught-option" }]);
+    ).toEqual([]);
     expect(
       lintReply(lines(...DECIDE, "   🔘 A. **Ship it**: it goes out.", "   🔘 B. **Hold it**: it waits.")),
     ).toEqual([]);
-  });
-
-  test("reads a Y or an N among other letters as a taught kind's", () => {
-    const options = [..."ABCDEFGHIJKLMN"].map(
-      (letter) => `   🔘 ${letter}. **Option ${letter}**: it is picked.`,
-    );
-
-    expect(
-      lintReply(lines("🧠 **Decide:**  ", "▔▔▔▔▔▔▔▔▔▔", "1. **Which one?**  ", ...options)),
-    ).toEqual([]);
-    expect(
-      lintReply(
-        lines(
-          "🧠 **Decide:**  ",
-          "▔▔▔▔▔▔▔▔▔▔",
-          "1. **Ship tonight?**  ",
-          "   🔘 Y. **Ship it**: it goes out.",
-          "   🔘 B. **Hold it**: it waits.",
-        ),
-      ),
-    ).toEqual([]);
-  });
-
-  test("checks each item's letters apart from the next item's", () => {
-    expect(
-      untaughtMarks([
-        { line: 4, glyph: "🔘", letter: "Y" },
-        { line: 5, glyph: "🔘", letter: "N" },
-      ]),
-    ).toEqual([4, 5]);
-    expect(
-      lintReply(
-        lines(
-          "🧠 **Decide:**  ",
-          "▔▔▔▔▔▔▔▔▔▔",
-          "1. **Ship tonight?**  ",
-          "   🔘 Y. **Ship it**: it goes out.",
-          "   🔘 N. **Hold it**: it waits.",
-          "   ⠀",
-          "2. **Which cache?**  ",
-          "   🔘 A. **Disk**: it stays.",
-          "   🔘 N. **None**: it goes.",
-        ),
-      ),
-    ).toEqual([
-      { line: 4, rule: "untaught-option" },
-      { line: 5, rule: "untaught-option" },
-    ]);
   });
 });
 
@@ -334,12 +271,6 @@ describe("the lint's rules", () => {
   test("name the separator by its code point", () => {
     expect(RULES["whitespace-line"]).toContain("U+2800");
   });
-
-  test("tell a yes-or-no question's options apart from the kinds taught", () => {
-    expect(RULES["untaught-option"]).toBe(
-      "an option is 🔘 or 🔲 lettered from A; write a yes-or-no question as 🔘 A. and 🔘 B.",
-    );
-  });
 });
 
 describe("findingLine", () => {
@@ -395,7 +326,7 @@ describe("replyLintText", () => {
 describe("isKanbanReply", () => {
   test("is a reply with a list's header, the 📌 roll-up or the count line", () => {
     expect(isKanbanReply("Prose.\n\n✅ **Done:**  \n▔▔▔▔▔▔▔▔\n1. **One**\n")).toBe(true);
-    expect(isKanbanReply("📋 **To review:**  \n- **The README**\n")).toBe(true);
+    expect(isKanbanReply("🔍 **Review:**  \n- **The README**\n")).toBe(true);
     expect(isKanbanReply("📌 **Outstanding from previous turns:**  \n")).toBe(true);
     expect(isKanbanReply("Prose.\n\n📌 Outstanding: 🧠 1\n")).toBe(true);
   });
@@ -403,14 +334,10 @@ describe("isKanbanReply", () => {
   test("isn't a reply of prose alone", () => {
     expect(isKanbanReply("The tests pass.\n\n| A | B |\n| - | - |\n")).toBe(false);
     expect(isKanbanReply("A **bold:** word.")).toBe(false);
+    expect(isKanbanReply("📋 **Backlog:**  \n- **The README**\n")).toBe(false);
   });
 
   test("isn't a reply whose header, roll-up or count line is inside a code block", () => {
     expect(isKanbanReply("Like this:\n\n```\n✅ **Done:**\n📌 Outstanding: 🧠 1\n```\n")).toBe(false);
-  });
-
-  test("isn't a reply for an older roll-up header bare, alone or opening prose", () => {
-    expect(isKanbanReply("Still open from earlier\n- **The README**\n")).toBe(false);
-    expect(isKanbanReply("Still open from earlier, the README.\n")).toBe(false);
   });
 });

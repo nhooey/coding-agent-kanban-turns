@@ -42,7 +42,6 @@ export type SpecShape = Readonly<{
       Readonly<{
         header: string;
         glyph: string;
-        aliases: readonly string[];
         "rolls-up": boolean;
         "settled-by": string;
         "settling-words": Readonly<Record<string, string>>;
@@ -51,12 +50,7 @@ export type SpecShape = Readonly<{
     >
   >;
   options: Readonly<{
-    kinds: Readonly<
-      Record<
-        string,
-        Readonly<{ glyph: string; letters: Readonly<Record<string, string>> }>
-      >
-    >;
+    kinds: Readonly<Record<string, Readonly<{ glyph: string }>>>;
   }>;
   commands: Readonly<{
     names: Readonly<Record<string, Readonly<{ synonyms: readonly string[] }>>>;
@@ -203,22 +197,11 @@ const turnIdProblems = (spec: SpecShape): readonly string[] => {
       ];
 };
 
-/** A letter range that runs backwards, and each option kind's letter outside it. */
+/** A letter range that runs backwards. */
 const letterProblems = (spec: SpecShape): readonly string[] => {
   const { first, last } = spec.reference.letters;
-  const outside = Object.entries(spec.options.kinds).flatMap(([kind, each]) =>
-    Object.keys(each.letters)
-      .filter((letter) => letter < first || letter > last)
-      .map(
-        (letter) =>
-          `the letter ${letter} of ${kind} is outside the letters, ${first} to ${last}`,
-      ),
-  );
 
-  return [
-    ...(first <= last ? [] : [`the letters run backwards, ${first} to ${last}`]),
-    ...outside,
-  ];
+  return first <= last ? [] : [`the letters run backwards, ${first} to ${last}`];
 };
 
 /**
@@ -250,13 +233,11 @@ const subjectProblems = (spec: SpecShape): readonly string[] => {
   ];
 };
 
-/** Each glyph that marks more than one option kind, its glyph or a letter's. */
+/** Each glyph that marks more than one option kind. */
 const kindGlyphProblems = (spec: SpecShape): readonly string[] =>
-  repeated(
-    Object.values(spec.options.kinds).flatMap((kind) => [
-      ...new Set([kind.glyph, ...Object.values(kind.letters)]),
-    ]),
-  ).map((glyph) => `the glyph ${glyph} marks more than one option kind`);
+  repeated(Object.values(spec.options.kinds).map((kind) => kind.glyph)).map(
+    (glyph) => `the glyph ${glyph} marks more than one option kind`,
+  );
 
 /**
  * What's inconsistent in the spec, which its schema can't say:
@@ -271,7 +252,7 @@ const kindGlyphProblems = (spec: SpecShape): readonly string[] =>
  * - a word that settles two lists differently;
  * - a command name that starts another's;
  * - a turn id's shortest prefix longer than the id;
- * - a letter range that runs backwards, or an option kind's letter outside it;
+ * - a letter range that runs backwards;
  * - a glyph two option kinds share;
  * - a backlog entry's digit count that runs backwards, one label for an
  *   entry's key and a branch's, or a stop word with a character outside
@@ -287,7 +268,7 @@ export const specProblems = (spec: SpecShape): readonly string[] => {
     ...repeated(lists.map((list) => list.glyph)).map(
       (glyph) => `the glyph ${glyph} heads more than one list`,
     ),
-    ...repeated(lists.flatMap((list) => [list.header, ...list.aliases])).map(
+    ...repeated(lists.map((list) => list.header)).map(
       (name) => `the name ${JSON.stringify(name)} names more than one list`,
     ),
     ...settledByProblems(spec),

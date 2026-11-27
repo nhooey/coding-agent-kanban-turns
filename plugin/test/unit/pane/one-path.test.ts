@@ -80,9 +80,9 @@ describe("the spec's feedback", () => {
     expect(listKeyOf(SPEC.lists.decide)).toBe("decide");
   });
 
-  test("finds any of the spec's lists by its header or an alias, none for another name", () => {
+  test("finds any of the spec's lists by its header, none for another name", () => {
     expect(listNamed("Todo")).toBe(SPEC.lists.todo);
-    expect(listNamed("To do")).toBe(SPEC.lists.todo);
+    expect(listNamed("Backlog")).toBeUndefined();
     expect(listNamed("Pending")).toBe(SPEC.lists.pending);
     expect(listNamed("Nothing")).toBeUndefined();
   });

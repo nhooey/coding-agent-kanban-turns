@@ -3,7 +3,6 @@ import { expect } from "expect";
 
 import {
   DECIDE,
-  DECISIONS,
   DEFAULT_KIND,
   DONE,
   SECTION_NAMES,
@@ -20,7 +19,6 @@ import {
   isOptionLetter,
   isTurnId,
   itemLabel,
-  namesOf,
 } from "../../../src/protocol/rules.ts";
 import { SPEC } from "../../../src/protocol/spec.ts";
 
@@ -100,17 +98,11 @@ describe("SUBJECT_WORD", () => {
   });
 });
 
-describe("namesOf", () => {
-  test("gives a list's header, then its aliases", () => {
-    expect(namesOf(SPEC.lists.decide)).toEqual(["Decide", "Decisions", "Blocked"]);
-  });
-});
-
-describe("SECTION_NAMES and DECISIONS", () => {
-  test("give every list's names, and the Decide list's", () => {
-    expect(SECTION_NAMES).toContain("To review");
+describe("SECTION_NAMES", () => {
+  test("gives every list's header, in the spec's order, and no other name", () => {
+    expect(SECTION_NAMES).toEqual(Object.values(SPEC.lists).map((list) => list.header));
     expect(SECTION_NAMES).toContain("Decide");
-    expect(DECISIONS).toEqual(["Decide", "Decisions", "Blocked"]);
+    expect(SECTION_NAMES).not.toContain("Backlog");
   });
 });
 
@@ -135,8 +127,7 @@ describe("DONE", () => {
 });
 
 describe("DEFAULT_KIND", () => {
-  test("is a kind the spec names, one the instructions teach", () => {
-    expect(SPEC.options.kinds[DEFAULT_KIND].taught).toBe(true);
+  test("is a kind the spec names, taking one letter", () => {
     expect(SPEC.options.kinds[DEFAULT_KIND].picks).toBe("one");
   });
 });

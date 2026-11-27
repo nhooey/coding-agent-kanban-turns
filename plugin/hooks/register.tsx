@@ -260,7 +260,7 @@ const noting = atom(
 const pane = atom(
   { plugin: "coding-agent-kanban-turns", key: "pane" } as const,
   INITIAL_PANE,
-  { shape: "pane-7" },
+  { shape: "pane-8" },
 );
 
 // What the reply lint found in the main loop's last final response, for the

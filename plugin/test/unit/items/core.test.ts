@@ -5,7 +5,7 @@ import { describe, test } from "node:test";
 import { expect } from "expect";
 
 import { answersIn, answerTo, lettersAfter } from "../../../src/items/answers.ts";
-import { glyphOf, markOf, optionMark, refOf } from "../../../src/items/items.ts";
+import { glyphOf, itemsOf, markOf, optionMark, picksAny, refOf } from "../../../src/items/items.ts";
 import type { DecideItem } from "../../../types/index.d.ts";
 import { SETTINGS } from "../../fixtures/settings.ts";
 
@@ -34,10 +34,9 @@ const checkbox: DecideItem = {
     { letter: "C", name: "Stale render" },
   ],
 };
-const binary: DecideItem = {
+const yesOrNo: DecideItem = {
   ...radio,
   number: 3,
-  kind: "binary",
   ref: "9efb08a1.Decide.3",
   options: [
     { letter: "Y", name: "Ship" },
@@ -68,14 +67,14 @@ describe("reading the answers in a draft", () => {
 });
 
 describe("the letters a click leaves", () => {
-  test("a radio or binary item takes the clicked letter alone", () => {
+  test("a radio item takes the clicked letter alone, whatever its letters", () => {
     expect(lettersAfter(radio, ["A"], "B")).toEqual(["B"]);
-    expect(lettersAfter(binary, [], "N")).toEqual(["N"]);
+    expect(lettersAfter(yesOrNo, [], "N")).toEqual(["N"]);
   });
 
-  test("a click on the chosen letter of a radio or binary item unchooses it", () => {
+  test("a click on the chosen letter of a radio item unchooses it", () => {
     expect(lettersAfter(radio, ["A"], "A")).toEqual([]);
-    expect(lettersAfter(binary, ["Y"], "Y")).toEqual([]);
+    expect(lettersAfter(yesOrNo, ["Y"], "Y")).toEqual([]);
   });
 
   test("a checkbox item toggles the letter and keeps option order", () => {
@@ -94,15 +93,23 @@ describe("the items themselves", () => {
     expect(glyphOf(radio, "B")).toBe("🔵");
     expect(glyphOf(radio, "A")).toBe("🔘");
     expect(glyphOf(checkbox, "A")).toBe("🔲");
-    expect(glyphOf(binary, "Y")).toBe("👍");
-    expect(glyphOf(binary, "N")).toBe("👎");
+    expect(glyphOf(yesOrNo, "Y")).toBe("🔘");
+  });
+
+  test("an item read with a kind the spec doesn't name takes the default kind, radio, and draws and picks as one", () => {
+    const given = { turn: "9efb08a1", number: 1, summary: "Ship tonight?", options: [{ letter: "Y", name: "Ship" }] };
+    const [read] = itemsOf({ items: [{ ...given, kind: "binary" }] });
+
+    expect(read?.kind).toBe("radio");
+    expect(read === undefined ? undefined : glyphOf(read, "Y")).toBe("🔘");
+    expect(read === undefined ? undefined : picksAny(read)).toBe(false);
   });
 
   test("a chosen option is marked ✅, the others keep their glyph", () => {
     expect(markOf(radio, "A", true, MARKS.chosen)).toBe("✅");
     expect(markOf(checkbox, "A", true, MARKS.chosen)).toBe("✅");
     expect(markOf(radio, "A", false, MARKS.chosen)).toBe("🔘");
-    expect(markOf(binary, "N", false, MARKS.chosen)).toBe("👎");
+    expect(markOf(yesOrNo, "N", false, MARKS.chosen)).toBe("🔘");
   });
 
   test("a chosen option is marked with the chosen mark it's given", () => {

@@ -42,9 +42,9 @@ const turn = (
 });
 
 describe("printsFullRollUp", () => {
-  test("finds the full roll-up's header, and an older reply's alias", () => {
+  test("finds the full roll-up's header, and no other name in its place", () => {
     expect(printsFullRollUp(FULL)).toBe(true);
-    expect(printsFullRollUp(`${SPEC["roll-up"].glyph} **${SPEC["roll-up"].aliases[0]}:**\n`)).toBe(true);
+    expect(printsFullRollUp(`${SPEC["roll-up"].glyph} **Left from before:**\n`)).toBe(false);
   });
 
   test("finds none in the count line, or a reply without either", () => {

@@ -1,8 +1,7 @@
 // The keys Claude Code itself gives a pane, which the plugin binds to no
-// button of its own but names: in the panel `? Keys` opens, and in what a
-// retired setting says to use instead.
+// button of its own but names in the panel `? Keys` opens.
 
-/** Each of the engine's keys for a pane, as the keys panel and the warnings write it. */
+/** Each of the engine's keys for a pane, as the keys panel writes it. */
 export const ENGINE_KEYS = {
   /** Moves the focus ring between the pane's buttons and fields. */
   move: "↑ ↓ tab",

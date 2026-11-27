@@ -100,27 +100,17 @@ describe("parseReply", () => {
     expect(parseReply("- x\n   1. y").map((block) => block.kind)).toEqual(["item"]);
   });
 
-  test("reads the roll-up's start by its header or an older one, with its glyph, in bold with a colon", () => {
-    for (const line of [
-      "📌 **Outstanding from previous turns:**",
-      "📌 **Still open from earlier:**",
-    ]) {
-      expect(parseReply(line)[0]?.kind).toBe("roll-up");
-    }
+  test("reads the roll-up's start by its header alone, with its glyph, in bold with a colon", () => {
+    expect(parseReply("📌 **Outstanding from previous turns:**")[0]?.kind).toBe("roll-up");
     expect(parseReply("Outstanding from previous turns")[0]?.kind).toBe("text");
   });
 
-  test("reads an older roll-up header bare, alone on its line at its start, as a stop and no roll-up", () => {
-    for (const line of ["Still open from earlier", "Still open from earlier:", "Still open from earlier  \r"]) {
-      expect(parseReply(line)[0]?.kind).toBe("stop");
-    }
-    for (const line of [
-      "Still open from earlier, the cache is.",
-      "Still open from earlier: the cache",
-      "  Still open from earlier",
-    ]) {
+  test("reads a header the spec doesn't name, bold or bare, as prose that ends no section", () => {
+    for (const line of ["📌 **Left from before:**", "Left from before", "Left from before:"]) {
       expect(parseReply(line)[0]?.kind).toBe("text");
     }
+    const reply = "🧠 **Decide:**\n1. **Ship it**\nLeft from before\n2. **Hold it**";
+    expect(sectionsIn(parseReply(reply)).map((section) => section.blocks.length)).toEqual([3]);
   });
 
   test("reads code outside a list as one block, every line of it code", () => {
@@ -174,7 +164,7 @@ describe("parseReply", () => {
   test("is total, and its blocks' lines, joined, are the text", () => {
     const lineArb = fc.oneof(
       fc.string({ unit: "grapheme", maxLength: 12 }),
-      fc.constantFrom("```", "~~~", "═══", "▔▔", "━━", SEP, "   ", "- x", "1. **x**", "🧠 **Decide:**", "Still open from earlier", "\r"),
+      fc.constantFrom("```", "~~~", "═══", "▔▔", "━━", SEP, "   ", "- x", "1. **x**", "🧠 **Decide:**", "📌 **Outstanding from previous turns:**", "\r"),
     );
     const textArb = fc.oneof(
       fc.array(lineArb, { maxLength: 12 }).map((lines) => lines.join("\n")),
@@ -255,7 +245,8 @@ describe("a line's facts", () => {
 
   test("reads an option by any option glyph, its letter and its bold name", () => {
     expect(factsOf("   🔘 A. **Disk**: why")?.option).toEqual({ glyph: "🔘", letter: "A", name: "Disk" });
-    expect(factsOf("   👎 N. **No**")?.option).toMatchObject({ letter: "N" });
+    expect(factsOf("   🔲 N. **No**")?.option).toMatchObject({ glyph: "🔲", letter: "N" });
+    expect(factsOf("   ⭕ N. **No**")?.option).toBeUndefined();
     expect(factsOf("   A. **Disk**")?.option).toBeUndefined();
     expect(factsOf("   🔘 a. **Disk**")?.option).toBeUndefined();
   });

@@ -12,7 +12,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { parseYaml } from "../../../src/config/config.ts";
 import { answersOfLine } from "../../../src/items/answer-lines.ts";
 import type { LineAnswer } from "../../../src/items/answer-lines.ts";
-import { DECIDE, namesOf } from "../../../src/protocol/rules.ts";
+import { DECIDE, SECTION_NAMES } from "../../../src/protocol/rules.ts";
 import { SPEC } from "../../../src/protocol/spec.ts";
 import { PLUGIN } from "../../../src/protocol/instructions.ts";
 import {
@@ -184,23 +184,16 @@ describe("the golden cases cover", () => {
     sectionsOf(reply.text).map((section) => section.name),
   );
 
-  test("every list, by its header and by every older name", () => {
-    const names = Object.values(SPEC.lists).flatMap(namesOf);
-
-    expect(names.filter((name) => !sections.includes(name))).toEqual([]);
+  test("every list, by its header", () => {
+    expect(SECTION_NAMES.filter((name) => !sections.includes(name))).toEqual([]);
   });
 
-  test("the 📌 roll-up, by its header and by every older one", () => {
+  test("the 📌 roll-up, by its header", () => {
     const rollUp = SPEC["roll-up"];
 
     expect(
-      namesOf(rollUp).filter(
-        (name) =>
-          !REPLIES.some((reply) =>
-            reply.text.includes(`${rollUp.glyph} **${name}:**`),
-          ),
-      ),
-    ).toEqual([]);
+      REPLIES.some((reply) => reply.text.includes(`${rollUp.glyph} **${rollUp.header}:**`)),
+    ).toBe(true);
   });
 
   test("every option kind", () => {

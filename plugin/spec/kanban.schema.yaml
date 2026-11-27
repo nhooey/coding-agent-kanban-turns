@@ -45,14 +45,10 @@ definitions:
     type: object
     additionalProperties: false
     required:
-      [header, glyph, aliases, rolls-up, settled-by, settling-words, feedback]
+      [header, glyph, rolls-up, settled-by, settling-words, feedback]
     properties:
       header: { $ref: "#/definitions/name" }
       glyph: { $ref: "#/definitions/glyph" }
-      aliases:
-        type: array
-        items: { $ref: "#/definitions/name" }
-        uniqueItems: true
       rolls-up: { type: boolean }
       # Each way has its settler in src/items/outstanding.ts's SETTLERS.
       settled-by: { enum: [answer, merged-pull-request, report, settling-word, none] }
@@ -68,15 +64,10 @@ definitions:
   kind:
     type: object
     additionalProperties: false
-    required: [picks, glyph, letters, taught]
+    required: [picks, glyph]
     properties:
       picks: { enum: [one, any] }
       glyph: { $ref: "#/definitions/glyph" }
-      letters:
-        type: object
-        propertyNames: { $ref: "#/definitions/letter" }
-        additionalProperties: { $ref: "#/definitions/glyph" }
-      taught: { type: boolean }
   command:
     type: object
     additionalProperties: false
@@ -105,11 +96,10 @@ properties:
       kinds:
         type: object
         additionalProperties: false
-        required: [radio, checkbox, binary]
+        required: [radio, checkbox]
         properties:
           radio: { $ref: "#/definitions/kind" }
           checkbox: { $ref: "#/definitions/kind" }
-          binary: { $ref: "#/definitions/kind" }
   commands:
     type: object
     additionalProperties: false
@@ -226,7 +216,7 @@ properties:
   roll-up:
     type: object
     additionalProperties: false
-    required: [glyph, header, aliases, count-label, count-separator, interval]
+    required: [glyph, header, count-label, count-separator, interval]
     properties:
       interval:
         type: object
@@ -238,10 +228,6 @@ properties:
           turns: { type: integer, minimum: 1 }
       glyph: { $ref: "#/definitions/glyph" }
       header: { $ref: "#/definitions/name" }
-      aliases:
-        type: array
-        items: { $ref: "#/definitions/name" }
-        uniqueItems: true
       count-label: { $ref: "#/definitions/name" }
       count-separator: { type: string, minLength: 1 }
   tag:

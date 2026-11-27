@@ -107,8 +107,9 @@ describe("the Todo items of a reply", () => {
     ]);
   });
 
-  test("an older reply's alias for the list reads too", () => {
-    expect(todoItemsOfText("👉 **To do:**\n1. **Rotate the token**\n", FIRST)).toHaveLength(1);
+  test("a list read by its header alone, not another name for it", () => {
+    expect(todoItemsOfText("👉 **Todo:**\n1. **Rotate the token**\n", FIRST)).toHaveLength(1);
+    expect(todoItemsOfText("👉 **Backlog:**\n1. **Rotate the token**\n", FIRST)).toEqual([]);
   });
 
   test("no other list's items, no 📌 roll-up bullet, and no unnumbered item are Todo items", () => {

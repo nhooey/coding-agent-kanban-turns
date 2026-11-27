@@ -100,7 +100,7 @@ const ITEMS = [
     list: "Decide",
     number: 3,
     summary: "Ship tonight?",
-    kind: "binary",
+    kind: "radio",
     ref: "9efb08a1.Decide.3",
     options: [
       { letter: "Y", name: "Ship" },
@@ -203,8 +203,7 @@ type Item = Readonly<{
 }>;
 
 /** An option's glyph, by its item's kind. */
-const glyph = (kind: string | undefined, letter: string): string =>
-  kind === "checkbox" ? "🔲" : kind === "binary" ? (letter === "N" ? "👎" : "👍") : "🔘";
+const glyph = (kind: string | undefined): string => (kind === "checkbox" ? "🔲" : "🔘");
 
 /** A reply as the kanban skill writes it: a Pending item, then a Decide list of `items`, each by its summary and options. */
 const listsText = (items: readonly Item[]): string =>
@@ -220,7 +219,7 @@ const listsText = (items: readonly Item[]): string =>
           ...items.flatMap((i) => [
             `${i.number}. **${i.summary}**`,
             ...(i.options ?? []).map(
-              (o) => `   ${glyph(i.kind, o.letter)} ${o.letter}. **${o.name}**`,
+              (o) => `   ${glyph(i.kind)} ${o.letter}. **${o.name}**`,
             ),
           ]),
         ]
@@ -658,15 +657,14 @@ test("a user's config.yaml is read", async ($, on) => {
   expect(shown).not.toContain("Not used");
 });
 
-test("a user's ✖ Close settings, the button gone, are left out with a warning, the rest of the file used", async ($, on) => {
+test("a user's config.yaml holding pane.hints is refused as an unknown key, the defaults used", async ($, on) => {
   const state = engine(on, () => ITEMS);
-  state.userFiles = { "config.yaml": "keys:\n  dismiss: x\n  help: o\ncolors:\n  close: warning\n" };
+  state.userFiles = { "config.yaml": "pane:\n  hints: false\nkeys:\n  help: o\n" };
   const lines = ((await $.command.run({ ...ANSWERS, command: "answers-config" })).text ?? "").split("\n");
 
-  expect(lines).toContain(`keys.help = "o"  # user: ${USER_FOLDER}config.yaml`);
+  expect(lines).toContainEqual(expect.stringMatching(/^keys\.help = "h"  # defaults: /));
   expect(lines.filter((line) => line.startsWith("Not used"))).toEqual([
-    expect.stringMatching(/config\.yaml: colors\.close is no longer read and is left out: /),
-    expect.stringMatching(/config\.yaml: keys\.dismiss is no longer read and is left out: /),
+    expect.stringMatching(/config\.yaml: pane\.hints is no setting; the keys here are close-when-all-submitted$/),
   ]);
 });
 
@@ -1069,11 +1067,11 @@ test("/answers opens the turn its first unanswered item is under, where a click 
   await ui.unmount();
 });
 
-test("folds stored under an older shape are not used: every toggle starts as it's made", async ($, on) => {
+test("folds stored under another shape are not used: every toggle starts as it's made", async ($, on) => {
   const later: TranscriptRecord[] = [];
   engine(on, () => ITEMS, listsText, () => later);
-  // What an older shape kept, the Done branch opened; the store answers it
-  // whatever the plugin writes since.
+  // Folds stored under the folds-0 tag, the Done branch opened; the store
+  // answers it whatever the plugin writes since.
   on("state.get", (_, e, next) =>
     e.key === "folds"
       ? { value: { value: { shape: "folds-0", value: { expanded: ["done"], collapsed: ["open"] } }, version: 1 } }
@@ -2031,7 +2029,7 @@ test("a pick in a reply's box shows in the pane's, and one in the pane's in the 
     inputText: "",
   });
   expect(state.box).toBe(`${HEADER}9efb08a1.Decide.1.B\n`);
-  expect(await leads("9efb08a1.Decide.3.N")).toEqual(["👎 N. ", "👎 N. "]);
+  expect(await leads("9efb08a1.Decide.3.N")).toEqual(["🔘 N. ", "🔘 N. "]);
   expect(await leads("9efb08a1.Decide.1.B")).toEqual(["✅ B. ", "✅ B. "]);
   await promptEvents($).change({ text: picked, cursor: picked.length, origin: { kind: "undo" } });
   expect(await leads("9efb08a1.Decide.3.N")).toEqual(["✅ N. ", "✅ N. "]);
@@ -2607,194 +2605,44 @@ test("a turn that starts while the session's start registers keeps Submit waitin
   await ui.unmount();
 });
 
-test("raised items stored under an older shape are not drawn", async ($, on) => {
-  engine(on, () => []);
-  // What the plugin kept before the raised items moved into the pane's
-  // state, under the pane's earlier shape, as a reload finds it: the first
-  // read finds it, and the plugin's writes since, of the settings it reads,
-  // land over it.
-  const stale = {
-    shape: "pane-2",
-    value: {
-      presses: 0,
-      submit: { tag: "idle" },
-      overtaken: [],
-      raised: { session: "session-1", items: ITEMS, settledRefs: [], seenRefs: [], problem: "", warnings: [] },
-    },
-  };
-  const reads = { pane: 0 };
-  on("state.get", (_, e, next) => {
-    if (e.key !== "pane") {
-      return next(e);
+test("raised items stored under another shape are not drawn", async ($, on) => {
+  engine(on, () => ITEMS);
+  type Pane = Readonly<{ raised: Readonly<{ items: readonly Readonly<{ item: object }>[] }> }>;
+  const store: { written: Pane[]; stale: object | undefined } = { written: [], stale: undefined };
+  on("state.set", (_, e, next) => {
+    const set = e as unknown as { key: string; value: { value: Pane } };
+
+    if (set.key === "pane") {
+      store.written.push(set.value.value);
     }
-    reads.pane += 1;
 
-    return reads.pane === 1 ? { value: { value: stale, version: 1 } } : next(e);
+    return next(e);
   });
-  await $.command.run({ ...ANSWERS, command: "answers-config" });
-  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
-
-  expect(await titles(ui)).toEqual([]);
-  expect(await ui.find({ type: "Text", text: "Nothing open" })).toBeDefined();
-  await ui.unmount();
-});
-
-test("a pane stored under the shape from before the settings moved into it is not used", async ($, on) => {
-  engine(on, () => ITEMS);
-  // What the plugin kept under the pane-3 shape, while the settings were an
-  // atom of their own: no settings field, and a refresh's read out with no
-  // `on`, as a reload finds it. The store answers it whatever the plugin
-  // writes since.
-  const stale = {
-    shape: "pane-3",
-    value: {
-      presses: 1,
-      submit: { tag: "idle" },
-      overtaken: [],
-      aside: { said: "", presses: 0 },
-      refresh: { asked: 2, shown: 1, reads: [{ refresh: 2, releases: [] }] },
-      raised: { session: "session-1", items: ITEMS, settledRefs: [], seenRefs: [], problem: "", warnings: [] },
-      sent: [],
-      merged: [],
-      counts: "",
-    },
-  };
   on("state.get", (_, e, next) =>
-    e.key === "pane" ? { value: { value: stale, version: 1 } } : next(e),
+    e.key === "pane" && store.stale !== undefined ? { value: { value: store.stale, version: 1 } } : next(e),
   );
-  await $.tool.call({ tool: TOOL, items: ITEMS } as never);
-  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  await $.command.run(ANSWERS);
+  const filled = store.written.at(-1);
+  expect(filled?.raised.items).toHaveLength(ITEMS.length);
 
-  // Read as absent, the stale value draws nothing: no items, and no
-  // settings it never held.
-  expect(await titles(ui)).toEqual([]);
-  expect(await ui.find({ type: "Text", text: /^No open items/ })).toBeDefined();
-  await ui.unmount();
-});
-
-test("a pane stored under the shape from before each raised item held where it stands is not used", async ($, on) => {
-  engine(on, () => ITEMS);
-  // What the plugin kept under the pane-4 shape, while the raised items
-  // were bare and their settled refs, settlements and the settings'
-  // problems lists beside them: the first item settled, as a reload finds
-  // it. The store answers it whatever the plugin writes since.
-  const stale = {
-    shape: "pane-4",
+  // The pane as the plugin just wrote it, its first raised item of the
+  // binary kind, stored under the pane-7 tag, as a reload finds it. The
+  // store answers it whatever the plugin writes since.
+  const [first, ...rest] = filled?.raised.items ?? [];
+  store.stale = {
+    shape: "pane-7",
     value: {
-      presses: 1,
-      submit: { tag: "idle" },
-      overtaken: [],
-      aside: { said: "", presses: 0 },
-      refresh: { asked: 1, shown: 1, reads: [] },
+      ...filled,
       raised: {
-        session: "session-1",
-        turns: [],
-        items: ITEMS,
-        settledRefs: [ITEMS[0]?.ref],
-        settlements: [],
-        seenRefs: [],
-        problem: "",
-        warnings: [],
+        ...filled?.raised,
+        items: [{ ...first, item: { ...first?.item, kind: "binary" } }, ...rest],
       },
-      sent: [],
-      merged: [],
-      counts: "",
-      settings: { tag: "unread", asked: 0 },
     },
   };
-  on("state.get", (_, e, next) =>
-    e.key === "pane" ? { value: { value: stale, version: 1 } } : next(e),
-  );
-  await $.tool.call({ tool: TOOL, items: ITEMS } as never);
-  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
-
-  // Read as absent, the stale value draws nothing: no items, open or Done.
-  expect(await titles(ui)).toEqual([]);
-  expect(await ui.find({ type: "Text", text: /^No open items/ })).toBeDefined();
-  await ui.unmount();
-});
-
-test("a pane stored under the shape from before a superseded item named what superseded it is not used", async ($, on) => {
-  engine(on, () => ITEMS);
-  // What the plugin kept under the pane-5 shape, while an item a later one
-  // restated settled as `restated`, naming no item: the first item so
-  // settled, as a reload finds it. The store answers it whatever the plugin
-  // writes since.
-  const [first, ...rest] = ITEMS;
-  const stale = {
-    shape: "pane-5",
-    value: {
-      presses: 1,
-      submit: { tag: "idle" },
-      overtaken: [],
-      aside: { said: "", presses: 0 },
-      refresh: { asked: 1, shown: 1, reads: [] },
-      raised: {
-        session: "session-1",
-        turns: [],
-        items: [
-          { item: first, state: { tag: "settled", settlement: { how: "restated" } } },
-          ...rest.map((item) => ({ item, state: { tag: "open" } })),
-        ],
-        seenRefs: [],
-        problem: "",
-        settingsProblems: [],
-      },
-      sent: [],
-      merged: [],
-      counts: "",
-      settings: { tag: "unread", asked: 0 },
-    },
-  };
-  on("state.get", (_, e, next) =>
-    e.key === "pane" ? { value: { value: stale, version: 1 } } : next(e),
-  );
-  await $.tool.call({ tool: TOOL, items: ITEMS } as never);
-  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
-
-  // Read as absent, the stale value draws nothing: no items, open or Done.
-  expect(await titles(ui)).toEqual([]);
-  expect(await ui.find({ type: "Button", key: "done" })).toBeUndefined();
-  expect(await ui.find({ type: "Text", text: /^No open items/ })).toBeDefined();
-  await ui.unmount();
-});
-
-test("a pane stored under the shape from before it held Todo items and the actions settings is not used", async ($, on) => {
-  engine(on, () => ITEMS);
-  // What the plugin kept under the pane-6 shape, before a raised item could
-  // be a Todo item and the settings held `actions`: every item open, as a
-  // reload finds it. The store answers it whatever the plugin writes since.
-  const stale = {
-    shape: "pane-6",
-    value: {
-      presses: 1,
-      submit: { tag: "idle" },
-      overtaken: [],
-      aside: { said: "", presses: 0 },
-      refresh: { asked: 1, shown: 1, reads: [] },
-      raised: {
-        session: "session-1",
-        turns: [],
-        items: ITEMS.map((item) => ({ item, state: { tag: "open" } })),
-        seenRefs: [],
-        problem: "",
-        settingsProblems: [],
-      },
-      sent: [],
-      merged: [],
-      counts: "",
-      settings: { tag: "unread", asked: 0 },
-    },
-  };
-  on("state.get", (_, e, next) =>
-    e.key === "pane" ? { value: { value: stale, version: 1 } } : next(e),
-  );
-  await $.tool.call({ tool: TOOL, items: ITEMS } as never);
   const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
 
   // Read as absent, the stale value draws nothing.
   expect(await titles(ui)).toEqual([]);
-  expect(await ui.find({ type: "Text", text: /^No open items/ })).toBeDefined();
   await ui.unmount();
 });
 

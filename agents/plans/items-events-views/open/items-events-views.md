@@ -152,7 +152,7 @@ Three checks of the model come first, each cheap, and each can change the model 
 Beside them, [the refactor plan](../../items-events-views-refactor/open/items-events-views-refactor.md)'s five nodes clear the ground the model is built on, and need no answer from the checks.
 This plan's nodes wait on them across the two plans:
 
-- [item-model-in-spec](item-model-in-spec.md) on [compatibility-code-deleted](../../items-events-views-refactor/open/compatibility-code-deleted.md);
+- [item-model-in-spec](item-model-in-spec.md) on [compatibility-code-deleted](../../items-events-views-refactor/closed/compatibility-code-deleted.md);
 - [item-event-reducer](item-event-reducer.md) on [core-folders-are-layers](../../items-events-views-refactor/open/core-folders-are-layers.md);
 - [item-tool-declares-events](item-tool-declares-events.md) and [item-renderer-densities](item-renderer-densities.md) on [hooks-split-by-concern](../../items-events-views-refactor/open/hooks-split-by-concern.md);
 - [reply-prose-readers-retired](reply-prose-readers-retired.md) on [unused-exports-checked](../../items-events-views-refactor/open/unused-exports-checked.md).

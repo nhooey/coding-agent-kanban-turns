@@ -17,7 +17,6 @@ import {
   nullSectionsEmptied,
   parseYaml,
   shapeOf,
-  withoutRetired,
 } from "../../../src/config/config.ts";
 import type { Shape } from "../../../src/config/config.ts";
 import type { Json, Loaded } from "../../../types/index.d.ts";
@@ -30,7 +29,7 @@ const SHIPPED = readFileSync(new URL(`../../../${DEFAULTS_FILE}`, import.meta.ur
 const parsed = parseYaml(SHIPPED);
 const shipped: { readonly [key: string]: Json } =
   "value" in parsed && isSection(parsed.value) ? parsed.value : {};
-const derived = shapeOf(withoutRetired(shipped));
+const derived = shapeOf(shipped);
 const shape: Shape = "shape" in derived ? derived.shape : {};
 
 const NO_TYPE =

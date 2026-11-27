@@ -732,9 +732,12 @@ describe("itemsOfText", () => {
     ]);
   });
 
-  test("an older roll-up header and a list alias still read", () => {
-    const text = "Still open from earlier\n📋 **To review:**  \n- **The README** 🔖 b2c3d4e5₋₁\n";
-    expect(itemsOfText(text).map((item) => item.list)).toEqual(["review"]);
+  test("a header the spec gives no list heads no items", () => {
+    const text = "📋 **Backlog:**  \n- **The README** 🔖 b2c3d4e5₋₁\n";
+    expect(itemsOfText(text)).toEqual([]);
+    expect(itemsOfText(text.replace("📋 **Backlog:**", "🔍 **Review:**")).map((item) => item.list)).toEqual([
+      "review",
+    ]);
   });
 
   test("every turn's items carry the turn's place", () => {
@@ -981,8 +984,9 @@ describe("the roll-up keeps what an item frees", () => {
 });
 
 describe("an item's summary", () => {
-  test("is the bold text without its colon, an older roll-up's tag cut off", () => {
-    expect(summaryOf("🔖 c3d4e5f6₋₂: **Another one**: with its text beside it")).toBe("Another one");
+  test("is the bold text without its colon", () => {
+    expect(summaryOf("**Another one:** with its text beside it")).toBe("Another one");
+    expect(summaryOf("**Another one**: with its text beside it")).toBe("Another one");
   });
 
   test("without bold text, is the line", () => {
@@ -1107,8 +1111,8 @@ describe("countLine", () => {
     expect(countLine(rows, -1)).toBe("📌 Outstanding: 🚧 2");
   });
 
-  test("counts Waiting items under the hourglass, an older reply's thinking face too", () => {
-    for (const glyph of ["⏳", "🤔"]) {
+  test("counts Waiting items under the hourglass, whatever glyph heads the list", () => {
+    for (const glyph of ["⏳", "🙃"]) {
       const waiting = `${glyph} **Waiting:**  \n▔▔▔▔▔▔▔▔▔▔▔\n1. **The test run** in the background.\n`;
       expect(countLine(numbered([turn("", "go", waiting), turn("", "more", "Prose.")]), WINDOW)).toBe(
         "📌 Outstanding: ⏳ 1",
@@ -1809,14 +1813,6 @@ describe("openItemsIn and settlementsIn", () => {
 });
 
 describe("itemsOfText, as parseReply reads a reply", () => {
-  test("an older roll-up header bare pins nothing: only the 📌 glyph and bold do", () => {
-    for (const older of ["Still open from earlier", "Still open from earlier:", "Still open from earlier, the README."]) {
-      const text = `👉 **Todo:**${BR}\n1. **Run it**\n\n${older}\n📋 **To review:**${BR}\n- **The README** 🔖 b2c3d4e5₋₁\n`;
-
-      expect(itemsOfText(text).map((item) => item.isPinned)).toEqual([false, false]);
-    }
-  });
-
   test("a fence less indented than an item's text ends the item, and is no line beneath its summary", () => {
     const text = `👉 **Todo:**${BR}\n 2) **Run it**${BR}\n   \`\`\`text\n   \`\`\`\n`;
 
@@ -1886,12 +1882,11 @@ describe("decideItemsOfText, as parseReply reads a reply", () => {
     expect(decideItemsOfText(`🧠 **Decide:**${BR}\n1.\nPlain **bold**\n   🔘 A. **Disk**`)).toEqual([]);
   });
 
-  test("an option or an item inside code is none, and an older roll-up header bare ends the list", () => {
+  test("an option or an item inside code is none", () => {
     for (const text of [
       `🧠 **Decide:**${BR}\n1. **Which cache to keep**${BR}\n   \`\`\`\n   🔘 A. **Disk**\n   \`\`\``,
       `🧠 **Decide:**${BR}\n1. **Which cache to keep**${BR}\n\n\`\`\`\n   🔘 A. **Disk**\n\`\`\``,
       `🧠 **Decide:**${BR}\n\`\`\`\n1. **Which cache to keep**${BR}\n\`\`\`\n   🔘 A. **Disk**`,
-      `🧠 **Decide:**${BR}\n1. **Which cache to keep**${BR}\nStill open from earlier\n   🔘 A. **Disk**`,
     ]) {
       expect(decideItemsOfText(text)).toEqual([]);
     }

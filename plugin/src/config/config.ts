@@ -7,8 +7,6 @@
 // KINDS names its section's. Sections merge key by key, a scalar or a list
 // replaces, and a key the defaults file doesn't hold, or a value of the
 // wrong type, refuses the user's file whole.
-// A section the plugin no longer reads is the exception: it is left out with a
-// warning, and the rest of the file is used.
 //
 // The files are YAML, read by the `yaml` package. The engine loads only the
 // plugin's own files, so the flake bundles the library into vendor/ as one ES
@@ -17,7 +15,6 @@
 import { parseAllDocuments } from "../../vendor/yaml/yaml.js";
 import type { ParsedDocument } from "../../vendor/yaml/yaml.js";
 import { isObject } from "../json/fields.ts";
-import { ENGINE_KEYS } from "../pane/engine-keys.ts";
 import type { Json, Loaded, Settings } from "../../types/index.d.ts";
 
 /**
@@ -122,61 +119,12 @@ export const shapeOf = (defaults: Json): Derived => {
   return problems.length > 0 ? { problems } : derived;
 };
 
-/** What closes the pane, which has no close button of its own: what to use instead of that button's settings. */
-const CLOSED_BY_ENGINE = `the pane has no ✖ Close button; Claude Code's close mark in its top right, ${ENGINE_KEYS.close} or ${ENGINE_KEYS.escape} closes it`;
-
-/** The sections and settings the plugin no longer reads, by dotted key, each with what to set or use instead. */
-export const RETIRED: Readonly<Record<string, string>> = {
-  outstanding:
-    "the plugin reads the transcript itself; counts.turns sets how many turns the count line reads",
-  "colors.title":
-    "an item's title is now a label on a background, then the summary in plain text; colors.title-label and colors.title-background colour the label",
-  "colors.expand":
-    "the ↗ beside the count line is gone; colors.kanban colours the 🖥️ Kanban button that opens the pane",
-  "colors.close-x": CLOSED_BY_ENGINE,
-  "colors.close": CLOSED_BY_ENGINE,
-  "keys.dismiss": CLOSED_BY_ENGINE,
-  "marks.buttons.dismiss": CLOSED_BY_ENGINE,
-  "pane.hints":
-    "the pane draws no hint row; its ? Keys button, or keys.help, opens a panel listing every key",
-};
-
 /** The value at a dotted key's path, or undefined where there is none. */
 const at = (value: Json | undefined, path: readonly string[]): Json | undefined =>
   path.reduce<Json | undefined>(
     (inner, key) => (isMap(inner) && Object.hasOwn(inner, key) ? inner[key] : undefined),
     value,
   );
-
-/** The value without the setting at `path`, every section above it kept. */
-const without = (value: Json, path: readonly string[]): Json => {
-  const [key = "", ...rest] = path;
-
-  return !isMap(value) || !Object.hasOwn(value, key)
-    ? value
-    : Object.fromEntries(
-        Object.entries(value).flatMap(([name, inner]): [string, Json][] =>
-          name !== key
-            ? [[name, inner]]
-            : rest.length === 0
-              ? []
-              : [[name, without(inner, rest)]],
-        ),
-      );
-};
-
-/** The file's value without the sections and settings the plugin no longer reads. */
-export const withoutRetired = (value: Json): Json =>
-  Object.keys(RETIRED).reduce(
-    (kept, key) => without(kept, key.split(".")),
-    value,
-  );
-
-/** A warning for each section or setting the plugin no longer reads that the file still holds. */
-export const retiredIn = (value: Json): readonly string[] =>
-  Object.entries(RETIRED)
-    .filter(([key]) => at(value, key.split(".")) !== undefined)
-    .map(([key, instead]) => `${key} is no longer read and is left out: ${instead}`);
 
 /** The folder under $XDG_CONFIG_HOME, or ~/.config, the user's file sits in. */
 export const APP = "coding-agent-kanban-turns";
@@ -423,9 +371,7 @@ const inFile = (path: string, lines: readonly string[]): readonly string[] =>
 
 /**
  * A file's value checked against `shape`, a null section read as an empty
- * one, without the sections the plugin no longer reads, or what's wrong
- * with it: each problem, a section or setting left out among them, names
- * the file.
+ * one, or what's wrong with it, each problem naming the file.
  */
 const checked = (
   shape: Shape,
@@ -436,21 +382,18 @@ const checked = (
   value: Json | undefined;
   problems: readonly string[];
 }> => {
-  const read = "value" in parsed ? nullSectionsEmptied(shape, parsed.value) : undefined;
-  const value = read === undefined ? undefined : withoutRetired(read);
-  const leftOut = read === undefined ? [] : retiredIn(read);
+  const value = "value" in parsed ? nullSectionsEmptied(shape, parsed.value) : undefined;
   const problems =
     "error" in parsed ? [parsed.error] : problemsIn(shape, value ?? null, isSparse);
 
   return problems.length === 0 && value !== undefined
-    ? { value, problems: inFile(path, leftOut) }
-    : { value: undefined, problems: inFile(path, [...leftOut, ...problems]) };
+    ? { value, problems: [] }
+    : { value: undefined, problems: inFile(path, problems) };
 };
 
 /**
  * The shape the defaults file gives, with its value, or why it gives none:
- * it isn't there, it can't be read, or its defaults give no shape, after
- * the sections it holds that the plugin no longer reads.
+ * it isn't there, it can't be read, or its defaults give no shape.
  */
 const givenBy = (
   defaults: DefaultsFile,
@@ -458,16 +401,11 @@ const givenBy = (
   const parsed: Parsed =
     defaults.text === undefined ? { error: "is missing" } : parseYaml(defaults.text);
   const derived: Derived =
-    "value" in parsed ? shapeOf(withoutRetired(parsed.value)) : { problems: [parsed.error] };
+    "value" in parsed ? shapeOf(parsed.value) : { problems: [parsed.error] };
 
   return "value" in parsed && "shape" in derived
     ? { shape: derived.shape, value: parsed.value }
-    : {
-        problems: [
-          ...("value" in parsed ? retiredIn(parsed.value) : []),
-          ...("problems" in derived ? derived.problems : []),
-        ],
-      };
+    : { problems: "problems" in derived ? derived.problems : [] };
 };
 
 const keyOf = ([key]: readonly [string, Json]): string => key;

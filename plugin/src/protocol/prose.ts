@@ -15,11 +15,8 @@
 import {
   firstLetters,
   glyphsInWords,
-  kindGlyphs,
-  kindLetters,
   lettersInWords,
   optionGlyphs,
-  taughtKinds,
 } from "./kinds.ts";
 import type { Kinds } from "./kinds.ts";
 import { cellWidth } from "../text/cells.ts";
@@ -319,59 +316,22 @@ const commandValues = (spec: ProseSpec): Entries => {
   ];
 };
 
-/**
- * The glyphs and letters of the kinds not taught, `👍 or 👎` and `` `Y` or
- * `N` ``, and their options, for the rules that a reply no longer writes
- * them and that `open` reprints them; none while every kind is taught.
- */
-const untaughtValues = (spec: ProseSpec, untaught: Kinds): Entries => {
-  const kinds = Object.values(untaught);
-  const first = spec.reference.letters.first;
-
-  return kinds.length === 0
-    ? []
-    : [
-        ["untaught.glyphs", inWords(kinds.flatMap(kindGlyphs), "or")],
-        [
-          "untaught.letters",
-          inWords(
-            kinds.flatMap((kind) => kindLetters(kind, first).map(coded)),
-            "or",
-          ),
-        ],
-        [
-          "untaught.options",
-          inWords(
-            kinds.flatMap((kind) =>
-              Object.entries(kind.letters).map(
-                ([letter, glyph]) => `${glyph} ${coded(letter)}`,
-              ),
-            ),
-          ),
-        ],
-      ];
-};
-
-/** The kinds the instructions teach, in words, with their glyphs and letters; and the kinds they don't. */
+/** The option kinds in words, with their glyphs and letters. */
 const optionValues = (spec: ProseSpec): Entries => {
-  const taught = taughtKinds(spec.options.kinds);
-  const untaught = Object.fromEntries(
-    Object.entries(spec.options.kinds).filter(([name]) => !(name in taught)),
-  );
+  const kinds = spec.options.kinds;
   const first = spec.reference.letters.first;
 
   return [
-    ["kinds.names", inWords(Object.keys(taught).map(coded), "or")],
-    ["glyphs.options", glyphsInWords(taught)],
-    ["count.option-glyphs", String(optionGlyphs(taught).length)],
-    ["letters.example", lettersInWords(taught, first, coded)],
+    ["kinds.names", inWords(Object.keys(kinds).map(coded), "or")],
+    ["glyphs.options", glyphsInWords(kinds)],
+    ["count.option-glyphs", String(optionGlyphs(kinds).length)],
+    ["letters.example", lettersInWords(first, coded)],
     ["letters.pair", inWords(firstLetters(first, 2).map(coded))],
-    ...Object.entries(taught).flatMap(([name, kind]): Entries => [
-      [`kind.${name}`, `${inWords(kindGlyphs(kind))} ${name}`],
+    ...Object.entries(kinds).flatMap(([name, kind]): Entries => [
+      [`kind.${name}`, `${kind.glyph} ${name}`],
       [`kind.${name}.name`, name],
-      [`letters.${name}`, lettersInWords({ [name]: kind }, first, coded)],
+      [`letters.${name}`, lettersInWords(first, coded)],
     ]),
-    ...untaughtValues(spec, untaught),
   ];
 };
 

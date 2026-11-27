@@ -14,9 +14,7 @@ import {
   mergedOver,
   parseYaml,
   problemsIn,
-  retiredIn,
   userConfigPath,
-  withoutRetired,
 } from "../../../src/config/config.ts";
 import { SETTINGS_SHAPE } from "../../fixtures/settings-shape.ts";
 
@@ -113,38 +111,6 @@ describe("the user's file over the defaults", () => {
     ]);
   });
 
-  test("a section the plugin no longer reads is left out with a warning, and the rest of the file used", () => {
-    const got = loaded(
-      defaults,
-      user('{"outstanding": {"script": "~/x.py", "python": "python3"}, "keys": {"help": "x"}}'),
-    );
-    expect(got.settings?.keys.help).toBe("x");
-    expect(got.settings).not.toHaveProperty("outstanding");
-    expect(got.problems).toEqual([
-      "~/.config/x/config.yaml: outstanding is no longer read and is left out: the plugin reads the transcript itself; counts.turns sets how many turns the count line reads",
-    ]);
-    expect(got.effective.some((line) => line.startsWith("outstanding."))).toBe(false);
-  });
-
-  test("a setting the plugin no longer reads is left out with a warning, its section's other keys used", () => {
-    const got = loaded(defaults, user('{"colors": {"expand": "red", "border": "warning"}}'));
-    expect(got.settings?.colors.border).toBe("warning");
-    expect(got.settings?.colors).not.toHaveProperty("expand");
-    expect(got.problems).toEqual([
-      "~/.config/x/config.yaml: colors.expand is no longer read and is left out: the ↗ beside the count line is gone; colors.kanban colours the 🖥️ Kanban button that opens the pane",
-    ]);
-  });
-
-  test("an old colors.title is left out with a warning, so it never colours the label as its own background", () => {
-    const got = loaded(defaults, user('{"colors": {"title": "claude"}}'));
-    expect(got.settings?.colors).not.toHaveProperty("title");
-    expect(got.settings?.colors["title-label"]).toBe("inverseText");
-    expect(got.settings?.colors["title-background"]).toBe("claude");
-    expect(got.problems).toEqual([
-      "~/.config/x/config.yaml: colors.title is no longer read and is left out: an item's title is now a label on a background, then the summary in plain text; colors.title-label and colors.title-background colour the label",
-    ]);
-  });
-
   test("the title label's, the settled bar's and the Kanban button's colours are settings", () => {
     expect(loaded(defaults, undefined).settings?.colors).toMatchObject({
       "title-label": "inverseText",
@@ -195,16 +161,30 @@ describe("the user's file over the defaults", () => {
     expect(swapped.settings?.keys.next).toBe("k");
   });
 
-  test("pane.hints, whose hint row is gone, is left out with a warning, the pane's other settings used", () => {
-    const got = loaded(
-      defaults,
-      user('{"pane": {"hints": false, "close-when-all-submitted": false}, "keys": {"help": "o"}}'),
-    );
-    expect(got.settings?.pane).toEqual({ "close-when-all-submitted": false });
-    expect(got.settings?.keys.help).toBe("o");
+  test("pane.hints refuses the file by the unknown key's own message, as any key the defaults don't hold does", () => {
+    const got = loaded(defaults, user('{"pane": {"hints": false}, "keys": {"help": "o"}}'));
+    expect(got.settings?.keys.help).toBe("h");
     expect(got.problems).toEqual([
-      "~/.config/x/config.yaml: pane.hints is no longer read and is left out: the pane draws no hint row; its ? Keys button, or keys.help, opens a panel listing every key",
+      "~/.config/x/config.yaml: pane.hints is no setting; the keys here are close-when-all-submitted",
     ]);
+  });
+
+  test("a section or a key the defaults don't hold, at any depth, is an unknown key, the file refused whole", () => {
+    const unknown = {
+      backlog: '{"backlog": {}}',
+      "colors.halo": '{"colors": {"halo": "red"}}',
+      "keys.quit": '{"keys": {"quit": "x"}}',
+      "marks.buttons.skip": '{"marks": {"buttons": {"skip": "X"}}}',
+    };
+    Object.entries(unknown).forEach(([key, text]) => {
+      const got = loaded(defaults, user(text));
+      expect(got.settings).toEqual(loaded(defaults, undefined).settings);
+      expect(got.problems).toEqual([
+        expect.stringMatching(
+          new RegExp(`^~/\\.config/x/config\\.yaml: ${key.replaceAll(".", "\\.")} is no setting; the keys here are `),
+        ),
+      ]);
+    });
   });
 
   test("whether Submit closes the pane once nothing is left open is a boolean setting, on by default", () => {
@@ -238,38 +218,6 @@ describe("the user's file over the defaults", () => {
     });
   });
 
-  test("the ✖ Close button's settings, the button gone, are each left out with a warning, the rest of the file used", () => {
-    const got = loaded(
-      defaults,
-      user(
-        "keys:\n  dismiss: x\n  help: o\nmarks:\n  buttons:\n    dismiss: X\ncolors:\n  close: warning\n  close-x: inverseText\n  border: claude\n",
-      ),
-    );
-    const instead =
-      "is no longer read and is left out: the pane has no ✖ Close button; Claude Code's close mark in its top right, ctrl+x x or esc closes it";
-    expect(got.settings?.keys).not.toHaveProperty("dismiss");
-    expect(got.settings?.keys.help).toBe("o");
-    expect(got.settings?.marks.buttons).not.toHaveProperty("dismiss");
-    expect(got.settings?.colors).not.toHaveProperty("close");
-    expect(got.settings?.colors).not.toHaveProperty("close-x");
-    expect(got.settings?.colors.border).toBe("claude");
-    expect(got.problems).toEqual(
-      ["colors.close-x", "colors.close", "keys.dismiss", "marks.buttons.dismiss"].map(
-        (key) => `~/.config/x/config.yaml: ${key} ${instead}`,
-      ),
-    );
-    expect(got.effective.some((line) => line.includes("dismiss") || line.startsWith("colors.close"))).toBe(false);
-  });
-
-  test("an old keys.dismiss on the same key as another button clashes with none, being left out first", () => {
-    const got = loaded(defaults, user("keys:\n  dismiss: s\n  submit: s\n"));
-    expect(got.problems).toEqual([
-      "~/.config/x/config.yaml: keys.dismiss is no longer read and is left out: the pane has no ✖ Close button; Claude Code's close mark in its top right, ctrl+x x or esc closes it",
-    ]);
-    expect(got.settings?.keys.submit).toBe("s");
-    expect(got.effective).toContain('keys.submit = "s"  # user: ~/.config/x/config.yaml');
-  });
-
   test("the notes field's rows are a setting", () => {
     expect(loaded(defaults, undefined).settings?.notes).toEqual({ rows: 3 });
     expect(loaded(defaults, user('{"notes": {"rows": 5}}')).settings?.notes.rows).toBe(5);
@@ -278,8 +226,8 @@ describe("the user's file over the defaults", () => {
     ]);
   });
 
-  test("a retired section beside a broken key still refuses the file, with both said", () => {
-    const got = loaded(defaults, user('{"outstanding": {}, "keys": {"prev": "h"}}'));
+  test("two unknown keys in two sections refuse the file, with both said", () => {
+    const got = loaded(defaults, user('{"backlog": {}, "keys": {"prev": "h"}}'));
     expect(got.settings?.keys.help).toBe("h");
     expect(got.problems).toHaveLength(2);
   });
@@ -500,19 +448,9 @@ describe("a config.yaml written as JSON", () => {
 });
 
 describe("the pieces", () => {
-  test("a retired setting goes and its section stays; a file without it is unchanged", () => {
-    expect(withoutRetired({ colors: { expand: "x", border: "y" }, outstanding: {}, keys: {} })).toEqual({
-      colors: { border: "y" },
-      keys: {},
-    });
-    expect(withoutRetired({ colors: "x" })).toEqual({ colors: "x" });
-    expect(retiredIn({ colors: { border: "y" } })).toEqual([]);
-    expect(retiredIn(null)).toEqual([]);
-  });
-
   test("a boolean that isn't one names what it takes", () => {
-    expect(problemsIn("boolean", "no", false, ["pane", "hints"])).toEqual([
-      "pane.hints is string, not true or false",
+    expect(problemsIn("boolean", "no", false, ["pane", "close-when-all-submitted"])).toEqual([
+      "pane.close-when-all-submitted is string, not true or false",
     ]);
   });
 

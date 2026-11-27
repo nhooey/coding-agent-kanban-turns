@@ -54,17 +54,16 @@ const radio: DecideItem = {
     { letter: "B", name: "Memory" },
   ],
 };
-const binary: DecideItem = {
+const yesOrNo: DecideItem = {
   ...radio,
   number: 2,
-  kind: "binary",
   ref: "",
   options: [
     { letter: "Y", name: "Ship" },
     { letter: "N", name: "Hold" },
   ],
 };
-const raised: Raised = { ...emptyRaised, items: openItems([radio, binary]) };
+const raised: Raised = { ...emptyRaised, items: openItems([radio, yesOrNo]) };
 const SETTLED = { tag: "settled" } as const;
 const OPEN = { tag: "open" } as const;
 
@@ -79,7 +78,7 @@ describe("/answers's reply", () => {
   test("counts the open items the pane opened over, the settled left out, the pane named for no list", () => {
     expect(answersText(raised)).toBe("Kanban pane opened: 2 open Decide items.");
     expect(
-      answersText({ ...raised, items: [{ item: radio, state: SETTLED }, { item: binary, state: OPEN }] }),
+      answersText({ ...raised, items: [{ item: radio, state: SETTLED }, { item: yesOrNo, state: OPEN }] }),
     ).toBe(
       "Kanban pane opened: 1 open Decide items.",
     );
@@ -97,7 +96,7 @@ describe("/answers's reply", () => {
     expect(answersText({ ...emptyRaised, items: openItems([todo]) })).toBe(
       "Kanban pane opened: 1 open Todo items.",
     );
-    expect(answersText({ ...raised, items: openItems([radio, binary, todo]) })).toBe(
+    expect(answersText({ ...raised, items: openItems([radio, yesOrNo, todo]) })).toBe(
       "Kanban pane opened: 1 open Todo items, 2 open Decide items.",
     );
   });
@@ -107,7 +106,7 @@ describe("/answers's reply", () => {
       "No open items: it broke.",
     );
     expect(
-      answersText({ ...raised, items: [{ item: radio, state: SETTLED }, { item: binary, state: SETTLED }] }),
+      answersText({ ...raised, items: [{ item: radio, state: SETTLED }, { item: yesOrNo, state: SETTLED }] }),
     ).toBe("No open items.");
   });
 });
@@ -116,11 +115,11 @@ describe("/answers-config's reply", () => {
   test("lists the settings in effect, then what wasn't used", () => {
     expect(
       configText(
-        ["keys.help = h", "colors.title = claude"],
+        ["keys.help = h", "colors.border = promptBorder"],
         ["bad.yaml: parse error"],
       ),
     ).toBe(
-      "keys.help = h\ncolors.title = claude\nNot used: bad.yaml: parse error",
+      "keys.help = h\ncolors.border = promptBorder\nNot used: bad.yaml: parse error",
     );
   });
 
@@ -131,7 +130,7 @@ describe("/answers-config's reply", () => {
 
 describe("the tool's result", () => {
   test("names each item drawn by its reference, filling a missing one", () => {
-    expect(drewText([radio, binary])).toBe(
+    expect(drewText([radio, yesOrNo])).toBe(
       "Drew buttons for 2 Decide items under the final response and in the Kanban pane: 9efb08a1.Decide.1, 9efb08a1.Decide.2.",
     );
   });
@@ -139,7 +138,7 @@ describe("the tool's result", () => {
   test("then says what it ignored of each item's supersedes, as naming no Decide item", () => {
     expect(
       drewText(
-        [radio, binary],
+        [radio, yesOrNo],
         [{ ref: "9efb08a1.Decide.2", values: [`"Decide.1"`, `"682e71fb.Todo.1"`, "7"], left: "some" }],
       ),
     ).toBe(

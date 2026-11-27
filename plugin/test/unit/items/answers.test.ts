@@ -57,18 +57,17 @@ const checkbox: DecideItem = {
     { letter: "C", name: "Stale render" },
   ],
 };
-const binary: DecideItem = {
+const yesOrNo: DecideItem = {
   ...radio,
   number: 3,
   summary: "Ship tonight?",
-  kind: "binary",
   ref: "9efb08a1.Decide.3",
   options: [
     { letter: "Y", name: "Ship" },
     { letter: "N", name: "Hold" },
   ],
 };
-const items = [radio, checkbox, binary];
+const items = [radio, checkbox, yesOrNo];
 
 describe("building and replacing references in the draft", () => {
   test("a click on an empty draft writes the reference on its own line", () => {
@@ -93,7 +92,7 @@ describe("building and replacing references in the draft", () => {
   test("a second click on the chosen option takes its answer out", () => {
     const once = choose("Go ahead: ", radio, "A");
     expect(choose(once, radio, "A")).toBe("Go ahead:\n");
-    expect(choose(choose("", binary, "Y"), binary, "Y")).toBe("");
+    expect(choose(choose("", yesOrNo, "Y"), yesOrNo, "Y")).toBe("");
   });
 
   test("a second click keeps the answer's note, without a letter", () => {
@@ -104,7 +103,7 @@ describe("building and replacing references in the draft", () => {
 
   test("each click on another item adds a line of its own", () => {
     const once = choose("", radio, "A");
-    expect(choose(once, binary, "Y")).toBe(
+    expect(choose(once, yesOrNo, "Y")).toBe(
       "9efb08a1.Decide.1.A\n9efb08a1.Decide.3.Y\n",
     );
   });
@@ -117,7 +116,7 @@ describe("building and replacing references in the draft", () => {
   });
 
   test("a reference typed with a shorter turn id is found and replaced", () => {
-    expect(choose("9efb08a.Decide.3.Y", binary, "N")).toBe(
+    expect(choose("9efb08a.Decide.3.Y", yesOrNo, "N")).toBe(
       "9efb08a1.Decide.3.N",
     );
   });
@@ -246,7 +245,7 @@ describe("notes and answers in words", () => {
   test("another letter keeps the note, and a click after a note starts a new line", () => {
     const noted = withNote("", radio, "for now");
     expect(choose(noted, radio, "A")).toBe("9efb08a1.Decide.1.A: for now\n");
-    expect(choose(noted, binary, "N")).toBe(
+    expect(choose(noted, yesOrNo, "N")).toBe(
       "9efb08a1.Decide.1: for now\n9efb08a1.Decide.3.N\n",
     );
   });
@@ -324,7 +323,7 @@ describe("questions in a reply", () => {
       "https://kanban-turns.invalid/9efb08a1.Decide.3",
       "https://example.com/",
     ];
-    expect(linkedItems(items, hrefs)).toEqual([binary, radio]);
+    expect(linkedItems(items, hrefs)).toEqual([yesOrNo, radio]);
     expect(linkedItems(items, [])).toEqual([]);
   });
 

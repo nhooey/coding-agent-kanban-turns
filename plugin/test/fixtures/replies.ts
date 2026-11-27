@@ -1,5 +1,5 @@
 // Replies for the tests of a reply's readers: seeded random replies built
-// from the protocol's pieces, list headers and their aliases, items numbered
+// from the protocol's pieces, list headers, items numbered
 // and bulleted with lines under them, options, `Frees:` lines, code blocks,
 // separators, underlines, topic headers, 📌 roll-ups and count lines; and
 // the Decide items a reply's Decide list may print.
@@ -15,7 +15,7 @@
 
 import fc from "fast-check";
 
-import { DECISIONS, SECTION_NAMES } from "../../src/protocol/rules.ts";
+import { DECIDE, SECTION_NAMES } from "../../src/protocol/rules.ts";
 import { SPEC } from "../../src/protocol/spec.ts";
 import type { DecideItem } from "../../types/index.d.ts";
 
@@ -40,17 +40,14 @@ export const OPTIONS = [
   { letter: "C", name: "Both" },
 ] as const;
 
-const OPTION_GLYPHS = Object.values(SPEC.options.kinds).flatMap((kind) => [
-  kind.glyph,
-  ...Object.values(kind.letters),
-]);
+const OPTION_GLYPHS = Object.values(SPEC.options.kinds).map((kind) => kind.glyph);
 
 const BR = fc.constantFrom("", "  ");
 const summaryArb = fc.constantFrom(...SUMMARIES);
 const underlineArb = (char: string) =>
   fc.integer({ min: 3, max: 12 }).map((n) => char.repeat(n));
 
-/** A list's header: its glyph or another, then one of its names in bold with a colon. */
+/** A list's header: a list's glyph or another, then one of `names`, each a list's header, in bold with a colon. */
 const headerArb = (names: readonly string[]) =>
   fc
     .tuple(
@@ -189,33 +186,39 @@ const itemsArb = (mode: Mode, room: Room) =>
         ),
     );
 
-/** A list: its header, perhaps its underline, and its items. */
+/**
+ * A list: its header, perhaps its underline, and its items; a Decide list,
+ * the one most readers read, more often than any other.
+ */
 const sectionArb = (mode: Mode) =>
-  fc.constantFrom(...SECTION_NAMES).chain((name) =>
-    fc
-      .tuple(
-        headerArb([name]),
-        fc.option(underlineArb(CHARS["header-underline"]), { nil: undefined }),
-        itemsArb(mode, {
-          blanks: !DECISIONS.includes(name),
-          rich: Object.values(SPEC.lists).some(
-            (list) =>
-              list["rolls-up"] &&
-              ([list.header, ...list.aliases] as readonly string[]).includes(name),
-          ),
-        }),
-      )
-      .map(([header, underline, items]) => [
-        header,
-        ...(underline === undefined ? [] : [underline]),
-        ...items,
-      ]),
-  );
+  fc
+    .oneof(
+      { weight: 2, arbitrary: fc.constantFrom(...SECTION_NAMES) },
+      { weight: 1, arbitrary: fc.constant(DECIDE.header) },
+    )
+    .chain((name) =>
+      fc
+        .tuple(
+          headerArb([name]),
+          fc.option(underlineArb(CHARS["header-underline"]), { nil: undefined }),
+          itemsArb(mode, {
+            blanks: name !== DECIDE.header,
+            rich: Object.values(SPEC.lists).some(
+              (list) => list["rolls-up"] && list.header === name,
+            ),
+          }),
+        )
+        .map(([header, underline, items]) => [
+          header,
+          ...(underline === undefined ? [] : [underline]),
+          ...items,
+        ]),
+    );
 
-/** The 📌 roll-up: its header or an older one, perhaps its underline, and its lists' bullets, each tagged. */
+/** The 📌 roll-up: its header, perhaps its underline, and its lists' bullets, each tagged. */
 const rollUpArb = fc
   .tuple(
-    fc.constantFrom(ROLL_UP.header, ...ROLL_UP.aliases),
+    fc.constant(ROLL_UP.header),
     BR,
     fc.option(underlineArb(CHARS["roll-up-underline"]), { nil: undefined }),
     fc.array(
@@ -257,10 +260,6 @@ const partArb = (mode: Mode) =>
     { weight: 1, arbitrary: looseCodeArb },
     { weight: 1, arbitrary: fc.constant(["Some work.", "It went well."]) },
     { weight: 1, arbitrary: fc.constant([COUNT]) },
-    {
-      weight: 1,
-      arbitrary: fc.constantFrom(...ROLL_UP.aliases.flatMap((older) => [[older], [`${older}:`]])),
-    },
   );
 
 /** A reply's lines from its parts, a blank line between two, or none. */

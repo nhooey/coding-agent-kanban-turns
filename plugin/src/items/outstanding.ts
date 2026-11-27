@@ -49,11 +49,9 @@ import type {
 } from "../transcript/reply.ts";
 import {
   DECIDE,
-  DECISIONS,
   SUBSCRIPT_CHAR,
   SUBJECT_WORD,
   TURN_ID,
-  namesOf,
 } from "../protocol/rules.ts";
 import { SPEC } from "../protocol/spec.ts";
 import type { DecideItem, Settlement, Turn } from "../../types/index.d.ts";
@@ -74,13 +72,12 @@ export const LIST_KEYS: readonly ListKey[] = (
 export const SEPARATOR: string = SPEC.characters.separator;
 
 const keyOfName = (name: string): ListKey | undefined =>
-  LIST_KEYS.find((key) => namesOf(SPEC.lists[key]).includes(name));
+  LIST_KEYS.find((key) => SPEC.lists[key].header === name);
 
 const ROLL_UP = SPEC["roll-up"];
 
-// An older roll-up's tag before the item, and the 🔖 tag after it.
+// The 🔖 tag after an item.
 const TAG = escaped(SPEC.tag.glyph);
-const PREFIX = new RegExp(String.raw`^${TAG}\s*\w+${SUBSCRIPT_CHAR}*:\s*`, "u");
 const SUFFIX = new RegExp(
   String.raw`\s*${TAG}\s+(${TURN_ID})${SUBSCRIPT_CHAR}*\s*$`,
   "u",
@@ -116,11 +113,8 @@ export const summaryText = (text: string): string =>
   text.trim().replace(/:$/, "").trim();
 
 /** The item's summary: its bold text without a trailing colon, else its line. */
-export const summaryOf = (line: string): string => {
-  const text = line.replace(PREFIX, "");
-
-  return summaryText(BOLD.exec(text)?.[1] ?? text);
-};
+export const summaryOf = (line: string): string =>
+  summaryText(BOLD.exec(line)?.[1] ?? line);
 
 const SUBJECT = SPEC.subject;
 const ENTRY_DIGITS = SUBJECT.entry.digits;
@@ -537,7 +531,7 @@ const printedIn = (lines: readonly DecideLine[]): readonly PrintedItem[] => {
 /** The numbered items of a reply's Decide lists that carry an option; a 📌 roll-up's bullets carry none. */
 export const decideItemsOfText = (text: string): readonly PrintedItem[] =>
   sectionsIn(parseReply(text))
-    .filter((section) => DECISIONS.includes(section.name))
+    .filter((section) => section.name === DECIDE.header)
     .flatMap((section) => printedIn(section.blocks.flatMap(decideLinesOf)));
 
 /** A Decide item a reply's own list printed: its number and summary, and the id and place of its turn. */

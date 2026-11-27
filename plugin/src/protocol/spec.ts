@@ -5,7 +5,6 @@ export const SPEC = {
     "done": {
       "header": "Done",
       "glyph": "✅",
-      "aliases": [],
       "rolls-up": false,
       "settled-by": "none",
       "settling-words": {},
@@ -14,10 +13,6 @@ export const SPEC = {
     "pending": {
       "header": "Pending",
       "glyph": "🚧",
-      "aliases": [
-        "Unfinished",
-        "Open"
-      ],
       "rolls-up": true,
       "settled-by": "none",
       "settling-words": {},
@@ -26,7 +21,6 @@ export const SPEC = {
     "logged": {
       "header": "Logged",
       "glyph": "📝",
-      "aliases": [],
       "rolls-up": false,
       "settled-by": "none",
       "settling-words": {},
@@ -35,7 +29,6 @@ export const SPEC = {
     "waiting": {
       "header": "Waiting",
       "glyph": "⏳",
-      "aliases": [],
       "rolls-up": true,
       "settled-by": "report",
       "settling-words": {},
@@ -44,9 +37,6 @@ export const SPEC = {
     "answers": {
       "header": "Answers",
       "glyph": "❓",
-      "aliases": [
-        "Questions"
-      ],
       "rolls-up": false,
       "settled-by": "none",
       "settling-words": {},
@@ -55,7 +45,6 @@ export const SPEC = {
     "authorizations": {
       "header": "Authorizations",
       "glyph": "🔑",
-      "aliases": [],
       "rolls-up": true,
       "settled-by": "none",
       "settling-words": {},
@@ -64,9 +53,6 @@ export const SPEC = {
     "review": {
       "header": "Review",
       "glyph": "🔍",
-      "aliases": [
-        "To review"
-      ],
       "rolls-up": true,
       "settled-by": "merged-pull-request",
       "settling-words": {},
@@ -75,9 +61,6 @@ export const SPEC = {
     "todo": {
       "header": "Todo",
       "glyph": "👉",
-      "aliases": [
-        "To do"
-      ],
       "rolls-up": true,
       "settled-by": "settling-word",
       "settling-words": {
@@ -89,10 +72,6 @@ export const SPEC = {
     "decide": {
       "header": "Decide",
       "glyph": "🧠",
-      "aliases": [
-        "Decisions",
-        "Blocked"
-      ],
       "rolls-up": true,
       "settled-by": "answer",
       "settling-words": {},
@@ -105,24 +84,11 @@ export const SPEC = {
     "kinds": {
       "radio": {
         "picks": "one",
-        "glyph": "🔘",
-        "letters": {},
-        "taught": true
+        "glyph": "🔘"
       },
       "checkbox": {
         "picks": "any",
-        "glyph": "🔲",
-        "letters": {},
-        "taught": true
-      },
-      "binary": {
-        "picks": "one",
-        "glyph": "👍",
-        "letters": {
-          "Y": "👍",
-          "N": "👎"
-        },
-        "taught": false
+        "glyph": "🔲"
       }
     }
   },
@@ -218,9 +184,6 @@ export const SPEC = {
   "roll-up": {
     "glyph": "📌",
     "header": "Outstanding from previous turns",
-    "aliases": [
-      "Still open from earlier"
-    ],
     "count-label": "Outstanding",
     "count-separator": " · ",
     "interval": {

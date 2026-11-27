@@ -32,7 +32,6 @@ const item = (number: number, summary: string): DecideItem => ({
 const cache = item(1, "Which cache to keep");
 const ship: DecideItem = {
   ...item(2, "Ship `tonight`?"),
-  kind: "binary",
   options: [
     { letter: "Y", name: "Ship" },
     { letter: "N", name: "Hold" },
@@ -50,8 +49,8 @@ const DECIDE = [
   "   🔘 B. **Memory**",
   "   ⠀",
   "2. **Ship `tonight`?**  ",
-  "   👍 Y. **Ship**",
-  "   👎 N. **Hold**",
+  "   🔘 Y. **Ship**",
+  "   🔘 N. **Hold**",
 ];
 const reply = (decide: readonly string[]) =>
   [
@@ -118,10 +117,10 @@ describe("a reply's Decide list cut out", () => {
     expect(decideListCut(reply(DECIDE), [restated, ship])).toBeUndefined();
   });
 
-  test("cuts a list headed Decisions or Blocked", () => {
-    for (const name of ["Decisions", "Blocked"]) {
+  test("cuts no list headed by a name the spec doesn't give the Decide list", () => {
+    for (const name of ["Choices", "Backlog"]) {
       const decide = [`🧠 **${name}:**  `, ...DECIDE.slice(1)];
-      expect(decideListCut(reply(decide), [cache, ship])?.after).toBe("📌 Outstanding: 🚧 1 · 🧠 2");
+      expect(decideListCut(reply(decide), [cache, ship])).toBeUndefined();
     }
   });
 
@@ -154,11 +153,6 @@ describe("a reply's Decide list cut out, as parseReply reads the reply", () => {
     expect(decideListCut(reply(decide), [cache, ship])?.after).toBe("📌 Outstanding: 🚧 1 · 🧠 2");
   });
 
-  test("takes an older roll-up header bare for no roll-up: a Decide list after it is a second list", () => {
-    const text = [...DECIDE, "", "Still open from earlier", "🧠 **Decide:**", "- **Which cache to keep** 🔖 b2c3d4e5₋₁"].join("\n");
-    expect(decideListCut(text, [cache, ship])).toBeUndefined();
-  });
-
   test("ends the list at a fence at the line's start, its code after the cut", () => {
     const text = [...DECIDE, "```", "a column-0 block", "```"].join("\n");
     expect(decideListCut(text, [cache, ship])?.after).toBe("```\na column-0 block\n```");
@@ -170,7 +164,7 @@ describe("a reply's Decide list cut out, as parseReply reads the reply", () => {
   });
 
   test("reads an option only with its glyph, as a Decide item's is read", () => {
-    const glyphless = DECIDE.map((line) => line.replace(/[🔘🔲👍👎] /u, ""));
+    const glyphless = DECIDE.map((line) => line.replace(/[🔘🔲] /u, ""));
     expect(decideListCut(reply(glyphless), [cache, ship])).toBeUndefined();
   });
 

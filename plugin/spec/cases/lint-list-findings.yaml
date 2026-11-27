@@ -94,28 +94,8 @@ turns:
           \   🔘 B. **Keep the memory cache**: simpler.\n"
         lint:
           - { line: 5, rule: list-among-options }
-  - id: e8f9a0b1
-    prompt: And the old cache, yes or no?
-    replies:
-      - text: "\
-          🧠 **Decide:**  \n\
-          ▔▔▔▔▔▔▔▔▔▔\n\
-          1. **Whether to drop the old cache files**  \n\
-          \   👍 Y. **Drop them**: frees 2 GB.\n\
-          \   👎 N. **Keep them**: nothing changes.\n"
-        lint:
-          - { line: 4, rule: untaught-option }
-          - { line: 5, rule: untaught-option }
-    decide:
-      - number: 1
-        summary: Whether to drop the old cache files
-        kind: binary
-        options:
-          - { letter: Y, name: Drop them }
-          - { letter: N, name: Keep them }
 expect:
-  open: [e8f9a0b1.Decide.1]
+  open: []
   outstanding:
     - "Decide: Which cache to keep for the loader"
-    - "Decide: Whether to drop the old cache files"
-  counts: "📌 Outstanding: 🧠 2"
+  counts: "📌 Outstanding: 🧠 1"
