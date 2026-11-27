@@ -1,6 +1,7 @@
 ---
 title: A row at the top of the pane filters its items by list and by state, and can show only one turn
-state: approved
+state: superseded
+superseded-by: pane-facet-tree
 kind: implementation
 part-of: pane-every-list
 needs: [items-of-every-list, pane-ui-harmonize, pane-state-reducer, pane-decide-filters]

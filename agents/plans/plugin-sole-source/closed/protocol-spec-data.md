@@ -12,7 +12,7 @@ touches: [plugin/spec/, plugin/tools/, plugin/src/spec.ts, plugin/src/protocol.t
   - the 9 lists: each one's glyph, header and place in the order, and whether it rolls up under 📌;
   - the Decide option kinds (radio, checkbox, binary), their glyphs and their letters;
   - the commands, `open` and `reassess`, their synonyms, and the rule that a prefix naming one command alone runs it;
-  - each list's settling words, a map per list from word to what it does, which [kanban-skill-list-answers](../../pane-every-list/open/kanban-skill-list-answers.md) fills;
+  - each list's settling words, a map per list from word to what it does, which [kanban-skill-list-answers](../../pane-every-list/closed/kanban-skill-list-answers.md) fills;
   - the pieces of the reference grammar, `<turn>.<List>.<n>[.<letters>][: note]`: the turn id's length, shortest prefix and alphabet, the list names, the letter ranges, and the words, `of` and `from`, that name an answer's turn after it;
   - the 📌 roll-up's glyph, headers and count line, and the 🔖 tag's glyph and subscript digits;
   - the header, roll-up and topic underline characters, and the separator line.
@@ -29,7 +29,7 @@ touches: [plugin/spec/, plugin/tools/, plugin/src/spec.ts, plugin/src/protocol.t
 - **The core imports only the generated module.** Each function in `plugin/src/` that named a glyph, word or character takes it from that module's value instead, directly or through `plugin/src/protocol.ts`, which derives the patterns and labels several core files share. The plugin and its tests import nothing else of the spec. The core stays pure: no file is read at run time, and no YAML library is loaded at run time for the spec.
 - **Prose comes later.** Prose that names a list or a kind in words, such as the instructions, the tool's description and the pane's messages, keeps its words until [protocol-prose-fragments](protocol-prose-fragments.md) assembles it from the spec. Where prose states a value a rule rests on, such as the turn id's length, it reads that value from the spec now.
 - **Out of date fails.** `checks.spec` runs the build step with `--check` and fails when the committed TypeScript module or JSON copy differs from what it writes.
-- **Rules from the pane-every-list plan land here.** [kanban-skill-list-answers](../../pane-every-list/open/kanban-skill-list-answers.md) writes the settling words and the grouped answer syntax into the spec, once the old skill is retired, and [answers-grouped-by-turn-and-list](../../pane-every-list/open/answers-grouped-by-turn-and-list.md) reads them from it, so those nodes come after this one.
+- **Rules from the pane-every-list plan land here.** [kanban-skill-list-answers](../../pane-every-list/closed/kanban-skill-list-answers.md) writes the settling words and the grouped answer syntax into the spec, once the old skill is retired, and [answers-grouped-by-turn-and-list](../../pane-every-list/closed/answers-grouped-by-turn-and-list.md) reads them from it, so those nodes come after this one.
 
 Checks:
 

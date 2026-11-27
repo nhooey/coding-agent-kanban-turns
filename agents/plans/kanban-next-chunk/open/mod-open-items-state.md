@@ -3,7 +3,7 @@ title: The plugin keeps every open item as state, and next-chunk and the review 
 state: proposed
 kind: implementation
 part-of: kanban-next-chunk
-needs: [kanban-mod-reads-transcript, protocol-spec-data, kanban-cli-adapter]
+needs: [kanban-mod-reads-transcript, protocol-spec-data, kanban-cli-adapter, item-event-reducer]
 touches: [plugin/spec/kanban.yaml, plugin/src/items/items.ts, plugin/cli/, plugin/hooks/register.tsx, plugin/types/index.d.ts, plugin/defaults/]
 ---
 

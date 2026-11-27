@@ -1,6 +1,7 @@
 ---
 title: The draft's answers are grouped by turn and list, with context in parentheses, and the plugin reads them back
-state: approved
+state: superseded
+superseded-by: item-reference-grammar
 kind: implementation
 part-of: pane-every-list
 needs: [kanban-skill-list-answers, pane-submit-review-fixes, protocol-spec-data]

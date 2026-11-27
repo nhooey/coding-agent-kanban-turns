@@ -1,6 +1,7 @@
 ---
 title: The pane and the boxes under replies hold every list's items, grouped by state, turn and list, filtered, and answered in grouped references
-state: approved
+state: superseded
+superseded-by: items-events-views
 kind: end-state
 ---
 

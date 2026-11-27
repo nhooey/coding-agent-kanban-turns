@@ -23,6 +23,7 @@ Checks: the plugin's repository's checks pass with a test for each bullet above;
 
 For Neil to look at afresh, before approving:
 
+- **It rests on the item model.** Under [items-events-views](../../items-events-views/open/items-events-views.md), the open items are the fold's items that aren't closed, what an item frees is the inverse of its `blocked-by` links, an item's reference is its ordinal, and a picker's answer is an observation. [mod-open-items-state](mod-open-items-state.md) waits on the fold and [mod-draws-item-links](mod-draws-item-links.md) on the renderer, and the bullets above that name a list read as the filter that list is.
 - **The spec holds the command.** The chunk's size, its lists and its tie-break order move from the plugin's settings and this node's prose into the spec, so they're the same for every user. Whether the size stays a user setting instead is open.
 - **No script of the old skill runs it.** Where the hooks don't load, the chunk comes from the CLI the skill inside the plugin carries, so a session needs Node.
 - **The picker's answers are read by the core.** AskUserQuestion results become part of what the neutral turns carry, or the Claude Code adapter reads them; which one is open.

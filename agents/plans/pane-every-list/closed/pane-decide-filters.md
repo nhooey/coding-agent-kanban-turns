@@ -1,6 +1,7 @@
 ---
 title: A row under the pane's header row hides Decide items by state, answered, unanswered or Done
-state: approved
+state: superseded
+superseded-by: pane-facet-tree
 kind: implementation
 part-of: pane-every-list
 needs: [pane-state-reducer]

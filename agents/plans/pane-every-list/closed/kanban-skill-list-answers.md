@@ -1,6 +1,7 @@
 ---
 title: The spec holds each list's settling words and the grouped answer syntax
-state: approved
+state: superseded
+superseded-by: item-reference-grammar
 kind: implementation
 part-of: pane-every-list
 needs: [protocol-spec-data, kanban-skill-retired]
