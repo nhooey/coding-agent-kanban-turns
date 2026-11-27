@@ -1,6 +1,6 @@
 ---
 title: A submitted reassess closes the pane and holds every item it covers as being reassessed until its turn ends, when each comes back open or closes as withdrawn
-state: proposed
+state: approved
 kind: implementation
 part-of: items-events-views
 needs: [pane-facet-tree, item-tool-declares-events]

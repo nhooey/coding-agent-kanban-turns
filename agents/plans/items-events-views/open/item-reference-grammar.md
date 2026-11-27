@@ -1,6 +1,6 @@
 ---
 title: The person's own text names an item by its ordinal, and one parser reads each reference, such as `12.B` or `12 done`, as one event
-state: proposed
+state: approved
 kind: implementation
 part-of: items-events-views
 needs: [item-model-in-spec]

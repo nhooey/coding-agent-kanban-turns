@@ -1,6 +1,6 @@
 ---
 title: Items are one type changed only by events, and every view is a pure function of them and the view state
-state: proposed
+state: approved
 kind: end-state
 ---
 

@@ -1,6 +1,6 @@
 ---
 title: The spec holds the item model as data, its kinds, presets, states, outcomes, events and who may fire them, relations, facets, controls and what's special
-state: proposed
+state: approved
 kind: implementation
 part-of: items-events-views
 needs: [lists-fit-filter-table, list-moves-fit-transitions, compatibility-code-deleted]

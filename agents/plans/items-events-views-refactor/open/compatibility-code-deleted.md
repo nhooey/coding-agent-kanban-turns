@@ -1,6 +1,6 @@
 ---
 title: No code is kept for an older setting, reply or stored shape
-state: proposed
+state: approved
 kind: implementation
 part-of: items-events-views-refactor
 touches: [plugin/src/config/config.ts, plugin/defaults/config.yaml, plugin/spec/kanban.yaml, plugin/spec/kanban.schema.yaml, plugin/spec/fragments/, plugin/spec/cases/, plugin/src/protocol/, plugin/src/lint/reply.ts, plugin/tools/spec/load.ts, plugin/tools/skill/render.ts, plugin/hooks/register.tsx, plugin/test/unit/, README.md, AGENTS.md]

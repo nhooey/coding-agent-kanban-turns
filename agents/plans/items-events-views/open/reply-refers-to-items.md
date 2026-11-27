@@ -1,6 +1,6 @@
 ---
 title: A reply refers to items by id, each reference drawn from the events as a link to its item, and its prose restates nothing the events hold
-state: proposed
+state: approved
 kind: implementation
 part-of: items-events-views
 needs: [item-tool-declares-events, item-renderer-densities, item-reference-grammar]

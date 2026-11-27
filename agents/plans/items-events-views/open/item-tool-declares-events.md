@@ -1,6 +1,6 @@
 ---
 title: The agent declares items and their changes through one tool, which checks each event against the transition table and gives back the ids
-state: proposed
+state: approved
 kind: implementation
 part-of: items-events-views
 needs: [item-event-reducer, task-list-matches-pending, hooks-split-by-concern]

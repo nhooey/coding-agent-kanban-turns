@@ -1,6 +1,6 @@
 ---
 title: Every move of an item between lists in the fixture transcripts is one event of the transition table, or a report names the verb it lacks
-state: proposed
+state: approved
 kind: implementation
 part-of: items-events-views
 touches: [agents/reports/, plugin/spec/cases/, plugin/test/fixtures/]

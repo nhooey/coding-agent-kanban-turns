@@ -1,6 +1,6 @@
 ---
 title: No test compares the core with a copy of code it replaced
-state: proposed
+state: approved
 kind: implementation
 part-of: items-events-views-refactor
 touches: [plugin/test/oracle/, plugin/test/unit/, plugin/test/fixtures/, plugin/tsconfig.json, AGENTS.md, README.md]

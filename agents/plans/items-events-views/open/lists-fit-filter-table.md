@@ -1,6 +1,6 @@
 ---
 title: Every list item in the fixture transcripts fits one row of the filter table, or a report names the field it lacks
-state: proposed
+state: approved
 kind: implementation
 part-of: items-events-views
 touches: [agents/reports/, plugin/spec/cases/, plugin/test/fixtures/]

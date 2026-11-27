@@ -1,6 +1,6 @@
 ---
 title: The plugin's code is one module per layer with imports one way, effects only in the hooks, and nothing kept for what came before or left unused
-state: proposed
+state: approved
 kind: end-state
 ---
 

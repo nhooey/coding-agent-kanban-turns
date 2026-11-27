@@ -1,6 +1,6 @@
 ---
 title: One renderer draws an item as a chip, a line or a card, its marks from the spec and its controls from the transition table
-state: proposed
+state: approved
 kind: implementation
 part-of: items-events-views
 needs: [item-event-reducer, hooks-split-by-concern]

@@ -1,6 +1,6 @@
 ---
 title: A session's Pending items are compared with its task list's open tasks at each turn's end, and a report says which the agent's tasks are read from
-state: proposed
+state: approved
 kind: implementation
 part-of: items-events-views
 touches: [agents/reports/]

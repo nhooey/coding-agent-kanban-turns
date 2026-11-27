@@ -1,6 +1,6 @@
 ---
 title: What the harness and the trackers report, a finished shell, a subagent's end or a merged pull request, reaches the fold as observations
-state: proposed
+state: approved
 kind: implementation
 part-of: items-events-views
 needs: [item-event-reducer, task-list-matches-pending]

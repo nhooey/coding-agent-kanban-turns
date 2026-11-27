@@ -1,6 +1,6 @@
 ---
 title: The view state, the facet order, the folded nodes, the draft and the focus, is part of the pane's one state, and only its step function moves it
-state: proposed
+state: approved
 kind: implementation
 part-of: items-events-views
 needs: [item-event-reducer, item-reference-grammar]
