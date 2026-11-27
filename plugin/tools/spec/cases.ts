@@ -19,7 +19,7 @@
 //   line break into a space or joins two lines.
 
 import { isScalar, parseDocument } from "yaml";
-import { itemsOf, refOf } from "../../src/items/items.ts";
+import { itemsOf, refOf } from "../../src/protocol/options-input.ts";
 import {
   allItems,
   countLine,
@@ -30,11 +30,11 @@ import {
   summaryOf,
   unsettled,
 } from "../../src/items/outstanding.ts";
-import { isKanbanReply, lintReply } from "../../src/lint/reply.ts";
-import type { Rule } from "../../src/lint/reply.ts";
+import { isKanbanReply, lintReply } from "../../src/harness/reply-lint.ts";
+import type { Rule } from "../../src/harness/reply-lint.ts";
 import { isOptionLetter as isLetter, isTurnId } from "../../src/protocol/rules.ts";
 import { SPEC } from "../../src/protocol/spec.ts";
-import { commandOf, isOwn } from "../../src/transcript/turns.ts";
+import { commandOf, isOwn } from "../../src/harness/turns.ts";
 import type { Message, Owner, Turn } from "../../types/index.d.ts";
 import { messageOf, repeated, strictlyRead } from "./strict.ts";
 import type { Problem } from "./strict.ts";

@@ -3,7 +3,8 @@
 // register.tsx reads the draft, calls these, and writes what they return.
 
 import { asksQuestion } from "./answer-lines.ts";
-import { feedbackOfItem, isSameTurn, picksAny, refOf } from "./items.ts";
+import { feedbackOfItem, isSameTurn, picksAny } from "./items.ts";
+import { refOf } from "../protocol/options-input.ts";
 import { saidOf, saidText } from "./said.ts";
 import { referencesOfLine } from "./word-answers.ts";
 import type { LineReference } from "./word-answers.ts";
@@ -15,7 +16,7 @@ import {
   settlingWordsOf,
 } from "../protocol/rules.ts";
 import type { Feedback } from "../protocol/rules.ts";
-import { isReassessLine } from "../transcript/turns.ts";
+import { isReassessLine } from "../harness/turns.ts";
 import type { DecideItem, ListedItem } from "../../types/index.d.ts";
 
 /**

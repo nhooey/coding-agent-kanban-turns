@@ -14,7 +14,7 @@ This node deletes it, so the event log is the only source of an item and nothing
 
 - **The readers.**
   Gone from `plugin/src/`: the read of a reply's lists into items, the settlers by list, the subject key that matched an item across rewordings, the `Frees:` line's read, the raised items and their settlements, the roll-up's draft and its interval, and the cut of a list out of a reply with the match of its summaries.
-  `plugin/src/transcript/reply.ts` reads a reply's blocks for its references alone.
+  `plugin/src/harness/reply.ts` reads a reply's blocks for its references alone.
 - **The pane's old path.**
   Gone: the branches, the turn groups and their stops, and every view text written for a list.
 - **The tools.**
@@ -42,6 +42,6 @@ Checks:
 - a search of `plugin/` outside `plugin/skills/` and the generated files finds no list's name or glyph, no `Frees`, no 📌 or 🔖, and none of the retired tools' names;
 - `plugin/src/` has no function that takes a reply's text and returns an item;
 - [unused-exports-checked](../../items-events-views-refactor/open/unused-exports-checked.md)'s check finds no file and no export that only the old path reached, and lists no exception;
-- [core-folders-are-layers](../../items-events-views-refactor/open/core-folders-are-layers.md)'s check passes with no exception listed;
+- [core-folders-are-layers](../../items-events-views-refactor/closed/core-folders-are-layers.md)'s check passes with no exception listed;
 - `nix flake check` passes, and `typecheck-plugin` and `plugin-test` pass in the dev shell;
 - [the end state](items-events-views.md)'s checks pass.

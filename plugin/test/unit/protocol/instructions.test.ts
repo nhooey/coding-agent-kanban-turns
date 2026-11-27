@@ -27,7 +27,7 @@ import {
   unusedFragments,
 } from "../../../src/protocol/prose.ts";
 import { SPEC } from "../../../src/protocol/spec.ts";
-import { itemsOf } from "../../../src/items/items.ts";
+import { itemsOf } from "../../../src/protocol/options-input.ts";
 
 const engineBlocks: readonly Readonly<{ name: string; text: string }>[] = [
   { name: "claudeMd", text: "the instruction files" },

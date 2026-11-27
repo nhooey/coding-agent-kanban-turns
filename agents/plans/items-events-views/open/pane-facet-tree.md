@@ -68,7 +68,7 @@ touches: [plugin/src/pane/, plugin/hooks/register.tsx, plugin/defaults/config.ya
 - **The footer** is the draft's summary, from the pending events, then Reassess and Submit.
 - **The cut-over.**
   The pane, the count line and `/answers` read the items from [the fold](item-event-reducer.md) of the transcript's log, with [the item tool](item-tool-declares-events.md) raising them.
-  The branches, the turn groups and their stops in `plugin/src/pane/sections.ts` are unreached, and [reply-prose-readers-retired](reply-prose-readers-retired.md) deletes them.
+  The branches, the turn groups and their stops in `plugin/src/views/sections.ts` are unreached, and [reply-prose-readers-retired](reply-prose-readers-retired.md) deletes them.
 - **Pure.**
   The tree, a node's key, the stops and the count line are pure functions of the items and the view state; the hooks only map them.
 

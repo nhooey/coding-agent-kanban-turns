@@ -22,7 +22,7 @@ import {
 } from "../protocol/rules.ts";
 import { SPEC } from "../protocol/spec.ts";
 import { escaped } from "../text/patterns.ts";
-import type { OwnLine } from "../transcript/turns.ts";
+import type { OwnLine } from "../harness/turns.ts";
 
 /**
  * One reference a line writes to an item of a list the pane draws: where

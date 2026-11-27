@@ -6873,41 +6873,6 @@ var SPEC = {
   }
 };
 
-// src/items/frees.ts
-var FREES = SPEC.frees;
-var TURN = SPEC.reference["turn-id"];
-var OPENING = `${FREES.label}:`;
-var FREED_LISTS = Object.values(SPEC.lists).filter((list) => list["rolls-up"]).map((list) => list.header);
-var refText = ({ turn, list, number }) => `${turn}.${list}.${number}`;
-var isTurnPrefix = (text) => text.length >= TURN.shortest && text.length <= TURN.length && [...text].every((char) => TURN.alphabet.includes(char));
-var isNumber = (text) => text !== "" && !text.startsWith("0") && [...text].every((char) => char >= "0" && char <= "9");
-var refOfText = (text) => {
-  const parts = text.split(".");
-  const [turn = "", list = "", number = ""] = parts;
-  return parts.length === 3 && isTurnPrefix(turn) && FREED_LISTS.includes(list) && isNumber(number) && Number.isSafeInteger(Number(number)) ? { turn, list, number: Number(number) } : void 0;
-};
-var once = (values) => [
-  ...new Set(values)
-];
-var uniqueRefs = (values) => once(
-  values.flatMap((value) => {
-    const ref = typeof value === "string" ? refOfText(value.trim()) : void 0;
-    return ref === void 0 ? [] : [refText(ref)];
-  })
-);
-var freesOfLine = (line) => {
-  const text = line.trim();
-  return text.startsWith(OPENING) ? uniqueRefs(text.slice(OPENING.length).split(FREES.separator)) : void 0;
-};
-var isFreesLine = (line) => freesOfLine(line) !== void 0;
-var resolvedRefs = (refs, ids, span, known) => once(
-  refs.flatMap((text) => {
-    const ref = refOfText(text);
-    const found2 = ref === void 0 ? void 0 : ids.slice(span.from, span.at + 1).filter((id) => id.startsWith(ref.turn)).map((id) => refText({ ...ref, turn: id })).findLast((whole) => known.has(whole));
-    return found2 === void 0 ? [] : [found2];
-  })
-);
-
 // src/protocol/rules.ts
 var inClass = (chars) => chars.replace(/[\\\]^-]/g, "\\$&");
 var classOf = (chars) => `[${inClass(chars)}]`;
@@ -6926,20 +6891,44 @@ var PANE_LISTS = Object.values(SPEC.lists).filter(
 );
 var paneListOf = (header) => PANE_LISTS.find((list) => list.header === header);
 var settlingWordsOf = (list) => Object.keys(list["settling-words"]);
-var TURN2 = SPEC.reference["turn-id"];
-var TURN_ID_CHAR = classOf(TURN2.alphabet);
-var TURN_ID = `${TURN_ID_CHAR}{${TURN2.length}}`;
-var TURN_ID_PREFIX = `${TURN_ID_CHAR}{${TURN2.shortest},${TURN2.length}}`;
-var isTurnId = (id) => id.length === TURN2.length && [...id].every((char) => TURN2.alphabet.includes(char));
+var TURN = SPEC.reference["turn-id"];
+var TURN_ID_CHAR = classOf(TURN.alphabet);
+var TURN_ID = `${TURN_ID_CHAR}{${TURN.length}}`;
+var TURN_ID_PREFIX = `${TURN_ID_CHAR}{${TURN.shortest},${TURN.length}}`;
+var isTurnId = (id) => id.length === TURN.length && [...id].every((char) => TURN.alphabet.includes(char));
 var LETTERS = SPEC.reference.letters;
 var LETTER = `[${LETTERS.first}-${LETTERS.last}]`;
 var isOptionLetter = (letter) => [...letter].length === 1 && letter >= LETTERS.first && letter <= LETTERS.last;
 var SUBSCRIPT_CHAR = classOf(SPEC.tag.digits + SPEC.tag.minus);
+var SUBSCRIPT = {
+  ...Object.fromEntries(
+    [..."0123456789"].map((d, n) => [d, [...SPEC.tag.digits][n] ?? d])
+  ),
+  "-": SPEC.tag.minus
+};
+var subscriptOf = (index) => [...String(index)].map((c) => SUBSCRIPT[c] ?? c).join("");
 var isLineOf = (char, line) => line.trim() !== "" && [...line.trim()].every((c) => c === char);
 
-// src/items/items.ts
+// src/protocol/options-input.ts
+var TURN2 = SPEC.reference["turn-id"];
+var FREED_LISTS = Object.values(SPEC.lists).filter((list) => list["rolls-up"]).map((list) => list.header);
+var refText = ({ turn, list, number }) => `${turn}.${list}.${number}`;
+var isTurnPrefix = (text) => text.length >= TURN2.shortest && text.length <= TURN2.length && [...text].every((char) => TURN2.alphabet.includes(char));
+var isNumber = (text) => text !== "" && !text.startsWith("0") && [...text].every((char) => char >= "0" && char <= "9");
+var refOfText = (text) => {
+  const parts = text.split(".");
+  const [turn = "", list = "", number = ""] = parts;
+  return parts.length === 3 && isTurnPrefix(turn) && FREED_LISTS.includes(list) && isNumber(number) && Number.isSafeInteger(Number(number)) ? { turn, list, number: Number(number) } : void 0;
+};
+var uniqueRefs = (values) => [
+  ...new Set(
+    values.flatMap((value) => {
+      const ref = typeof value === "string" ? refOfText(value.trim()) : void 0;
+      return ref === void 0 ? [] : [refText(ref)];
+    })
+  )
+];
 var refOf = (item) => item.ref || `${item.turn}.${item.list || DECIDE.header}.${item.number}`;
-var isSameTurn = (a, b) => a !== "" && b !== "" && (a.startsWith(b) || b.startsWith(a));
 var isOption = (value) => isObject(value) && typeof value.letter === "string" && typeof value.name === "string";
 var isItem = (value) => isObject(value) && typeof value.turn === "string" && typeof value.number === "number" && typeof value.summary === "string" && Array.isArray(value.options) && value.options.every(isOption);
 var kindOf = (kind) => typeof kind === "string" && Object.hasOwn(SPEC.options.kinds, kind) ? kind : DEFAULT_KIND;
@@ -7375,7 +7364,7 @@ var INSTRUCTIONS = instructionsFor(TOOL_CALLED);
 // src/text/patterns.ts
 var escaped = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-// src/transcript/reports.ts
+// src/harness/reports.ts
 var TAG = /<\/([a-zA-Z][^\s/>]*)\s*>|<([a-zA-Z][^\s/>]*)((?:\s+[^\s/>=]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*)\s*(\/?)>/g;
 var ATTR = /([^\s/>=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
 var ENTITY = /&(?:#(\d+)|#[xX]([0-9a-fA-F]+)|(amp|lt|gt|quot|apos));/g;
@@ -7471,7 +7460,7 @@ var BRANCH = new RegExp(
 var branchSpans = (text) => [...text.matchAll(SPAN)].map((m) => m[1] ?? "").filter((span) => BRANCH.test(span));
 var reportNamesItem = (summary, names, report) => names.some((name) => namesWord(name, summary)) || branchSpans(summary).some((branch) => namesWord(branch, report));
 
-// src/transcript/claude-code.ts
+// src/harness/claude-code.ts
 var ORIGIN_OWNERS = /* @__PURE__ */ new Map([
   ["human", "user"],
   ["peer", "peer"],
@@ -7619,6 +7608,17 @@ var sessionTranscriptPath = (projects, cwd, session, holding2) => {
 // cli/run.ts
 import { parseArgs } from "node:util";
 
+// src/artefacts/pull-requests.ts
+var PULL_URL = /https?:\/\/github\.com\/([\p{L}\p{N}_.-]+)\/([\p{L}\p{N}_.-]+)\/pull\/(\d+)/gu;
+var PULL_REF = /(?<![\p{L}\p{N}_./-])([\p{L}\p{N}_.-]+)\/([\p{L}\p{N}_.-]+)#(\d+)(?![\p{L}\p{N}_])/gu;
+var pullRequestsOf = (text) => [
+  ...new Set(
+    [...text.matchAll(PULL_URL), ...text.matchAll(PULL_REF)].map(
+      (m) => `${m[1]}/${m[2]}#${m[3]}`.toLowerCase()
+    )
+  )
+].sort();
+
 // src/items/answer-lines.ts
 var LETTERS2 = String.raw`${LETTER}(?:\s*,\s*${LETTER})*`;
 var LIST = escaped(DECIDE.header);
@@ -7677,6 +7677,28 @@ var answersOfLine = (line) => {
   );
 };
 
+// src/items/frees.ts
+var FREES = SPEC.frees;
+var OPENING = `${FREES.label}:`;
+var once = (values) => [
+  ...new Set(values)
+];
+var freesOfLine = (line) => {
+  const text = line.trim();
+  return text.startsWith(OPENING) ? uniqueRefs(text.slice(OPENING.length).split(FREES.separator)) : void 0;
+};
+var isFreesLine = (line) => freesOfLine(line) !== void 0;
+var resolvedRefs = (refs, ids, span, known) => once(
+  refs.flatMap((text) => {
+    const ref = refOfText(text);
+    const found2 = ref === void 0 ? void 0 : ids.slice(span.from, span.at + 1).filter((id) => id.startsWith(ref.turn)).map((id) => refText({ ...ref, turn: id })).findLast((whole) => known.has(whole));
+    return found2 === void 0 ? [] : [found2];
+  })
+);
+
+// src/items/items.ts
+var isSameTurn = (a, b) => a !== "" && b !== "" && (a.startsWith(b) || b.startsWith(a));
+
 // src/items/said.ts
 var saidOf = (text, words) => {
   const said2 = text.trim();
@@ -7727,7 +7749,7 @@ var latestWord = (answers2, list, id, at2, number) => answers2.findLast(
   (answer2) => answer2.word !== "" && answer2.list === list && answer2.number === number && (answer2.turn === "" ? answer2.at === at2 : isSameTurn(answer2.turn, id))
 );
 
-// src/transcript/turns.ts
+// src/harness/turns.ts
 var isOwn = (owner) => owner === "user" || owner === "this-plugin";
 var DRAFT_HEADER = new RegExp(
   String.raw`^${escaped(PLUGIN)}(?:@[\w.-]+)?:\r?\n`
@@ -7804,7 +7826,7 @@ var reassessStarts = (turns) => {
   );
 };
 
-// src/transcript/reply.ts
+// src/harness/reply.ts
 var HEADER = new RegExp(
   String.raw`^\s*\S+\s+\*\*(${SECTION_NAMES.map(escaped).join("|")}):\*\*`
 );
@@ -8109,15 +8131,6 @@ var latestDecideItems = (turns, start) => {
 var decidedOf = (answers2, latest) => new Set(
   latest.filter((item) => isAnswered(answers2, item.id, item.at, item.number)).map((item) => subjectKey(item.summary))
 );
-var PULL_URL = /https?:\/\/github\.com\/([\p{L}\p{N}_.-]+)\/([\p{L}\p{N}_.-]+)\/pull\/(\d+)/gu;
-var PULL_REF = /(?<![\p{L}\p{N}_./-])([\p{L}\p{N}_.-]+)\/([\p{L}\p{N}_.-]+)#(\d+)(?![\p{L}\p{N}_])/gu;
-var pullRequestsOf = (text) => [
-  ...new Set(
-    [...text.matchAll(PULL_URL), ...text.matchAll(PULL_REF)].map(
-      (m) => `${m[1]}/${m[2]}#${m[3]}`.toLowerCase()
-    )
-  )
-].sort();
 var windowStart = (turns, window) => windowFrom(turns.length, window, reassessStart(turns));
 var windowFrom = (length, window, floor) => Math.max(window > 0 && window <= length ? length - window : 0, floor);
 var keyOf2 = (item) => `${item.list}	${subjectKey(summaryOf(item.line))}`;
@@ -8249,25 +8262,6 @@ var rollUpDue = (turns, now) => {
   return left > 0 ? { full: false, left } : { full: true };
 };
 
-// src/items/answers.ts
-var LETTERS_ONLY = new RegExp(
-  String.raw`^(${LETTER}(?:\s*,\s*${LETTER})*)\s*$`
-);
-
-// src/pane/sections.ts
-var BRANCH_NAMES = {
-  open: "Open",
-  queued: "Queued",
-  done: DONE.header
-};
-var SUBSCRIPT = {
-  ...Object.fromEntries(
-    [..."0123456789"].map((d, n) => [d, [...SPEC.tag.digits][n] ?? d])
-  ),
-  "-": SPEC.tag.minus
-};
-var subscriptOf = (index) => [...String(index)].map((c) => SUBSCRIPT[c] ?? c).join("");
-
 // src/items/roll-up.ts
 var ROLL_UP4 = SPEC["roll-up"];
 var BOLD3 = /\*\*.+?\*\*/;
@@ -8368,7 +8362,7 @@ var rollUpDraft = (turns, window, merged = /* @__PURE__ */ new Set(), width = Nu
 };
 var MERGES_UNKNOWN = `Which pull requests merged is unknown: \`gh\` didn't answer, so the count line and the draft keep every ${SPEC.lists.review.header} item whose pull request isn't already known merged; check those before printing them.`;
 
-// src/lint/reply.ts
+// src/harness/reply-lint.ts
 var KINDS3 = SPEC.options.kinds;
 var RULES = {
   "no-separator": "no separator line before this item, though an item beside it is multi-line",

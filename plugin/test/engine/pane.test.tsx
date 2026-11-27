@@ -988,7 +988,7 @@ test("a pick under the ring moves a radio item to Queued at once; a checkbox ite
   // The ring landing on an element, as the engine says of a Tab, an arrow
   // or a click. A plugin's own $.ui.focus never reaches the kit's hooks, nor
   // another plugin's, so where a pick sends the ring is left to a live
-  // session; test/unit/pane/sections.test.ts's ringAfterMove tests hold it.
+  // session; test/unit/views/sections.test.ts's ringAfterMove tests hold it.
   state.isRingMovable = true;
   const ringOn = (element: string) =>
     $.ui.focus({ component: "Pane", requestId: "kanban-turns", element, origin: { kind: "person" } });
@@ -1245,7 +1245,7 @@ test("↓ Next and ↑ Previous follow the focus ring, stopping on each toggle, 
   // The ring landing on an element, as the engine says of a Tab, an arrow
   // or a click. A plugin's own $.ui.focus never reaches the kit's hooks, so
   // a press of ↓ or ↑ moving the ring is left to a live session; the stops
-  // it moves between are test/unit/pane/sections.test.ts's.
+  // it moves between are test/unit/views/sections.test.ts's.
   state.isRingMovable = true;
   const ringOn = (element: string) =>
     $.ui.focus({

@@ -19,10 +19,19 @@ import {
   isOptionLetter,
   isTurnId,
   itemLabel,
+  subscriptOf,
 } from "../../../src/protocol/rules.ts";
 import { SPEC } from "../../../src/protocol/spec.ts";
 
 const whole = (pattern: string): RegExp => new RegExp(`^${pattern}$`, "u");
+
+describe("a turn's relative index", () => {
+  test("prints in Unicode subscript, as the kanban skill's 🔖 tag does", () => {
+    expect(subscriptOf(0)).toBe("₀");
+    expect(subscriptOf(-3)).toBe("₋₃");
+    expect(subscriptOf(-17)).toBe("₋₁₇");
+  });
+});
 
 describe("the protocol's patterns", () => {
   test("match a whole turn id", () => {

@@ -1,0 +1,82 @@
+{
+  "allowed": [
+    {
+      "comment": "protocol/: the spec's module, the rules derived from it, the prose, the tools' schemas and the readers of the tools' inputs; imports the support folders",
+      "from": { "path": "^src/protocol/" },
+      "to": { "path": "^(src/(protocol|config|text|json)/|types/)" }
+    },
+    {
+      "comment": "harness/: the neutral turns, the adapter that builds them and the harness's entities; imports protocol/",
+      "from": { "path": "^src/harness/" },
+      "to": { "path": "^(src/(harness|protocol|config|text|json)/|types/)" }
+    },
+    {
+      "comment": "artefacts/: what lives outside the session and how its status is read; imports protocol/",
+      "from": { "path": "^src/artefacts/" },
+      "to": { "path": "^(src/(artefacts|protocol|config|text|json)/|types/)" }
+    },
+    {
+      "comment": "items/: the draft's answers, the items raised and Done, what an item frees, the count line and what kanban_outstanding gives; imports protocol/, harness/ and artefacts/",
+      "from": { "path": "^src/items/" },
+      "to": { "path": "^(src/(items|harness|artefacts|protocol|config|text|json)/|types/)" }
+    },
+    {
+      "comment": "views/: what the pane and a reply draw; imports every layer",
+      "from": { "path": "^src/views/" },
+      "to": { "path": "^(src/(views|items|harness|artefacts|protocol|config|text|json)/|types/)" }
+    },
+    {
+      "comment": "text/, json/: support; import each other and config/, and no layer",
+      "from": { "path": "^src/(text|json)/" },
+      "to": { "path": "^(src/(config|text|json)/|types/)" }
+    },
+    {
+      "comment": "config/: support, the settings, read by the bundled YAML parser in vendor/; imports text/ and json/, and no layer",
+      "from": { "path": "^src/config/" },
+      "to": { "path": "^(src/(config|text|json)/|types/|vendor/)" }
+    },
+    {
+      "comment": "hooks/, cli/, tools/: the edges; import anything",
+      "from": { "path": "^(hooks|cli|tools)/" },
+      "to": {}
+    }
+  ],
+  "allowedSeverity": "error",
+  "forbidden": [
+    {
+      "name": "no-cycle",
+      "comment": "No module reaches itself through its imports",
+      "severity": "error",
+      "from": {},
+      "to": { "circular": true }
+    },
+    {
+      "name": "no-engine-in-core",
+      "comment": "The core imports no engine: claude-code is the hooks' alone",
+      "severity": "error",
+      "from": { "path": "^src/" },
+      "to": { "path": "^claude-code$" }
+    },
+    {
+      "name": "no-node-built-in-in-core",
+      "comment": "The core imports no Node built-in: no file, process, timer or clock",
+      "severity": "error",
+      "from": { "path": "^src/" },
+      "to": { "dependencyTypes": ["core"] }
+    },
+    {
+      "name": "no-edge-in-core",
+      "comment": "The core imports nothing from the hooks, the CLI or the build steps",
+      "severity": "error",
+      "from": { "path": "^src/" },
+      "to": { "path": "^(hooks|cli|tools)/" }
+    }
+  ],
+  "options": {
+    "parser": "swc",
+    "doNotFollow": {
+      "path": "^vendor/",
+      "dependencyTypes": ["npm", "npm-dev", "npm-optional", "npm-peer", "npm-bundled", "npm-no-pkg"]
+    }
+  }
+}

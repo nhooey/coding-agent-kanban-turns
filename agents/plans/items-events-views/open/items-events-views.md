@@ -153,7 +153,7 @@ Beside them, [the refactor plan](../../items-events-views-refactor/open/items-ev
 This plan's nodes wait on them across the two plans:
 
 - [item-model-in-spec](item-model-in-spec.md) on [compatibility-code-deleted](../../items-events-views-refactor/closed/compatibility-code-deleted.md);
-- [item-event-reducer](item-event-reducer.md) on [core-folders-are-layers](../../items-events-views-refactor/open/core-folders-are-layers.md);
+- [item-event-reducer](item-event-reducer.md) on [core-folders-are-layers](../../items-events-views-refactor/closed/core-folders-are-layers.md);
 - [item-tool-declares-events](item-tool-declares-events.md) and [item-renderer-densities](item-renderer-densities.md) on [hooks-split-by-concern](../../items-events-views-refactor/open/hooks-split-by-concern.md);
 - [reply-prose-readers-retired](reply-prose-readers-retired.md) on [unused-exports-checked](../../items-events-views-refactor/open/unused-exports-checked.md).
 

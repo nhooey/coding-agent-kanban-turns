@@ -23,7 +23,7 @@ import {
   calledAs,
   draftOf,
 } from "../../../src/protocol/tools.ts";
-import { draftLintText, lintToolText } from "../../../src/lint/reply.ts";
+import { draftLintText, lintToolText } from "../../../src/harness/reply-lint.ts";
 
 describe("calledAs", () => {
   test("is a tool's name as the agent calls it", () => {

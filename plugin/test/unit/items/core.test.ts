@@ -5,7 +5,8 @@ import { describe, test } from "node:test";
 import { expect } from "expect";
 
 import { answersIn, answerTo, lettersAfter } from "../../../src/items/answers.ts";
-import { glyphOf, itemsOf, markOf, optionMark, picksAny, refOf } from "../../../src/items/items.ts";
+import { glyphOf, markOf, optionMark, picksAny } from "../../../src/items/items.ts";
+import { itemsOf, refOf } from "../../../src/protocol/options-input.ts";
 import type { DecideItem } from "../../../types/index.d.ts";
 import { SETTINGS } from "../../fixtures/settings.ts";
 

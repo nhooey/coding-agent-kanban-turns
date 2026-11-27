@@ -22,7 +22,7 @@ import {
   draftLintText,
   lintReply,
   replyLintText,
-} from "../../../src/lint/reply.ts";
+} from "../../../src/harness/reply-lint.ts";
 import {
   apiError,
   assistant,

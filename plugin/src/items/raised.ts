@@ -6,7 +6,8 @@
 
 import { choiceTo, settles } from "./answers.ts";
 import type { Answer } from "./answers.ts";
-import { feedbackOfItem, refOf } from "./items.ts";
+import { feedbackOfItem } from "./items.ts";
+import { refOf } from "../protocol/options-input.ts";
 import type { Feedback } from "../protocol/rules.ts";
 import type {
   Held,

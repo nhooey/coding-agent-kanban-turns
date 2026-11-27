@@ -5,8 +5,8 @@
 import fc from "fast-check";
 
 import { emptyRaised, withItems } from "../../src/items/raised.ts";
-import { INITIAL_PANE, step } from "../../src/pane/pane-state.ts";
-import type { Effect, Event, Stepped } from "../../src/pane/pane-state.ts";
+import { INITIAL_PANE, step } from "../../src/views/pane-state.ts";
+import type { Effect, Event, Stepped } from "../../src/views/pane-state.ts";
 import type {
   DecideItem,
   Held,

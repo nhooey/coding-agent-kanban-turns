@@ -25,7 +25,7 @@ import {
   projectsFolder,
   sessionTranscriptPath,
   transcriptFile,
-} from "../src/transcript/claude-code.ts";
+} from "../src/harness/claude-code.ts";
 import type { Loaded } from "../types/index.d.ts";
 import { SESSION_VARIABLE, answer, refused, requestOf, usageRefusal } from "./run.ts";
 import type { Inputs, Request, Result, Source } from "./run.ts";

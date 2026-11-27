@@ -33,7 +33,7 @@ In the plugin's code:
 - **One module per layer.**
   `plugin/src/` holds `protocol/`, `harness/`, `artefacts/`, `items/` and `views/`, with the support folders `config/`, `text/` and `json/`, and no other; `plugin/test/unit/` mirrors them.
 - **No import in the wrong direction.**
-  A dependency check in `nix flake check` finds every import going one way, as [core-folders-are-layers](core-folders-are-layers.md)'s table says, and no cycle between modules.
+  A dependency check in `nix flake check` finds every import going one way, as [core-folders-are-layers](../closed/core-folders-are-layers.md)'s table says, and no cycle between modules.
   It lists no exception, and a test of its rules finds it failing on a fixture import the wrong way.
 - **Effects only in `hooks/`.**
   The same check finds no module of `plugin/src/` importing `claude-code`, a Node built-in or the clock, and none importing from `plugin/hooks/`, `plugin/cli/` or `plugin/tools/`.
@@ -60,7 +60,7 @@ Each `needs` the ones before it that it builds on:
 
 1. [compatibility-code-deleted](../closed/compatibility-code-deleted.md): the retired settings' warnings, the aliases and the untaught option kind go.
 2. [refactor-oracles-deleted](../closed/refactor-oracles-deleted.md): the tests' copies of replaced code go.
-3. [core-folders-are-layers](core-folders-are-layers.md), after both: the core's folders are the layers, and a check holds the imports one way.
+3. [core-folders-are-layers](../closed/core-folders-are-layers.md), after both: the core's folders are the layers, and a check holds the imports one way.
 4. [hooks-split-by-concern](hooks-split-by-concern.md), after that: `register.tsx` is a module per concern.
 5. [plugin-tool-rows-compact](plugin-tool-rows-compact.md), after the split: every tool's call is drawn as one line, by one rule.
 6. [unused-exports-checked](unused-exports-checked.md), last: a check fails the build on an unused file or export.
@@ -83,7 +83,7 @@ What is better refactored by the node that rewrites it stays in [items-events-vi
 
 - the spec's build step, `tools/spec/load.ts`, split by section, in [item-model-in-spec](../../items-events-views/open/item-model-in-spec.md);
 - the pane's state module, split by part, in [pane-view-state](../../items-events-views/open/pane-view-state.md);
-- the `gh` reader's move to the artefacts layer, in [harness-observations-as-events](../../items-events-views/open/harness-observations-as-events.md);
+- the artefacts layer's `gh` reader made the link target `github`'s status reader, in [harness-observations-as-events](../../items-events-views/open/harness-observations-as-events.md);
 - the 1,100 lines of settlers in `items/outstanding.ts`, which aren't tidied at all: [reply-prose-readers-retired](../../items-events-views/open/reply-prose-readers-retired.md) deletes them, with the lists and their readers.
 
 ## What the model's plan waits on
@@ -91,7 +91,7 @@ What is better refactored by the node that rewrites it stays in [items-events-vi
 | Node of items-events-views                                                                       | Needs                                                     | Why                                                    |
 | ------------------------------------------------------------------------------------------------ | --------------------------------------------------------- | ------------------------------------------------------ |
 | [item-model-in-spec](../../items-events-views/open/item-model-in-spec.md)                         | [compatibility-code-deleted](../closed/compatibility-code-deleted.md) | the spec it extends has no alias and no untaught kind  |
-| [item-event-reducer](../../items-events-views/open/item-event-reducer.md)                         | [core-folders-are-layers](core-folders-are-layers.md)     | the fold lands in the items layer, under the check     |
+| [item-event-reducer](../../items-events-views/open/item-event-reducer.md)                         | [core-folders-are-layers](../closed/core-folders-are-layers.md) | the fold lands in the items layer, under the check     |
 | [item-tool-declares-events](../../items-events-views/open/item-tool-declares-events.md)           | [hooks-split-by-concern](hooks-split-by-concern.md)       | the tool's handler lands in the tools' module          |
 | [item-renderer-densities](../../items-events-views/open/item-renderer-densities.md)               | [hooks-split-by-concern](hooks-split-by-concern.md)       | the renderer's elements land in a module of their own  |
 | [reply-prose-readers-retired](../../items-events-views/open/reply-prose-readers-retired.md)       | [unused-exports-checked](unused-exports-checked.md)       | the check says what the deletion orphans               |

@@ -3,72 +3,22 @@
 // 0f311c94.Review.1`, read by the spec's grammar; and its references
 // resolved against the items the turns hold. No `$`, no I/O.
 //
-// A reference here is an item's without letters or a note,
-// `<turn>.<List>.<n>`: its turn always named, by an id or a prefix of one
-// at least the spec's shortest, and its list the header of a list that
-// rolls up into 📌. The line is split on the spec's separator and each part
-// read on its own, so no pattern spans the line.
+// A reference here is an item's without letters or a note, read by
+// protocol/options-input.ts's refOfText. The line is split on the spec's
+// separator and each part read on its own, so no pattern spans the line.
 
+import { refOfText, refText, uniqueRefs } from "../protocol/options-input.ts";
 import { SPEC } from "../protocol/spec.ts";
 
 const FREES = SPEC.frees;
-const TURN = SPEC.reference["turn-id"];
 
 /** What the line opens with: the spec's label and a colon, `Frees:`. */
 const OPENING = `${FREES.label}:`;
-
-/** The lists a reference may name, by header: the ones that roll up into 📌, in the spec's order. */
-export const FREED_LISTS: readonly string[] = Object.values(SPEC.lists)
-  .filter((list) => list["rolls-up"])
-  .map((list) => list.header);
-
-/** One item's reference, as a `Frees:` line writes it: its turn's id or a prefix of one, its list's header and its number. */
-export type ItemRef = Readonly<{ turn: string; list: string; number: number }>;
-
-/** A reference as a `Frees:` line writes it: `0f311c94.Decide.2`. */
-export const refText = ({ turn, list, number }: ItemRef): string =>
-  `${turn}.${list}.${number}`;
-
-/** Whether `text` is a turn id or a prefix long enough to name one: its length in the spec's range, each character of its alphabet. */
-const isTurnPrefix = (text: string): boolean =>
-  text.length >= TURN.shortest &&
-  text.length <= TURN.length &&
-  [...text].every((char) => TURN.alphabet.includes(char));
-
-/** Whether `text` is an item's number as a list numbers it: digits, from 1, no leading zero. */
-const isNumber = (text: string): boolean =>
-  text !== "" &&
-  !text.startsWith("0") &&
-  [...text].every((char) => char >= "0" && char <= "9");
-
-/** The reference `text` is, the whole of it; undefined where it's none. */
-export const refOfText = (text: string): ItemRef | undefined => {
-  const parts = text.split(".");
-  const [turn = "", list = "", number = ""] = parts;
-
-  return parts.length === 3 &&
-    isTurnPrefix(turn) &&
-    FREED_LISTS.includes(list) &&
-    isNumber(number) &&
-    Number.isSafeInteger(Number(number))
-    ? { turn, list, number: Number(number) }
-    : undefined;
-};
 
 /** Each value, once, in the order it first comes. */
 const once = (values: readonly string[]): readonly string[] => [
   ...new Set(values),
 ];
-
-/** The values that are references, as strings, each once, in order: what a `kanban_options` call's `frees` keeps. */
-export const uniqueRefs = (values: readonly unknown[]): readonly string[] =>
-  once(
-    values.flatMap((value) => {
-      const ref = typeof value === "string" ? refOfText(value.trim()) : undefined;
-
-      return ref === undefined ? [] : [refText(ref)];
-    }),
-  );
 
 /**
  * The references a `Frees:` line names, as written, each once, in order,

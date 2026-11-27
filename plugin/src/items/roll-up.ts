@@ -28,7 +28,7 @@ import {
 import type { ListItem } from "./outstanding.ts";
 import { reraisable } from "./items.ts";
 import { cellWidth } from "../text/cells.ts";
-import { subscriptOf } from "../pane/sections.ts";
+import { subscriptOf } from "../protocol/rules.ts";
 import { TOOL_CALLED } from "../protocol/instructions.ts";
 import { SPEC } from "../protocol/spec.ts";
 import type { Turn } from "../../types/index.d.ts";

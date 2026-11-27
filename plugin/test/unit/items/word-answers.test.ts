@@ -15,7 +15,7 @@ import {
   wordAnsweredIn,
   wordAnswersOfLine,
 } from "../../../src/items/word-answers.ts";
-import { ownLinesOf } from "../../../src/transcript/turns.ts";
+import { ownLinesOf } from "../../../src/harness/turns.ts";
 import { said, turnOf } from "../../fixtures/turns.ts";
 
 const FIRST = "9efb08a1";

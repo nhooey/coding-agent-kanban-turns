@@ -108,6 +108,17 @@ export const isOptionLetter = (letter: string): boolean =>
 /** A pattern for one character of a 🔖 tag's subscript index. */
 export const SUBSCRIPT_CHAR = classOf(SPEC.tag.digits + SPEC.tag.minus);
 
+const SUBSCRIPT: Readonly<Record<string, string>> = {
+  ...Object.fromEntries(
+    [..."0123456789"].map((d, n) => [d, [...SPEC.tag.digits][n] ?? d]),
+  ),
+  "-": SPEC.tag.minus,
+};
+
+/** A relative index in Unicode subscript, as the kanban skill's 🔖 tag writes it: `₀`, `₋₃`. */
+export const subscriptOf = (index: number): string =>
+  [...String(index)].map((c) => SUBSCRIPT[c] ?? c).join("");
+
 /** Whether a line is `char` repeated alone, as an underline or a topic header's rule is. */
 export const isLineOf = (char: string, line: string): boolean =>
   line.trim() !== "" && [...line.trim()].every((c) => c === char);

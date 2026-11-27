@@ -49,7 +49,7 @@ The third is what the harness and the trackers report, and without it an item ow
 - **Only the person's text answers.**
   An observation never answers a question and never runs a command: a peer's report is an `observe`, whatever it says.
 
-**Refactored as it goes:** the one `gh` call's arguments and the read of its answer leave `plugin/src/items/outstanding.ts`, where they sit among the settlers, for the artefacts layer, as the link target `github`'s status reader; the harness's statuses, a shell's or an agent's, get a reader each in the harness layer, behind the same shape.
+**Refactored as it goes:** the one `gh` call's arguments and the read of its answer, in the artefacts layer's `plugin/src/artefacts/pull-requests.ts`, become the link target `github`'s status reader; the harness's statuses, a shell's or an agent's, get a reader each in the harness layer, behind the same shape.
 
 Checks:
 

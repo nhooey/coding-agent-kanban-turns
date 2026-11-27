@@ -7,7 +7,7 @@ import { describe, test } from "node:test";
 import { expect } from "expect";
 
 import { keyOf } from "../../../src/items/outstanding.ts";
-import { itemsOf } from "../../../src/items/items.ts";
+import { itemsOf } from "../../../src/protocol/options-input.ts";
 import {
   MERGES_UNKNOWN,
   bodyOf,
@@ -19,7 +19,7 @@ import {
   tagOf,
   unreadText,
 } from "../../../src/items/roll-up.ts";
-import { lintReply } from "../../../src/lint/reply.ts";
+import { lintReply } from "../../../src/harness/reply-lint.ts";
 import type { Turn } from "../../../types/index.d.ts";
 import { turnOf } from "../../fixtures/turns.ts";
 

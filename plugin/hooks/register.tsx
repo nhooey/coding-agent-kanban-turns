@@ -45,8 +45,8 @@ import {
   withNote,
   wordFor,
 } from "../src/items/answers.ts";
-import { conversationKeyOf, instructing } from "../src/transcript/instructed.ts";
-import type { Instructing } from "../src/transcript/instructed.ts";
+import { conversationKeyOf, instructing } from "../src/harness/instructed.ts";
+import type { Instructing } from "../src/harness/instructed.ts";
 import {
   INPUT_SCHEMA,
   INSTRUCTIONS,
@@ -70,29 +70,28 @@ import {
   lintReply,
   lintToolText,
   replyLintText,
-} from "../src/lint/reply.ts";
+} from "../src/harness/reply-lint.ts";
 import { outstandingText, unreadText } from "../src/items/roll-up.ts";
+import { feedbackOfItem, hasOptions } from "../src/items/items.ts";
 import {
-  feedbackOfItem,
-  hasOptions,
   ignoredSupersedes,
   itemsOf,
   refOf,
-} from "../src/items/items.ts";
+} from "../src/protocol/options-input.ts";
 import { freesLineOf } from "../src/items/frees.ts";
-import { LAYOUT, codeSpans } from "../src/pane/layout.ts";
+import { LAYOUT, codeSpans } from "../src/views/layout.ts";
 import { cellWidth } from "../src/text/cells.ts";
 import { REASSESS } from "../src/protocol/rules.ts";
 import type { Feedback } from "../src/protocol/rules.ts";
 import { capitalized } from "../src/text/words.ts";
 import { SPEC } from "../src/protocol/spec.ts";
-import { itemOfRef, refOfLink, replyDrawing } from "../src/pane/links.ts";
+import { itemOfRef, refOfLink, replyDrawing } from "../src/views/links.ts";
 import {
   isMergeKnown,
   mergedOfResponse,
   mergedQuery,
-  pullRequestsToAsk,
-} from "../src/items/outstanding.ts";
+} from "../src/artefacts/pull-requests.ts";
+import { pullRequestsToAsk } from "../src/items/outstanding.ts";
 import {
   answeredCount,
   isSettled,
@@ -109,8 +108,8 @@ import {
   shownOf,
   step as paneStep,
   submitShown,
-} from "../src/pane/pane-state.ts";
-import type { Effect, Event, Found, Stepped } from "../src/pane/pane-state.ts";
+} from "../src/views/pane-state.ts";
+import type { Effect, Event, Found, Stepped } from "../src/views/pane-state.ts";
 import {
   BRANCHES,
   BRANCH_NAMES,
@@ -136,20 +135,20 @@ import {
   turnToggle,
   withItemShown,
   withToggled,
-} from "../src/pane/sections.ts";
+} from "../src/views/sections.ts";
 import type {
   Branch,
   PaneGroups,
   Toggle,
   TurnGroup,
-} from "../src/pane/sections.ts";
-import { transcriptPathFor, turnsOfText } from "../src/transcript/claude-code.ts";
+} from "../src/views/sections.ts";
+import { transcriptPathFor, turnsOfText } from "../src/harness/claude-code.ts";
 import {
   NOT_DECODED,
   chunkOffsets,
   decodedText,
   withRange,
-} from "../src/transcript/turns.ts";
+} from "../src/harness/turns.ts";
 import type { Turn } from "../types/index.d.ts";
 import {
   actionLead,
@@ -177,8 +176,8 @@ import {
   actionsOf,
   notePlaceholder,
   wordSaidBy,
-} from "../src/pane/view.ts";
-import type { DoneRow, ItemLink, NotesMode } from "../src/pane/view.ts";
+} from "../src/views/view.ts";
+import type { DoneRow, ItemLink, NotesMode } from "../src/views/view.ts";
 import type {
   DecideItem,
   Folds,
@@ -195,7 +194,7 @@ import { loadSettings } from "./settings.ts";
 // holds every list's items; Escape, which hands the keyboard back to the
 // prompt, also closes it, as the person's close does. The keys, marks and
 // colours are settings, in defaults/config.yaml; its spacing is
-// src/pane/layout.ts's.
+// src/views/layout.ts's.
 const PANE = {
   id: "kanban-turns",
   title: PANE_NAME,
