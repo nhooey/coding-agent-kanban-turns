@@ -7,12 +7,11 @@
 // projects folder, under CLAUDE_CONFIG_DIR or the home's .claude, where
 // the adapter's sessionTranscriptPath says. The
 // flake bundles it with the core into kanban.js, one file that runs under
-// Node 20 or later, and into a standalone binary that needs no Node, only
-// its Nix closure.
+// Node 20 or later.
 //
 // The plugin's defaults file is read from beside the plugin's folder when
 // this runs from the repository; the bundle has it inlined, as
-// BUNDLED_DEFAULTS, since kanban.js and the binary run with no plugin
+// BUNDLED_DEFAULTS, since kanban.js runs with no plugin
 // folder beside them. The user's own config.yaml is read from where the
 // plugin reads it; one that's there but can't be read is a warning naming
 // it, and the defaults are used.
