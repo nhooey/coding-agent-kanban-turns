@@ -12,12 +12,12 @@ import { expect } from "expect";
 import fc from "fast-check";
 
 import { countLine } from "../../../src/items/outstanding.ts";
-import { decideItemsOf, problemsOf, unseen } from "../../../src/items/raised.ts";
+import { problemsOf, unseen } from "../../../src/items/raised.ts";
 import { INITIAL_PANE, shownOf, step } from "../../../src/pane/pane-state.ts";
 import type { Event, Found, Stepped } from "../../../src/pane/pane-state.ts";
 import type { Loaded, PaneState } from "../../../types/index.d.ts";
 import { BOXES, EARLIER, ITEMS, RAISED, START, startArb } from "../../fixtures/submit.ts";
-import { settledRefsOf } from "../../fixtures/raised.ts";
+import { optionItemsOf, settledRefsOf } from "../../fixtures/raised.ts";
 import { BAD_KEY, BROKEN, MISSING, usable } from "../../fixtures/settings.ts";
 import {
   COUNTS,
@@ -336,7 +336,7 @@ describe("the items looked at", () => {
 
 describe("the raised items", () => {
   test("take in the items a kanban_options call draws", () => {
-    expect(decideItemsOf(after([{ type: "items-drawn", items: [DRAWN] }]).raised)).toEqual([...ITEMS, DRAWN]);
+    expect(optionItemsOf(after([{ type: "items-drawn", items: [DRAWN] }]).raised)).toEqual([...ITEMS, DRAWN]);
   });
 
   test("stay for the same session, and go, with the answers held for them, for another", () => {
@@ -367,7 +367,7 @@ describe("the raised items", () => {
     expect(late.raised).toBe(joined.raised);
     expect(late.raised.items).toEqual([]);
     expect(problemsOf(late.raised)).toBe("");
-    expect(decideItemsOf(after([ASK, read(3, OPEN)], late).raised)).toEqual(ITEMS);
+    expect(optionItemsOf(after([ASK, read(3, OPEN)], late).raised)).toEqual(ITEMS);
   });
 });
 
@@ -528,7 +528,7 @@ describe("the refresh's invariants over random event sequences", () => {
 
   test("every answer Submit holds Done is a raised item's", () => {
     holds(({ stepped: { state } }) =>
-      state.sent.every((h) => decideItemsOf(state.raised).some((item) => item.ref === h.settled.ref)),
+      state.sent.every((h) => optionItemsOf(state.raised).some((item) => item.ref === h.settled.ref)),
     );
   });
 
@@ -539,13 +539,13 @@ describe("the refresh's invariants over random event sequences", () => {
   test("a raised item stays raised, but for another session's", () => {
     holds(({ before, event, stepped: { state } }) =>
       event.type === "session-joined" ||
-      decideItemsOf(before.raised).every((item) => decideItemsOf(state.raised).some((i) => i.ref === item.ref)),
+      optionItemsOf(before.raised).every((item) => optionItemsOf(state.raised).some((i) => i.ref === item.ref)),
     );
   });
 
   test("each raised item is raised once, by its ref", () => {
     holds(({ stepped: { state } }) => {
-      const refs = decideItemsOf(state.raised).map((item) => item.ref);
+      const refs = optionItemsOf(state.raised).map((item) => item.ref);
 
       return new Set(refs).size === refs.length;
     });

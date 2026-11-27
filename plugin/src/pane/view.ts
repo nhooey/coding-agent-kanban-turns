@@ -13,17 +13,25 @@ import type {
   Settlement,
 } from "../../types/index.d.ts";
 import { answersIn, hasReassess } from "../items/answers.ts";
-import { glyphOf, isDecide, listOf, optionMark, refOf } from "../items/items.ts";
+import {
+  feedbackOfItem,
+  glyphOf,
+  listNameOf,
+  listOf,
+  optionMark,
+  refOf,
+  settlingWordsOfItem,
+} from "../items/items.ts";
 import type { Ignored } from "../items/items.ts";
 import {
   DECIDE,
   DONE,
   PANE_LISTS,
   REASSESS,
-  TODO,
   itemLabel,
-  settlingWordsOf,
+  listKeyOf,
 } from "../protocol/rules.ts";
+import type { Feedback } from "../protocol/rules.ts";
 import { problemsOf, stillOpen } from "../items/raised.ts";
 import { padToCells, widestCells } from "../text/cells.ts";
 import { capitalized } from "../text/words.ts";
@@ -31,21 +39,24 @@ import { isReassessLine, withoutDraftHeader } from "../transcript/turns.ts";
 import { LAYOUT } from "./layout.ts";
 import { doneLine } from "./sections.ts";
 
-/** What the pane and /answers say when there are no open items, with why when it's known. */
+/** The pane's name, as its title, the word in 🖥️ Kanban, /answers and the buttons that open it name it: it holds every list's items, so it's named for none. */
+export const PANE_NAME = "Kanban";
+
+/** What the pane and /answers say when there are no open items, of any list, with why when it's known. */
 export const noItemsText = (problem: string): string =>
-  `No open ${DECIDE.header} items${problem ? `: ${problem}` : ""}.`;
+  `No open items${problem ? `: ${problem}` : ""}.`;
 
 /** /answers's reply: the pane opened over every open item, counted list by list, a list with none left out, or why there are none. */
 export const answersText = (raised: Raised): string => {
   const open = stillOpen(raised);
   const counts = PANE_LISTS.map((list) => ({
     list,
-    count: open.filter((item) => listOf(item).header === list.header).length,
+    count: open.filter((item) => item.list === list.header).length,
   })).filter(({ count }) => count > 0);
 
   return counts.length === 0
     ? noItemsText(problemsOf(raised))
-    : `${DECIDE.header} pane opened: ${counts
+    : `${PANE_NAME} pane opened: ${counts
         .map(({ list, count }) => `${count} open ${list.header} items`)
         .join(", ")}.`;
 };
@@ -85,7 +96,7 @@ export const drewText = (
   ignored: readonly Ignored[] = [],
 ): string =>
   [
-    `Drew buttons for ${items.length} ${DECIDE.header} items under the final response and in the ${DECIDE.header} pane: ${items
+    `Drew buttons for ${items.length} ${DECIDE.header} items under the final response and in the ${PANE_NAME} pane: ${items
       .map(refOf)
       .join(", ")}.`,
     ...ignored.map((each) => IGNORED_TEXTS[each.left](each)),
@@ -235,7 +246,7 @@ export const itemTitle = (
   item: ListedItem,
   isDone: boolean,
 ): Readonly<{ label: string; summary: string }> => ({
-  label: ` ${itemLabel(item.number, listOf(item))} `,
+  label: ` ${itemLabel(item.number, listNameOf(item))} `,
   summary: `${item.summary}${isDone ? " (done)" : ""}`,
 });
 
@@ -326,26 +337,47 @@ export const wordSaidBy =
 /** One of an item's actions: the settling word its button writes, and the button's label. */
 export type Action = Readonly<{ word: string; label: string }>;
 
-/** A Todo item's actions: each settling word the spec gives its list, in the spec's order, labelled as the `actions.todo` settings say, else by the word. */
-export const todoActions = (actions: Settings["actions"]): readonly Action[] => {
-  const labels: Readonly<Record<string, Readonly<{ label: string }>>> = actions.todo;
+/** Each list's action labels, by the list's key and then by word, as the `actions` settings give them. */
+type ActionLabels = Readonly<Record<string, Readonly<Record<string, Readonly<{ label: string }>>>>>;
 
-  return settlingWordsOf(TODO).map((word) => ({
+/** `record`'s own value at `key`; undefined where it has none, so no key reaches what every object inherits. */
+const own = <T>(record: Readonly<Record<string, T>>, key: string): T | undefined =>
+  Object.hasOwn(record, key) ? record[key] : undefined;
+
+/** An item's actions: each settling word the spec gives its list, in the spec's order, labelled as the list's `actions` settings say, by the list's key, else by the word; none for a list without settling words. */
+export const actionsOf = (
+  item: ListedItem,
+  { note: _note, ...lists }: Settings["actions"],
+): readonly Action[] => {
+  const list = listOf(item);
+  const labels: ActionLabels = lists;
+  const ofList = (list === undefined ? undefined : own(labels, listKeyOf(list))) ?? {};
+
+  return settlingWordsOfItem(item).map((word) => ({
     word,
-    label: Object.hasOwn(labels, word) ? (labels[word]?.label ?? word) : word,
+    label: own(ofList, word)?.label ?? word,
   }));
 };
 
 /**
- * What a Todo item's notes field shows while it's empty: that a note goes
- * with one of its actions, by label, or alone, and that a note alone
- * settles nothing unless it opens with one of the actions' words, which
- * it then reads back as.
+ * What an item's notes field shows while it's empty, by its list's
+ * feedback: for options, that it takes notes or an answer in words; for
+ * settling words, that a note goes with one of its actions, by label, or
+ * alone, and that a note alone settles nothing unless it opens with one of
+ * the actions' words, which it then reads back as; for none, notes.
  */
-export const todoNotePlaceholder = (actions: readonly Action[]): string =>
-  `A note: with ${actions.map((action) => action.label).join(" or ")}, or alone, which settles nothing unless it opens with ${actions
-    .map((action) => `"${action.word}"`)
-    .join(" or ")}`;
+const NOTE_PLACEHOLDERS: Readonly<Record<Feedback, (actions: readonly Action[]) => string>> = {
+  options: () => "Notes, or an answer in your own words",
+  "settling-words": (actions) =>
+    `A note: with ${actions.map((action) => action.label).join(" or ")}, or alone, which settles nothing unless it opens with ${actions
+      .map((action) => `"${action.word}"`)
+      .join(" or ")}`,
+  none: () => "Notes",
+};
+
+/** What the item's notes field shows while it's empty, as `NOTE_PLACEHOLDERS` says for its list's feedback, its actions as `actionsOf` gives them. */
+export const notePlaceholder = (item: ListedItem, actions: readonly Action[]): string =>
+  NOTE_PLACEHOLDERS[feedbackOfItem(item)](actions);
 
 /**
  * What an action's button opens on, `✅ Done`: `chosen`, the `marks.chosen`

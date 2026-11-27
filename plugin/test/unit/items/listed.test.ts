@@ -8,10 +8,14 @@
 import { describe, test } from "node:test";
 import { expect } from "expect";
 
-import { openTodoOf, todoItemsOfText, todoStates, wordedSubjects } from "../../../src/items/listed.ts";
+import { openTodoOf, todoStates, wordedSubjects } from "../../../src/items/listed.ts";
 import { countLine, rollUp, summaryOf, unsettled } from "../../../src/items/outstanding.ts";
-import type { Turn } from "../../../types/index.d.ts";
+import type { TodoItem, Turn } from "../../../types/index.d.ts";
 import { turnOf } from "../../fixtures/turns.ts";
+
+/** The Todo items one reply `text` prints, as the turn `turn` raises them, in order. */
+const todoItemsOfText = (text: string, turn: string): readonly TodoItem[] =>
+  todoStates([turnOf(turn, "go", { replies: [text] })]).map((state) => state.item);
 
 const FIRST = "9efb08a1";
 const SECOND = "b2c3d4e5";
@@ -51,7 +55,10 @@ const outstandingTodos = (turns: readonly Turn[]): readonly string[] =>
 
 describe("the Todo items of a reply", () => {
   test("each numbered item of its Todo list, by turn, number, summary and body, its Frees: line apart", () => {
-    expect(todoItemsOfText(LISTED, FIRST)).toEqual([
+    // The Frees: line names the reply's own Decide item, which it frees.
+    const withDecide = `${LISTED}\n🧠 **Decide:**  \n▔▔▔▔▔▔▔▔▔▔\n1. **Which cache to keep**\n   🔘 A. **Disk**\n`;
+
+    expect(todoItemsOfText(withDecide, FIRST)).toEqual([
       {
         turn: FIRST,
         list: "Todo",

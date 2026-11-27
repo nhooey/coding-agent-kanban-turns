@@ -1,8 +1,11 @@
-// Clickable answers to the kanban turn responses' Decide items: a pane that
-// lists every item raised in the session, newest turn first, and the same
-// boxes under the reply that raised them, in place of its Decide and Todo
-// lists. The pane opens by itself, without the keyboard, at session start
-// when items are open and when a reply raises a new one; 🖥️ Kanban and the
+// Clickable answers to the kanban turn responses' items, of every list the
+// spec gives feedback: a pane that lists every item raised in the session,
+// newest turn first, and the same boxes under the reply that prints them,
+// in place of each of its lists found intact. Every list takes one path;
+// what sets one apart, how its items are answered and its actions' labels,
+// is the spec's and the settings' data. The pane opens by itself, without
+// the keyboard, at session start when items are open and when a reply
+// raises a new one; 🖥️ Kanban and the
 // skill's count line above the prompt, and /answers, open it with the
 // keyboard. A click writes the item's reference, on a line of its own, into
 // the prompt draft and never sends it; only the pane's Submit sends a
@@ -18,9 +21,10 @@
 // under it each turn with a Done item, under its own toggle; then a footer
 // saying what Submit will send, beside 🔄 Reassess and 📤 Submit.
 //
-// An item is drawn as the skill writes it: its summary, its note, then each
-// option as `glyph letter. name: consequence` with its ➕ and ➖ lines indented
-// under it, inside a rounded border. The option the draft picks is marked
+// An item is drawn as the skill writes it: its summary, its note, then its
+// answers, by its list's feedback, each option as `glyph letter. name:
+// consequence` with its ➕ and ➖ lines indented under it, or a row of its
+// list's actions, inside a rounded border. The option the draft picks is marked
 // ✅ and underlined; a bar in the column left of an option lights under the
 // pointer, and stays lit in another colour once the item is Done.
 
@@ -67,24 +71,21 @@ import {
   replyLintText,
 } from "../src/lint/reply.ts";
 import { outstandingText, unreadText } from "../src/items/roll-up.ts";
-import { ignoredSupersedes, isDecide, itemsOf, refOf } from "../src/items/items.ts";
+import {
+  feedbackOfItem,
+  hasOptions,
+  ignoredSupersedes,
+  itemsOf,
+  refOf,
+} from "../src/items/items.ts";
 import { freesLineOf } from "../src/items/frees.ts";
 import { LAYOUT, codeSpans } from "../src/pane/layout.ts";
 import { cellWidth } from "../src/text/cells.ts";
-import { DECIDE, PANE_LISTS, REASSESS, TODO } from "../src/protocol/rules.ts";
+import { REASSESS } from "../src/protocol/rules.ts";
+import type { Feedback } from "../src/protocol/rules.ts";
 import { capitalized } from "../src/text/words.ts";
 import { SPEC } from "../src/protocol/spec.ts";
-import {
-  decideListSpan,
-  itemOfRef,
-  linkedItems,
-  linkedQuestions,
-  printedTodoItems,
-  refOfLink,
-  replyParts,
-  todoListSpan,
-} from "../src/pane/links.ts";
-import type { ListSpan } from "../src/pane/links.ts";
+import { itemOfRef, refOfLink, replyDrawing } from "../src/pane/links.ts";
 import {
   isMergeKnown,
   mergedOfResponse,
@@ -93,7 +94,6 @@ import {
 } from "../src/items/outstanding.ts";
 import {
   answeredCount,
-  decideItemsOf,
   isSettled,
   listedItemsOf,
   problemsOf,
@@ -108,7 +108,6 @@ import {
   shownOf,
   step as paneStep,
   submitShown,
-  turnOf,
 } from "../src/pane/pane-state.ts";
 import type { Effect, Event, Found, Stepped } from "../src/pane/pane-state.ts";
 import {
@@ -173,8 +172,9 @@ import {
   sentLetters,
   sentWord,
   submitStep,
-  todoActions,
-  todoNotePlaceholder,
+  PANE_NAME,
+  actionsOf,
+  notePlaceholder,
   wordSaidBy,
 } from "../src/pane/view.ts";
 import type { DoneRow, ItemLink, NotesMode } from "../src/pane/view.ts";
@@ -182,7 +182,6 @@ import type {
   DecideItem,
   Folds,
   ListedItem,
-  TodoItem,
   LintNote,
   Loaded,
   PaneState,
@@ -191,11 +190,12 @@ import type {
 } from "../types/index.d.ts";
 import { loadSettings } from "./settings.ts";
 
-// The pane that lists the items, and its title. The keys, marks and colours
-// are settings, in defaults/config.yaml; its spacing is src/pane/layout.ts's.
+// The pane that lists the items, and its title, the pane's name, since it
+// holds every list's items. The keys, marks and colours are settings, in
+// defaults/config.yaml; its spacing is src/pane/layout.ts's.
 const PANE = {
   id: "kanban-turns",
-  title: `${DECIDE.glyph} ${DECIDE.header}`,
+  title: PANE_NAME,
 } as const;
 // The most bytes one `$.fs.read` returns: the transcript is read in ranges
 // this long.
@@ -544,7 +544,7 @@ const answer = ($: EngineInterface, item: DecideItem, letter: string) =>
   );
 
 /** Writes the draft with the item's settling word, `word`, or takes the one there out, its note kept and a `reassess` line kept last. */
-const pressWord = ($: EngineInterface, item: TodoItem, word: string) =>
+const pressWord = ($: EngineInterface, item: ListedItem, word: string) =>
   answerItem($, item, (text) =>
     reassessKept(text, (body) => toggledWord(body, item, word)),
   );
@@ -913,7 +913,7 @@ export const register: Register = (on) => {
     const started = await next(e);
     await $.command.register({
       name: "answers",
-      description: `Open the kanban ${DECIDE.header} pane, at the first unanswered item`,
+      description: `Open the ${PANE_NAME} pane, at the first unanswered item`,
     });
     await $.command.register({
       name: "answers-config",
@@ -1172,48 +1172,29 @@ export const register: Register = (on) => {
     );
   });
 
-  // A reply's Decide questions and Todo items: the items of each list the
-  // reply prints are drawn in place of that list, each in its box, the text
-  // round the lists kept. A list not found intact is drawn as written, its
-  // items' boxes under the whole reply instead, after any text that follows
-  // a list cut out, Todo's before Decide's, as the pane orders them; while
-  // the Decide list is drawn as written, each Decide item's summary line
-  // becomes a link that opens the pane at that item.
+  // A reply's items, every list by one rule, `replyDrawing`'s: the raised
+  // items its summary lines under their list's header name, each list
+  // found intact drawn as its
+  // items' boxes in its place, the text round the lists kept; a list not
+  // found intact drawn as written, its summaries links that open the pane
+  // at their items, and its boxes under the whole reply, after any text
+  // that follows a list cut out, in the spec's list order. Without
+  // settings, no list is cut, and no boxes are drawn.
   on("ui.render", { component: "AssistantMessage" }, async ($, e, next) => {
     const state = await read($, pane);
     const r = shownOf(state);
-    const raisedItems = decideItemsOf(r);
-    const linked = linkedQuestions(e.props.text, raisedItems);
-    const decide = linkedItems(raisedItems, linked.hrefs);
-    // A reply's Todo items are raised only at its turn's end, so while a
-    // main-loop turn runs, a reply printing a list an earlier turn raised
-    // may be that turn's own: no reply draws Todo boxes then, each Todo
-    // list drawn as written.
-    const todo =
-      turnOf(state.submit) === undefined ? printedTodoItems(e.props.text, listedItemsOf(r)) : [];
+    const s = settingsOf(state.settings);
+    const drawing = replyDrawing(e.props.text, listedItemsOf(r), s !== null);
 
-    if (decide.length === 0 && todo.length === 0) {
+    if (drawing === undefined) {
       return next(e);
     }
 
-    const s = await settingsNow($);
     const elements = $.ui.resolve(e);
     const { Box, Markdown } = elements;
     const text = await read($, draft);
-    // Each list's items the reply prints, by its header, and where the
-    // list stands, where it's found intact; without settings, no list is
-    // cut, and no boxes are drawn.
-    const lists: ReadonlyMap<
-      string,
-      Readonly<{ items: readonly ListedItem[]; span: ListSpan | undefined }>
-    > = new Map(
-      [
-        { list: TODO.header, items: todo, span: todoListSpan(e.props.text, todo) },
-        { list: DECIDE.header, items: decide, span: decideListSpan(e.props.text, decide) },
-      ].map((each) => [each.list, s === null ? { ...each, span: undefined } : each]),
-    );
     const boxesOf = (list: string) => {
-      const items = lists.get(list)?.items ?? [];
+      const items = drawing.lists.find((each) => each.list.header === list)?.items ?? [];
 
       return s === null || items.length === 0
         ? null
@@ -1224,31 +1205,23 @@ export const register: Register = (on) => {
             noting: "",
           });
     };
-    // The Decide summaries are links only while the Decide list is drawn as
-    // written; linking keeps every line where it was, so the Todo list's
-    // span still holds.
-    const isLinked = decide.length > 0 && lists.get(DECIDE.header)?.span === undefined;
-    const spans = [...lists.values()].flatMap((each) => each.span ?? []);
-    const parts = replyParts(isLinked ? linked.text : e.props.text, spans);
-    const uncut = PANE_LISTS.filter((list) => lists.get(list.header)?.span === undefined);
 
     return (
       <Box flexDirection="column">
-        {parts.map((part) =>
+        {drawing.parts.map((part) =>
           part.kind === "list" ? (
             boxesOf(part.list)
-          ) : isLinked ? (
+          ) : drawing.hrefs.length > 0 ? (
             <Markdown
               key={`kanban-${part.key}`}
               text={part.text}
-              pressableLinks={linked.hrefs}
+              pressableLinks={drawing.hrefs}
               onLinkPress={(link) => showItem($, link.href)}
             />
           ) : (
             <Markdown key={`kanban-${part.key}`} text={part.text} />
           ),
         )}
-        {uncut.map((list) => boxesOf(list.header))}
       </Box>
     );
   });
@@ -1525,10 +1498,10 @@ const kanbanLine = (
 
   return (
     <Box key="kanban-line">
-      {piece("kanban", `Open the ${DECIDE.header} pane`, [
+      {piece("kanban", `Open the ${PANE_NAME} pane`, [
         `${s.marks.buttons.kanban} `,
         <Text key="kanban-word" color={s.colors.kanban}>
-          Kanban
+          {PANE_NAME}
         </Text>,
       ])}
       {pieces
@@ -1884,19 +1857,13 @@ const itemBoxes = (
             borderDimColor={isDone}
             paddingX={LAYOUT.boxPadding}
           >
-            {isDecide(item)
-              ? itemView(elements, s, item, {
-                  ...common,
-                  chosen: lettersFor(at.text, item),
-                  sent: sentLetters(settlement),
-                  onPick: (letter) => answer($, item, letter),
-                })
-              : todoView(elements, s, item, {
-                  ...common,
-                  chosen: wordFor(at.text, item),
-                  sent: sentWord(settlement),
-                  onWord: (word) => pressWord($, item, word),
-                })}
+            {itemView(elements, s, item, {
+              ...common,
+              chosen: { letters: lettersFor(at.text, item), word: wordFor(at.text, item) },
+              sent: { letters: sentLetters(settlement), word: sentWord(settlement) },
+              onPick: (letter) => (hasOptions(item) ? answer($, item, letter) : undefined),
+              onWord: (word) => pressWord($, item, word),
+            })}
           </Box>
         );
       })}
@@ -1904,7 +1871,10 @@ const itemBoxes = (
   );
 };
 
-/** What both kinds of item box draw from: the title, what made the item Done, its links, the draft's note, the notes, the keys and the presses every item takes. */
+/** An answer as the draft gives it, or as the one that made an item Done gave it: its letters and its settling word, each empty for none. */
+type Given = Readonly<{ letters: readonly string[]; word: string }>;
+
+/** What every item's box draws from, whatever its list: the title, what made the item Done, its links, the draft's note, the answers the draft and the settlement give, the notes, the keys and the presses every item takes. */
 type BoxView = {
   title: Readonly<{ label: string; summary: string }>;
   /** What made the item Done, the line under its title; empty while open, or where that's a link. */
@@ -1922,6 +1892,14 @@ type BoxView = {
   onOpenNotes: () => unknown;
   /** What a press on the title runs, which makes it a button; none, a plain line. */
   onTitle?: () => unknown;
+  /** The answer the draft gives the item. */
+  chosen: Given;
+  /** The answer that made the item Done. */
+  sent: Given;
+  /** What a press on an option runs, by its letter. */
+  onPick: (letter: string) => unknown;
+  /** What a press on an action runs, by its settling word. */
+  onWord: (word: string) => unknown;
 };
 
 /**
@@ -2074,26 +2052,20 @@ const notesView = (
 };
 
 /**
- * One Todo item: the title, what made it Done, its body, the lines the
- * reply printed under its summary, then a row of its actions, each a plain
- * button, `Done` and `Skip`, opening on the chosen mark while the draft
- * gives its word, or the sent mark where the word made the item Done; then
- * the `Frees:` line, and the notes, whose note alone settles nothing. Its
- * actions write the draft whether it's open or Done.
+ * One item, whatever its list, as the skill writes it: the title, what
+ * made it Done, its links, its body, the lines the reply printed under its
+ * summary, then its answers, as `ANSWER_VIEWS` draws them for its list's
+ * feedback, then the `Frees:` line naming what it frees, where it frees
+ * anything, and the notes. Its answers write the draft whether it's open
+ * or Done.
  */
-const todoView = (
+const itemView = (
   elements: Elements,
   s: Settings,
-  item: TodoItem,
-  view: BoxView & {
-    /** The settling word the draft gives the item; empty for none. */
-    chosen: string;
-    /** The settling word that made the item Done; empty for none. */
-    sent: string;
-    onWord: (word: string) => unknown;
-  },
+  item: ListedItem,
+  view: BoxView,
 ) => {
-  const { Box, Button, Text } = elements;
+  const { Box, Text } = elements;
   const dim = view.isSettled === true;
 
   return (
@@ -2108,92 +2080,97 @@ const todoView = (
       ) : null}
       {linkLines(elements, item, view)}
       {indentedLines(elements, s, dim, item.note, "note")}
-      <Box
-        key={`${refOf(item)}.actions`}
-        marginLeft={LAYOUT.indent}
-        columnGap={LAYOUT.controlGap}
-        flexWrap="wrap"
-      >
-        {todoActions(s.actions).map(({ word, label }) => {
-          const isChosen = view.chosen === word;
-
-          return (
-            <Button
-              key={view.keyOf(word)}
-              label={label}
-              plain
-              onPress={() => view.onWord(word)}
-            >
-              {`${actionLead({ chosen: isChosen, sent: view.sent === word }, s.marks)} `}
-              <Text key={`${view.keyOf(word)}-label`} {...(isChosen ? { underline: true } : {})}>
-                {label}
-              </Text>
-            </Button>
-          );
-        })}
-      </Box>
+      {ANSWER_VIEWS[feedbackOfItem(item)](elements, s, item, view)}
       {indentedLines(elements, s, dim, freesLineOf(item.frees ?? []), "frees")}
-      {notesView(elements, s, item, view, todoNotePlaceholder(todoActions(s.actions)))}
+      {notesView(elements, s, item, view, notePlaceholder(item, actionsOf(item, s.actions)))}
+    </Box>
+  );
+};
+
+/** How an item's answers are drawn in its box, by its list's feedback. */
+type AnswerView = (
+  elements: Elements,
+  s: Settings,
+  item: ListedItem,
+  view: BoxView,
+) => RenderNode | null;
+
+/**
+ * An item's actions: a row of them, each a plain button labelled as
+ * `actionsOf` says, `Done` and `Skip`, opening on the chosen mark while
+ * the draft gives its word, or the sent mark where the word made the item
+ * Done.
+ */
+const actionsView: AnswerView = (elements, s, item, view) => {
+  const { Box, Button, Text } = elements;
+
+  return (
+    <Box
+      key={`${refOf(item)}.actions`}
+      marginLeft={LAYOUT.indent}
+      columnGap={LAYOUT.controlGap}
+      flexWrap="wrap"
+    >
+      {actionsOf(item, s.actions).map(({ word, label }) => {
+        const isChosen = view.chosen.word === word;
+
+        return (
+          <Button
+            key={view.keyOf(word)}
+            label={label}
+            plain
+            onPress={() => view.onWord(word)}
+          >
+            {`${actionLead({ chosen: isChosen, sent: view.sent.word === word }, s.marks)} `}
+            <Text key={`${view.keyOf(word)}-label`} {...(isChosen ? { underline: true } : {})}>
+              {label}
+            </Text>
+          </Button>
+        );
+      })}
     </Box>
   );
 };
 
 /**
- * One Decide item as the skill writes it: the title, the note, each option
- * a plain button reading `glyph letter. name: consequence`, its ➕ and ➖
- * lines indented under it, always in full, and the `Frees:` line naming
- * what it frees, where it frees anything.
+ * An item's options, as the skill writes them: each a plain button reading
+ * `glyph letter. name: consequence`, its ➕ and ➖ lines indented under it,
+ * always in full; none for an item without options.
  */
-const itemView = (
+const optionsView: AnswerView = (elements, s, item, view) =>
+  hasOptions(item) ? optionRows(elements, s, item, view) : null;
+
+/**
+ * How each feedback's answers are drawn: by options, the item's options;
+ * by settling words, its list's actions; by none, nothing. Every list
+ * draws by its feedback alone, so a list that gains one needs no view of
+ * its own.
+ */
+const ANSWER_VIEWS: Readonly<Record<Feedback, AnswerView>> = {
+  options: optionsView,
+  "settling-words": actionsView,
+  none: () => null,
+};
+
+/** The option rows of an item answered by options, each as `optionsView` says. */
+const optionRows = (
   elements: Elements,
   s: Settings,
   item: DecideItem,
-  view: BoxView & {
-    chosen: readonly string[];
-    /** The letters the answer that made the item Done picked. */
-    sent: readonly string[];
-    onPick: (letter: string) => unknown;
-  },
+  view: BoxView,
 ) => {
   const { Box, Button, Text } = elements;
   const { colors } = s;
   const dim = view.isSettled === true;
   const inline = inlineOf(elements, s);
-  const lines = (
-    prefix: string,
-    texts: readonly string[] | undefined,
-    background: string | undefined,
-    key: string,
-  ) =>
-    (texts ?? []).map((line, n) => (
-      <Box key={`${key}-${n}`} marginLeft={LAYOUT.indent}>
-        <Text
-          dimColor={dim}
-          {...(background ? { backgroundColor: background } : {})}
-          wrap="wrap"
-        >
-          {prefix ? `${prefix} ` : ""}
-          {inline(line, `${key}-${n}`)}
-        </Text>
-      </Box>
-    ));
+
   return (
-    <Box flexDirection="column">
-      {titleRow(elements, s, item, view)}
-      {view.settled ? (
-        <Box key="done-by" marginLeft={LAYOUT.indent}>
-          <Text dimColor wrap="wrap">
-            {view.settled}
-          </Text>
-        </Box>
-      ) : null}
-      {linkLines(elements, item, view)}
-      {lines("", item.note, undefined, "note")}
+    <Box key={`${refOf(item)}.options`} flexDirection="column">
       {item.options.map((option) => {
-        const isChosen = view.chosen.includes(option.letter);
+        const isChosen = view.chosen.letters.includes(option.letter);
         // An option the answer that made the item Done picked: its own mark,
         // at full strength in the dimmed item, never underlined.
-        const isSent = view.sent.includes(option.letter);
+        const isSent = view.sent.letters.includes(option.letter);
         // A chosen option's line is underlined, its glyph turned to the
         // chosen mark; nothing of it, and none of its ➕ and ➖ lines, is
         // highlighted.
@@ -2206,7 +2183,7 @@ const itemView = (
         // colour instead beside an option its answer picked, is unlit
         // beside the others, and never hovers.
         const gutter = gutterStyle(
-          { isSettled: dim, answered: view.sent, letter: option.letter, scope: key },
+          { isSettled: dim, answered: view.sent.letters, letter: option.letter, scope: key },
           colors,
         );
         // Every option picks, a Done item's too, so none is dim.
@@ -2295,8 +2272,6 @@ const itemView = (
           </Box>
         );
       })}
-      {lines("", freesLineOf(item.frees ?? []), undefined, "frees")}
-      {notesView(elements, s, item, view, "Notes, or an answer in your own words")}
     </Box>
   );
 };

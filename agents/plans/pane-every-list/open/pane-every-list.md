@@ -50,7 +50,8 @@ The pane holds 👉 Todo items beside 🧠 Decide items, end to end:
 - its box carries `👉 Todo.3` and its summary on the title line, its body, **Done** and **Skip**, and a notes field;
 - Done and Skip write plain references, `9efb08a1.Todo.3: done`, a line each, and a note goes after the word or stands alone, settling nothing;
 - a word settles a Todo item in the 📌 roll-up and the count line too, as Todo's `settled-by`, `settling-word`, says, and a note alone settles it nowhere;
-- a reply's Todo list found intact is cut out and its boxes drawn in its place, as its Decide list is, and one that isn't is drawn as written, its boxes under the reply.
+- a reply's Todo list found intact is cut out and its boxes drawn in its place, as its Decide list is, and one that isn't is drawn as written, its summaries links, its boxes under the reply;
+- both lists take one path in the pane, the reply's drawing and the draft's answers: what sets a list apart there is the spec's `feedback` for it, `options`, `settling-words` or `none`, and the settings' labels, never its name; raising and settling stay per list, by the spec.
 
 Still to come: the other 7 lists; the grouped answers; the filters; turn navigation; and the windowed rendering.
 

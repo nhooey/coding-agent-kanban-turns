@@ -3,14 +3,20 @@
 // register.tsx reads the draft, calls these, and writes what they return.
 
 import { asksQuestion } from "./answer-lines.ts";
-import { isDecide, isSameTurn, refOf } from "./items.ts";
+import { feedbackOfItem, isSameTurn, picksAny, refOf } from "./items.ts";
 import { saidOf, saidText } from "./said.ts";
 import { referencesOfLine } from "./word-answers.ts";
 import type { LineReference } from "./word-answers.ts";
-import { DECIDE, LETTER, REASSESS, paneListOf, settlingWordsOf } from "../protocol/rules.ts";
-import { SPEC } from "../protocol/spec.ts";
+import {
+  LETTER,
+  REASSESS,
+  feedbackOf,
+  paneListOf,
+  settlingWordsOf,
+} from "../protocol/rules.ts";
+import type { Feedback } from "../protocol/rules.ts";
 import { isReassessLine } from "../transcript/turns.ts";
-import type { DecideItem, ListedItem, TodoItem } from "../../types/index.d.ts";
+import type { DecideItem, ListedItem } from "../../types/index.d.ts";
 
 /**
  * One answer written in the draft, and where it sits, to an item of a list
@@ -53,18 +59,32 @@ const decided = (
   };
 };
 
-/** What an answer to an item of `list`, by its header, picks and says: a Decide item's letters and note, another list's settling word and note. */
-const pickedAndSaid = (
+/** How an answer reads what it picks and says, by its list's header, the letters after its reference and the text after its colon. */
+type Reader = (
   list: string,
   dotted: string | undefined,
   said: string,
-): Pick<Answer, "letters" | "word" | "note"> => {
-  const spec = paneListOf(list);
+) => Pick<Answer, "letters" | "word" | "note">;
 
-  return spec === undefined || spec === DECIDE
-    ? decided(dotted, said)
-    : { letters: [], ...saidOf(said, settlingWordsOf(spec)) };
+/**
+ * How an answer to an item reads, by its list's feedback: by options, its
+ * letters and note, a note of letters alone being letters; by settling
+ * words, its list's word and note; by none, a note alone. Each list reads
+ * by its feedback alone, so a list that gains one needs no reader of its
+ * own.
+ */
+const READERS: Readonly<Record<Feedback, Reader>> = {
+  options: (_list, dotted, said) => decided(dotted, said),
+  "settling-words": (list, _dotted, said) => ({
+    letters: [],
+    ...saidOf(said, settlingWordsOf(paneListOf(list) ?? { "settling-words": {} })),
+  }),
+  none: (_list, _dotted, said) => ({ letters: [], word: "", note: said }),
 };
+
+/** What an answer to an item of `list`, by its header, picks and says, as its feedback's reader reads it. */
+const pickedAndSaid: Reader = (list, dotted, said) =>
+  READERS[feedbackOf(list)](list, dotted, said);
 
 /** The answer a reference on a line writes, its place moved by `offset`, where the line opens in the draft. */
 const answerOf = (ref: LineReference, offset: number): Answer => ({
@@ -76,10 +96,13 @@ const answerOf = (ref: LineReference, offset: number): Answer => ({
   ...pickedAndSaid(ref.list, ref.dotted, ref.said ?? ""),
 });
 
-/** Whether a reference writes an answer the draft holds: it names its turn, as the pane writes it, and has a Decide item's letters after it, or words after its colon. */
+/** The feedback whose answers write letters after the reference, `….2.B`. */
+const OPTIONS = "options" satisfies Feedback;
+
+/** Whether a reference writes an answer the draft holds: it names its turn, as the pane writes it, and has letters after it, for a list answered by options, or words after its colon. */
 const isAnswer = (ref: LineReference): boolean =>
   ref.turn !== "" &&
-  (ref.said !== undefined || (ref.dotted !== undefined && ref.list === DECIDE.header));
+  (ref.said !== undefined || (ref.dotted !== undefined && feedbackOf(ref.list) === OPTIONS));
 
 /** Each line of the draft, with where it opens. */
 const linesOf = (draft: string): readonly Readonly<{ line: string; offset: number }>[] =>
@@ -123,7 +146,7 @@ export const wordFor = (draft: string, item: ListedItem): string =>
 export const noteFor = (draft: string, item: ListedItem): string =>
   answerTo(draft, item)?.note ?? "";
 
-/** Whether the draft holds an answer to the item, a note alone among them. */
+/** Whether the draft holds an answer to the item, of any list, a note alone or a question among them: whether the person has written anything for it. */
 export const isAnswered = (draft: string, item: ListedItem): boolean =>
   answerTo(draft, item) !== undefined;
 
@@ -149,16 +172,24 @@ export const choiceTo = (draft: string, item: ListedItem): Answer | undefined =>
   );
 
 /**
- * Whether sending the draft would settle the item, by its choice, the
- * latest answer to it on a line that asks no question: any such answer to
- * a Decide item, a note in words among them; a settling word for an item
- * of a list that has them, whose note alone settles nothing.
+ * Whether a choice settles its item, by the item's list's feedback: any
+ * choice to an item answered by options, a note in words among them; a
+ * settling word to one answered by settling words, whose note alone
+ * settles nothing; nothing to one answered by none.
  */
-export const settles = (draft: string, item: ListedItem): boolean => {
-  const choice = choiceTo(draft, item);
-
-  return isDecide(item) ? choice !== undefined : (choice?.word ?? "") !== "";
+const SETTLING: Readonly<Record<Feedback, (choice: Answer | undefined) => boolean>> = {
+  options: (choice) => choice !== undefined,
+  "settling-words": (choice) => (choice?.word ?? "") !== "",
+  none: () => false,
 };
+
+/**
+ * Whether sending the draft would settle the item, by its choice, the
+ * latest answer to it on a line that asks no question, as its list's
+ * feedback says in `SETTLING`.
+ */
+export const settles = (draft: string, item: ListedItem): boolean =>
+  SETTLING[feedbackOfItem(item)](choiceTo(draft, item));
 
 /** An answer as the draft holds it: the letters, then the word and the note. */
 const written = (
@@ -196,7 +227,7 @@ export const lettersAfter = (
   held: readonly string[],
   letter: string,
 ): readonly string[] =>
-  SPEC.options.kinds[item.kind].picks === "any"
+  picksAny(item)
     ? inOptionOrder(item, toggled(held, letter))
     : held.includes(letter)
       ? []
@@ -270,7 +301,7 @@ export const withNote = (
  */
 export const toggledWord = (
   draft: string,
-  item: TodoItem,
+  item: ListedItem,
   word: string,
 ): string => {
   const held = answerTo(draft, item);

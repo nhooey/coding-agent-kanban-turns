@@ -10,15 +10,8 @@
 // list's run under a faint header naming it. No `$`, no I/O.
 
 import { isAnswered, settles } from "../items/answers.ts";
-import { isDecide, isSameTurn, listOf, refOf } from "../items/items.ts";
-import {
-  DECIDE,
-  DONE,
-  PANE_LISTS,
-  itemLabel,
-  paneListOf,
-  settlingWordsOf,
-} from "../protocol/rules.ts";
+import { answerKeysOf, isSameTurn, listNameOf, picksAny, refOf } from "../items/items.ts";
+import { DONE, PANE_LISTS, itemLabel } from "../protocol/rules.ts";
 import type { ListName } from "../protocol/rules.ts";
 import { SPEC } from "../protocol/spec.ts";
 import { padToCells, widestCells } from "../text/cells.ts";
@@ -178,17 +171,15 @@ export const paneStateOf = (
 };
 
 /**
- * The item held in Open once a pick lands on it in `branch`, by ref: a
- * checkbox item picked in Open, which takes more than one pick, so it stays
- * under the person's hands until the ring leaves it; empty for any other.
+ * The item held in Open once a pick lands on it in `branch`, by ref: one
+ * whose answers take any number of picks, a checkbox item's, picked in
+ * Open, so it stays under the person's hands until the ring leaves it;
+ * empty for any other.
  */
 export const heldAfterPick = (
   item: ListedItem,
   branch: Branch | undefined,
-): string =>
-  isDecide(item) && item.kind === "checkbox" && branch === "open"
-    ? refOf(item)
-    : "";
+): string => (picksAny(item) && branch === "open" ? refOf(item) : "");
 
 /** The item still held once the ring lands on `focused`: the held one while the ring is on one of its elements, else none. */
 export const heldAfterFocus = (held: string, focused: string): string =>
@@ -279,14 +270,12 @@ export const branchOf = (
 export const countOf = (groups: readonly TurnGroup[]): number =>
   groups.reduce((sum, group) => sum + group.items.length, 0);
 
-/** Where /answers scrolls: the first item the draft leaves to the person, newest turn first, as the pane draws Open: a Decide item it doesn't mention, a Todo item it gives no settling word. */
+/** Where /answers scrolls: the first item the draft leaves to the person, newest turn first, as the pane draws Open: one of any list it writes nothing for, as `isAnswered` says. */
 export const firstUnansweredIn = (
   groups: PaneGroups,
   draft: string,
 ): ListedItem | undefined =>
-  groups.open
-    .flatMap((group) => group.items)
-    .find((item) => !(isDecide(item) ? isAnswered(draft, item) : settles(draft, item)));
+  groups.open.flatMap((group) => group.items).find((item) => !isAnswered(draft, item));
 
 /**
  * A Done item's one line in its expanded group: its label, its list's
@@ -297,7 +286,7 @@ export const doneLine = (
   item: ListedItem,
   done: string,
 ): Readonly<{ label: string; text: string }> => ({
-  label: itemLabel(item.number, listOf(item)),
+  label: itemLabel(item.number, listNameOf(item)),
   text: `${item.summary}${LAYOUT.divider}${done}`,
 });
 
@@ -399,11 +388,8 @@ export type Stop = Readonly<{ key: string; group: string }>;
 /** A toggle's stop: its key, which no other element shares. */
 const toggleStop = (key: string): Stop => ({ key, group: key });
 
-/** The element an item's box opens its answers on: a Decide item's first option, by its letter, another list's first action, by its settling word; none for an item with neither. */
-const firstAnswerOf = (item: ListedItem): string | undefined =>
-  isDecide(item)
-    ? item.options[0]?.letter
-    : settlingWordsOf(paneListOf(item.list) ?? DECIDE)[0];
+/** The element an item's box opens its answers on: its first answer, an option by its letter or an action by its settling word; none for an item with neither. */
+const firstAnswerOf = (item: ListedItem): string | undefined => answerKeysOf(item)[0];
 
 /** The key of an item's action, the button that writes `word` after its reference: `9efb08a1.Todo.3.done`. */
 export const actionKey = (item: ListedItem, word: string): string =>

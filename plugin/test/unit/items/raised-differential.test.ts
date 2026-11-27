@@ -18,6 +18,7 @@ import * as core from "../../../src/items/raised.ts";
 import type { DecideItem, Held, Raised, Settlement } from "../../../types/index.d.ts";
 import * as oracle from "../../oracle/raised.ts";
 import type { OldRaised } from "../../oracle/raised.ts";
+import { optionItemsOf } from "../../fixtures/raised.ts";
 
 const RUNS = 400;
 const SEED = 0x72616973;
@@ -172,7 +173,7 @@ const observedNew = (raised: Raised, sent: readonly Settlement[]) => ({
     isSettled: core.isSettled(raised, item),
     settlement: core.settlementOf(raised, item),
   })),
-  items: core.decideItemsOf(raised),
+  items: optionItemsOf(raised),
   turns: raised.turns,
   problems: core.problemsOf(raised),
   sentOf: core.sentOf(DRAFT, raised),

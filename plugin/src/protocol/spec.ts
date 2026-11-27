@@ -8,7 +8,8 @@ export const SPEC = {
       "aliases": [],
       "rolls-up": false,
       "settled-by": "none",
-      "settling-words": {}
+      "settling-words": {},
+      "feedback": "none"
     },
     "pending": {
       "header": "Pending",
@@ -19,7 +20,8 @@ export const SPEC = {
       ],
       "rolls-up": true,
       "settled-by": "none",
-      "settling-words": {}
+      "settling-words": {},
+      "feedback": "none"
     },
     "logged": {
       "header": "Logged",
@@ -27,7 +29,8 @@ export const SPEC = {
       "aliases": [],
       "rolls-up": false,
       "settled-by": "none",
-      "settling-words": {}
+      "settling-words": {},
+      "feedback": "none"
     },
     "waiting": {
       "header": "Waiting",
@@ -35,7 +38,8 @@ export const SPEC = {
       "aliases": [],
       "rolls-up": true,
       "settled-by": "report",
-      "settling-words": {}
+      "settling-words": {},
+      "feedback": "none"
     },
     "answers": {
       "header": "Answers",
@@ -45,7 +49,8 @@ export const SPEC = {
       ],
       "rolls-up": false,
       "settled-by": "none",
-      "settling-words": {}
+      "settling-words": {},
+      "feedback": "none"
     },
     "authorizations": {
       "header": "Authorizations",
@@ -53,7 +58,8 @@ export const SPEC = {
       "aliases": [],
       "rolls-up": true,
       "settled-by": "none",
-      "settling-words": {}
+      "settling-words": {},
+      "feedback": "none"
     },
     "review": {
       "header": "Review",
@@ -63,7 +69,8 @@ export const SPEC = {
       ],
       "rolls-up": true,
       "settled-by": "merged-pull-request",
-      "settling-words": {}
+      "settling-words": {},
+      "feedback": "none"
     },
     "todo": {
       "header": "Todo",
@@ -76,7 +83,8 @@ export const SPEC = {
       "settling-words": {
         "done": "settles it, the person having done it",
         "skip": "settles it, the person not doing it"
-      }
+      },
+      "feedback": "settling-words"
     },
     "decide": {
       "header": "Decide",
@@ -87,7 +95,8 @@ export const SPEC = {
       ],
       "rolls-up": true,
       "settled-by": "answer",
-      "settling-words": {}
+      "settling-words": {},
+      "feedback": "options"
     }
   },
   "options": {
