@@ -1,6 +1,7 @@
 ---
 title: Submit moves every list's items it settles to the Done branch at once, and the turn's end confirms them or puts them back
-state: approved
+state: superseded
+superseded-by: pane-view-state
 kind: implementation
 part-of: pane-every-list
 needs: [pane-turn-sections, list-actions, answers-grouped-by-turn-and-list, pane-submit-review-fixes, pane-state-reducer]

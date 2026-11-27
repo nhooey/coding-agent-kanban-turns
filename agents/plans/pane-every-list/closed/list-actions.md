@@ -1,6 +1,7 @@
 ---
 title: Each item's box, in the pane and in its reply, carries its list's actions
-state: approved
+state: superseded
+superseded-by: item-renderer-densities
 kind: implementation
 part-of: pane-every-list
 needs: [items-of-every-list, answers-grouped-by-turn-and-list, pane-ui-harmonize, pane-state-reducer]

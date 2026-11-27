@@ -1,6 +1,7 @@
 ---
 title: ◀ and ▶ jump the pane between turns with a visible item, and Only show this turn draws just the one they reached
-state: approved
+state: superseded
+superseded-by: pane-facet-tree
 kind: implementation
 part-of: pane-every-list
 needs: [pane-turn-sections, pane-list-filters, pane-state-reducer]

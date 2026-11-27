@@ -1,7 +1,7 @@
 ---
 title: The pane's state is one value that a pure step function moves, and the hooks only dispatch events and run the effects it returns
-state: in-progress
-owner: pane-state-reducer
+state: superseded
+superseded-by: pane-view-state
 kind: implementation
 part-of: pane-every-list
 needs: [neutral-turn-stream]
@@ -10,6 +10,10 @@ cost: "about 29M tokens over 10 runs, 5 implementer and 5 review, one pair per a
 ---
 
 # The pane's state is one value that a pure step function moves, and the hooks only dispatch events and run the effects it returns
+
+**Where it stands.**
+Three of its five areas are in `PaneState`: Submit, the transcript refresh and the settings.
+The two left, the pane's own state (`folds`, `focused`, `held`, `isKeysOpen`, `noting`) and `draft`, are [pane-view-state](../../items-events-views/open/pane-view-state.md)'s, which moves them as the view state of the item model.
 
 The pane's state is 15 atoms in `plugin/hooks/register.tsx` today: `raised`, `sent`, `expanded`, `focused`, `isKeysOpen`, `refreshes`, `merged`, `draft`, `noting`, `submits`, `submitting`, `runningTurn`, `submitProblem`, `counts` and `settings`. Each hook reads and writes several of them between `await`s, so what one hook decides depends on what another wrote meanwhile. `sendDraft` updates `submitProblem`, `draft` and `sent` around each `await` on the engine, and `submitDraft` guards itself with a `submits`/`submitting` stamp. [pane-decide-filters](pane-decide-filters.md) and every node in this plan from [items-of-every-list](items-of-every-list.md) on add to that state, so this node comes first and they build on its shape.
 

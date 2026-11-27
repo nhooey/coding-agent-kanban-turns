@@ -1,6 +1,7 @@
 ---
 title: The plugin's core reads every list's items per turn, each with whether it's settled and by what answer
-state: approved
+state: superseded
+superseded-by: item-event-reducer
 kind: implementation
 part-of: pane-every-list
 needs: [kanban-skill-list-answers, pane-submit-review-fixes, protocol-spec-data, pane-state-reducer]

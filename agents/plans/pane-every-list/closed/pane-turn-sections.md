@@ -1,6 +1,7 @@
 ---
 title: The pane groups every list's items by state, then turn, then list, each state and turn under a toggle that folds it
-state: approved
+state: superseded
+superseded-by: pane-facet-tree
 kind: implementation
 part-of: pane-every-list
 needs: [items-of-every-list, pane-list-filters, pane-ui-harmonize, pane-state-reducer]

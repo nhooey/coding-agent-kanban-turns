@@ -1,6 +1,7 @@
 ---
 title: A Decide item a later one restates is Done, superseded, and each of the two links to the other
-state: approved
+state: implemented
+implemented-by: 58ec987
 kind: implementation
 part-of: pane-every-list
 touches:
