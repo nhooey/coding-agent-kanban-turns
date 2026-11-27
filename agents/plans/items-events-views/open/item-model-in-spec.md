@@ -16,21 +16,31 @@ The section sits beside the `lists` it replaces until [reply-prose-readers-retir
 
 The split that keeps names out of the code: the spec names things, and the code knows only a small closed set of primitives they're built from.
 
-| The spec names                        | Built from the primitives the code knows                                                                                                                                                                                                                            |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Kinds, with their states and outcomes | A set of states and a set of outcomes                                                                                                                                                                                                                               |
-| Presets                               | Default field values, and the links an item must carry                                                                                                                                                                                                              |
-| States, with marks                    | A category, `open` or `closed`; a closed state carries a resolution                                                                                                                                                                                                 |
-| Outcomes                              | A payload shape: `none`, `answer` (letters, words or both), `text`, `link` or `item`                                                                                                                                                                                |
-| Events                                | A scope, one item or the session. Guards: the states it fires from, the roles that may fire it, a condition. Effects: create, set a field, add or remove a link, close with an outcome, keep words as a note, keep the item through a reassess, watch a link target |
-| Roles                                 | `any`, `owner`, `raiser`, `user`, `observer`: a relation between the event's actor and the item                                                                                                                                                                     |
-| Relations                             | The target types a link may name, whether it's acyclic, and its inverse's label                                                                                                                                                                                     |
-| Derived fields                        | A predicate over an item, its links and their targets, the pending events and a turn's status                                                                                                                                                                       |
-| Facets                                | An item field or derived field, the order of its values, and their labels                                                                                                                                                                                           |
-| Controls                              | An event with its arguments, and the word the person types for it; each is drawn as one line that opens on its emoji                                                                                                                                                |
-| What's special                        | A name the renderer or the tree looks up, and its reason                                                                                                                                                                                                            |
+| The spec names                        | Built from the primitives the code knows                                                                                                                                                                                                                                                                           |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Kinds, with their states and outcomes | A set of states and a set of outcomes                                                                                                                                                                                                                                                                              |
+| Presets                               | Default field values, and what an item must carry: a list, every one of it, or an `any-of`, any one of it; each a relation, a relation's inverse or an item field                                                                                                                                                  |
+| States, with marks                    | A category, `open` or `closed`; a closed state carries a resolution                                                                                                                                                                                                                                                |
+| Outcomes                              | A payload shape: `none`, `answer` (letters, words or both), `text`, `link` or `item`                                                                                                                                                                                                                               |
+| Events                                | A scope, one item or the session. Guards: the states it fires from, the roles that may fire it, a condition. Effects: create, set a field, add or remove a link, give the items an argument names a link to it, close with an outcome, keep words as a note, keep the item through a reassess, watch a link target |
+| Roles                                 | `any`, `owner`, `raiser`, `user`, `observer`: a relation between the event's actor and the item                                                                                                                                                                                                                    |
+| Relations                             | The target types a link may name, whether it's acyclic, and its inverse's label                                                                                                                                                                                                                                    |
+| Derived fields                        | A predicate over an item, its links and their targets, the pending events and a turn's status                                                                                                                                                                                                                      |
+| Facets                                | An item field or derived field, the order of its values, and their labels                                                                                                                                                                                                                                          |
+| Controls                              | An event with its arguments, and the word the person types for it; each is drawn as one line that opens on its emoji                                                                                                                                                                                               |
+| What's special                        | A name the renderer or the tree looks up, and its reason                                                                                                                                                                                                                                                           |
 
 A primitive is added in code, with a test; everything named is added in the spec.
+
+An approval names what it gates in one of three ways, so its preset requires any one of them:
+
+- an `about` link to a typed target, such as the pull requests a merge token unlocks;
+- the items it holds up, which its `raise` carries as `frees` and the fold gives a `blocked-by` link to it, as a `raise`'s `supersedes` closes the item it names;
+- the refused call's text, the item field `refused`, which [commands-run-where-the-agent-sees](commands-run-where-the-agent-sees.md) records for an action the harness or a classifier refused.
+
+[The item tool](item-tool-declares-events.md) refuses an approval's `raise` that carries none of the three.
+
+No watch rule closes an approval, since an observation never answers a question: a pull request it's `about` shows its status in the approval's status clause, and the pull request's rule resolves only a review.
 
 ## The section's shape
 
@@ -58,7 +68,7 @@ item:
       kind: question
       glyph: 🔑
       defaults: { owner: user, response: { picks: one, options: ["Yes", "No"] } }
-      requires: [blocks]
+      requires: { any-of: [about, frees, refused] } # what it gates, as the section above says
     review:
       kind: task
       glyph: 🔍
@@ -79,7 +89,7 @@ item:
     withdrawn: { payload: none }
   actors: [user, agent, external]
   events:
-    raise: { from: [], to: open, by: [any], effects: [create] }
+    raise: { from: [], to: open, by: [any], effects: [create, { link-from: frees, rel: blocked-by }] } # each item its `frees` names gets a `blocked-by` link to the new item
     start: { from: [open], to: active, by: [owner] }
     pause: { from: [active], to: open, by: [owner] }
     assign: { from: [open, active], to: open, by: [owner, raiser, user], effects: [{ set: owner }] }
@@ -138,7 +148,7 @@ The `events` above are this table, which [list-moves-fit-transitions](../closed/
 
 | Verb       | From → to                 | Who may fire it                                          | Notes                                                                                                                                                                                                                                                                              |
 | ---------- | ------------------------- | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `raise`    | nothing → open            | any actor                                                | May carry `supersedes`, which closes the older item as `superseded`                                                                                                                                                                                                                |
+| `raise`    | nothing → open            | any actor                                                | May carry `supersedes`, which closes the older item as `superseded`, and `frees`, the items it holds up, each of which the fold gives a `blocked-by` link to it                                                                                                                    |
 | `start`    | open → active             | owner                                                    | Only a kind with an `active` state, so tasks                                                                                                                                                                                                                                       |
 | `pause`    | active → open             | owner                                                    | The same                                                                                                                                                                                                                                                                           |
 | `assign`   | open or active → open     | owner, raiser, user                                      | Sets `owner`                                                                                                                                                                                                                                                                       |
@@ -159,6 +169,8 @@ Beyond its JSON Schema, `spec-build` refuses a section where:
 - a kind names a state or an outcome the section doesn't define, or an outcome belongs to no kind;
 - a state of a kind is reachable by no event, or a closed state has no event into it;
 - a preset names no kind, or sets a field the item doesn't have;
+- a preset's `requires`, or an entry of its `any-of`, names no relation, no relation's inverse and no item field;
+- an event's `link-from` names an argument the event doesn't take, or a relation whose targets don't include an item;
 - an event names a role, a condition or an effect outside the primitives;
 - an event closes an item with an outcome the item's kind doesn't hold;
 - a control names no event, gives an argument the event doesn't take, or shares its word with another control or a command;

@@ -81,6 +81,7 @@ response: # questions only: the shape of a valid answer
   options: [{ letter: A, name: Keep the fast loader, pros: [], cons: [] }]
   default: null # the option the raiser may assume
 urgency: turn-end # now | turn-end
+refused: null # approvals only: the refused call's exact text, which the approval gates
 links:
   - { rel: blocked-by, to: "item:9" }
   - { rel: about, to: "github:nhooey/coding-agent-kanban-turns#49" }
@@ -144,7 +145,7 @@ A picked answer that isn't sent is no item state: it's a line of the draft's tex
 
 Three checks of the model come first, each cheap, and each can change the model before anything is built on it:
 
-1. [lists-fit-filter-table](lists-fit-filter-table.md): every item in the fixture transcripts fits one row of the filter table.
+1. [lists-fit-filter-table](../closed/lists-fit-filter-table.md): every item in the fixture transcripts fits one row of the filter table.
 2. [list-moves-fit-transitions](../closed/list-moves-fit-transitions.md): every move between lists is one event of the transition table.
 3. [task-list-matches-pending](../closed/task-list-matches-pending.md): whether the agent's Pending items are the harness's task list.
 
@@ -253,3 +254,4 @@ Each has a recommendation, and the node it changes waits on the answer.
 | 18  | What becomes of the items a lapsed reassess never reached?               | Open again, as they were; withdrawn, as on completion; held until the person reassesses again                       | Open again, with the pane saying how many weren't reassessed. The agent judged none of them, and a held item is a stuck one.                                                                                |
 | 19  | Does the pane open by itself when the reassess completes?                | It opens without taking the keyboard, if an item awaits the person; only the count line changes                     | It opens, without the keyboard, only when an item awaits the person. The person closed it by submitting, so its return is the signal that the wait is over.                                                 |
 | 20  | Which items does a reassess cover?                                       | Every not-closed item an agent raised through the tool; every not-closed item                                       | Those an agent raised through the tool. A subagent and an externally watched item are observed, and no reassess can judge them.                                                           |
+| 21  | How does an item blocked by a peer session in another repository unblock? | A `session:<id>` target whose messages change nothing by themselves; a status read from the peer's words; no target, the item only `about` the peer | Settled by the person (`717d7c65.Decide.1.A`): a `session:<id>` target type in [harness-observations-as-events](harness-observations-as-events.md), with no status source. A peer is no subagent or teammate the engine reads, and a status read from its words would be a guess. Each report from the peer is an `observe`, as the `observe` row of [item-model-in-spec](item-model-in-spec.md)'s transition table has a peer agent's report, which with no watch rule records the report and changes nothing; the agent, reading it, removes the link or resolves the item. |

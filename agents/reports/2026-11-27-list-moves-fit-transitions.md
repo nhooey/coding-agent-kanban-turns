@@ -226,7 +226,7 @@ The live sessions hold 4 such lines, all on Decide items.
 - **`open` is a view:** commands-by-every-name's 4 `open` turns each call `kanban_options` again, so the open item's reference moves from `cd6f77ba.Decide.1` to `f1a2b3c4.Decide.1`; plugin-skill-command's `open` reprints without a call.
   In the model the item keeps its id and no event fires; the `events` need no row for it.
 - **Born closed:** the Done, Logged and Answers items a reply prints are closed when raised, within one turn, so no move between turns; the Done items under answered questions echo the answer the person's `resolve` closed.
-  The table's `raise` goes to `open` alone, so an item born closed is a `raise` and a `resolve` in one turn, or a `raise` that carries its resolution, as open question 11 has for an `AskUserQuestion`; [lists-fit-filter-table](../plans/items-events-views/open/lists-fit-filter-table.md) labels those items.
+  The table's `raise` goes to `open` alone, so an item born closed is a `raise` and a `resolve` in one turn, or a `raise` that carries its resolution, as open question 11 has for an `AskUserQuestion`; [lists-fit-filter-table](../plans/items-events-views/closed/lists-fit-filter-table.md) labels those items.
 - **Links:** 5 `Frees:` lines name an earlier turn's item, each a `link` on that item by its raiser, the agent, and no move:
   1. frees-on-several-lists, b2c3d4e5's `Todo.1`, naming `a1b2c3.Waiting.1`;
   2. frees-shared-prefix, abcdef02's `Todo.1`, naming `abcdef.Review.1`;

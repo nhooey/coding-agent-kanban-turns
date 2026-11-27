@@ -16,7 +16,7 @@ It writes no code.
 ## What it does
 
 - **The transcripts.**
-  The same as [lists-fit-filter-table](../open/lists-fit-filter-table.md) reads: the golden cases and the fixtures' transcripts, with a live session's read for counts alone.
+  The same as [lists-fit-filter-table](lists-fit-filter-table.md) reads: the golden cases and the fixtures' transcripts, with a live session's read for counts alone.
 - **The moves.**
   For each pair of consecutive turns in which an item, matched by its subject, is in a different list, has left every list, or is settled by the person's text, a report or a merged pull request, the check names the verb, who fired it and the evidence the transcript holds for it.
 - **The finding.**

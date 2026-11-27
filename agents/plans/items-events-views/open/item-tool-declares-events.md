@@ -11,7 +11,7 @@ touches: [plugin/hooks/register.tsx, plugin/src/protocol/tools.ts, plugin/src/tr
 
 - **One tool.**
   The plugin registers the item tool, its name in the spec, beside its other tools.
-  A call takes a list of events in order, each a verb, the item it's about and the verb's arguments: a `raise` carries the kind, an optional preset, the summary, the body, the owner, a question's `response`, the urgency, the links and what it supersedes.
+  A call takes a list of events in order, each a verb, the item it's about and the verb's arguments: a `raise` carries the kind, an optional preset, the summary, the body, the owner, a question's `response`, the urgency, the links, what it supersedes and what it `frees`, the items it holds up, which the fold gives a `blocked-by` link to it.
 - **The schema comes from the spec.**
   The tool's input schema is built from the generated module: the verbs, the kinds, the presets and each event's arguments.
   A kind added to the spec is in the schema with no code changed.
@@ -20,7 +20,7 @@ touches: [plugin/hooks/register.tsx, plugin/src/protocol/tools.ts, plugin/src/tr
   An event the table refuses changes nothing, and the result says which rule refused it, so the agent corrects the call and nothing is linted after the fact.
   The events before and after a refused one stand.
 - **What the tool refuses on top of the table.**
-  A `raise` owned by `external` with no link that has a watch rule, since nothing could ever close it; a preset's `requires` link missing; and a `resolve` on the person's item that cites no prompt of theirs.
+  A `raise` owned by `external` with no link that has a watch rule, since nothing could ever close it; a preset's `requires` unmet, such as an approval with none of an `about` link, a `frees` and the refused call's text; and a `resolve` on the person's item that cites no prompt of theirs.
 - **The result.**
   Plain text: each accepted event's item at line density, with its id, as [the renderer](item-renderer-densities.md) writes a line as text, then each refusal.
   A transcript read without the plugin shows the items there.
