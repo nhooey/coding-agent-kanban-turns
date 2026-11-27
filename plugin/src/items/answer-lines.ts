@@ -96,9 +96,12 @@ const lettersAfterRef = (m: RegExpMatchArray): string | undefined =>
 const answerKey = (answer: LineAnswer): string =>
   `${answer.turn}\t${answer.number}`;
 
+/** Whether a line of the user's asks a question, so any answer on it asks about its item and picks nothing. */
+export const asksQuestion = (line: string): boolean => line.includes("?");
+
 /** The answers one line of the user's gives, each item once, as first found; none where the line asks a question. */
 export const answersOfLine = (line: string): readonly LineAnswer[] => {
-  const found = line.includes("?")
+  const found = asksQuestion(line)
     ? []
     : [
         ...[...line.matchAll(ANSWER_WITH_ID)].map((m) =>

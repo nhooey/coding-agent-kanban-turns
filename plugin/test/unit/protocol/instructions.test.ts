@@ -233,6 +233,7 @@ const item = {
   kind: "radio",
   ref: "0f311c94.Decide.2",
   frees: ["0f311c94.Todo.1"],
+  supersedes: ["682e71fb.Decide.1"],
   options: [option],
 };
 
@@ -307,8 +308,18 @@ describe("the tool's schema", () => {
       ...ITEM_SCHEMA.required,
       "kind",
       "frees",
+      "supersedes",
       ...Object.keys(ITEM_SCHEMA.properties.options.items.properties),
     ].forEach((field) => expect(INSTRUCTIONS).toContain(`\`${field}\``));
+  });
+
+  test("tells an item that restates an earlier one to name it in supersedes, which supersedes it", () => {
+    const [read] = itemsOf({ items: [item] });
+
+    expect(read?.supersedes).toEqual(["682e71fb.Decide.1"]);
+    expect(ITEM_SCHEMA.properties.supersedes.description).toContain('`["<turn>.Decide.<n>"]`');
+    expect(INSTRUCTIONS).toContain(filled(FRAGMENTS["tool"], values).split("\n").find((line) => line.includes("`supersedes`")) ?? "-");
+    expect(INSTRUCTIONS).toContain('`["<turn>.Decide.<n>"]`, such as `["0f311c94.Decide.2"]`');
   });
 });
 
@@ -323,7 +334,7 @@ describe("the tool's description", () => {
   });
 
   test("describes the input's shape itself, naming no script that prints it", () => {
-    ["turn id", "number", "summary", "kind", "letter", "name", "consequence", "pros", "cons"].forEach(
+    ["turn id", "number", "summary", "kind", "supersedes", "letter", "name", "consequence", "pros", "cons"].forEach(
       (field) => expect(TOOL_DESCRIPTION).toContain(field),
     );
     expect(TOOL_DESCRIPTION).not.toContain("outstanding.py");

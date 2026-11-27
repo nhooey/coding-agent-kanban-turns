@@ -174,6 +174,11 @@ describe("placeholderValues", () => {
     );
   });
 
+  test("names a list's settling words as code, either one, and gives a list with none no value", () => {
+    expect(values["words.todo"]).toBe("`done` or `skip`");
+    expect(values["words.decide"]).toBeUndefined();
+  });
+
   test("put a list among those that roll up by its own rolls-up, and among the others when it's false", () => {
     const rolls = placeholderValues(reviewRolls(true), own);
     const keeps = placeholderValues(reviewRolls(false), own);

@@ -18,16 +18,29 @@
 #     the count line still carry, and is apart from settling-words, which a
 #     prompt writes after an item's reference:
 #     answer: the user's answer to its latest restatement, by an option
-#       letter or in words; only Decide's items take an answer;
+#       letter or in words; only Decide's items take an answer. A Decide
+#       item a `kanban_options` call raised is also settled, superseded, by
+#       a later item that names it in its `supersedes`, or, where that later
+#       item gives no `supersedes`, by one on its subject; an answer to it
+#       still settles it as answered;
 #     merged-pull-request: every pull request it names with its repository,
 #       as a GitHub URL or `owner/repo#N`, having merged; a bare `#N` is
 #       never looked up, so an item naming only that never settles;
 #     report: a report naming it, in a turn after the last that printed it
 #       in its own list;
+#     settling-word: one of its list's settling-words, which the user's own
+#       text gives the latest printing of its subject in its own list, by
+#       reference; a note alone settles nothing;
 #     none: nothing; a list that doesn't roll up is settled by none, since
 #       none of its items stays open to settle;
 #   settling-words: each word that, after an item's reference, settles it,
 #     with what it does; a word settles every list it's on the same way.
+#     The word stands alone after the reference's `: `, `Todo.3: done`, or
+#     is followed by `: ` and a note, `Todo.3: done: rotated it yesterday`.
+#     Any other text after `: ` is a note, which settles no item of a list
+#     with settling words; a Decide item's note is an answer in words. A
+#     word settles the item in the pane and under a reply, and, for a list
+#     settled-by settling-word, in the 📌 roll-up and the count line.
 lists:
   done:
     header: Done
@@ -83,8 +96,10 @@ lists:
     glyph: 👉
     aliases: [To do]
     rolls-up: true
-    settled-by: none
-    settling-words: {}
+    settled-by: settling-word
+    settling-words:
+      done: settles it, the person having done it
+      skip: settles it, the person not doing it
   decide:
     header: Decide
     glyph: 🧠
@@ -166,7 +181,11 @@ skill:
 #     turn too;
 #   letters: the range an option's capital letter is in, `first` to `last`;
 #   turn-after: the words that name an answer's turn after it, `Decide.2: B
-#     of 9efb08a1`.
+#     of 9efb08a1`;
+#   separators: what may part one answer from the next on a line, spaces
+#     around it, `Todo.1: done, Decide.2: B`. An answer's text after its
+#     reference's colon, the spaces after the colon aside, runs to the next
+#     reference of a list the pane draws, a separator before it aside.
 reference:
   turn-id:
     length: 8
@@ -176,6 +195,7 @@ reference:
     first: A
     last: Z
   turn-after: [of, from]
+  separators: [",", ";", "/"]
 
 # The line an item that blocks other work ends on, naming the items it
 # frees: `Frees: 0f311c94.Decide.2, 0f311c94.Review.1`. Each is an item's
@@ -197,7 +217,8 @@ frees:
 
 # An item's subject key, which matches it across rewordings of its summary:
 # two items in one list with one key are one item, so a later item on a
-# Decide item's subject settles it, and an answer to one answers the other.
+# Decide item's subject settles it, unless that later item names the items
+# it supersedes itself, and an answer to one answers the other.
 # The first of these a summary holds gives its key: a backlog entry, then a
 # branch-shaped code span, then its first words, then, where it holds no
 # word, every letter and digit it holds, lowercased.

@@ -1,10 +1,10 @@
 ---
-title: The pane and the boxes under replies hold every list's items, grouped by turn, list and state, filtered, and answered in grouped references
+title: The pane and the boxes under replies hold every list's items, grouped by state, turn and list, filtered, and answered in grouped references
 state: approved
 kind: end-state
 ---
 
-# The pane and the boxes under replies hold every list's items, grouped by turn, list and state, filtered, and answered in grouped references
+# The pane and the boxes under replies hold every list's items, grouped by state, turn and list, filtered, and answered in grouped references
 
 With the coding-agent-kanban-turns plugin loaded:
 
@@ -19,14 +19,14 @@ With the coding-agent-kanban-turns plugin loaded:
   | 🧠 Decide                                  | its options, and Note                                                                               |
   | 🚧 Pending, ✅ Done, 📝 Logged, ❓ Answers | Note only                                                                                           |
 
-- **One scrolling list, newest turn first.** The pane is one list grouped by turn, then by list in the spec's order, then by state, Open before Done, each group under its own header. A turn's header carries its id and its index relative to the latest turn, such as `── 9efb08a1 ₋₃ ──`. Each list's Done items fold under that list's own `▸ Done (n)` toggle within the turn.
-- **A turn reads as one block.** Each turn's item boxes sit inside one outline, in the pane and under a reply, each item's box whole inside it.
-- **↑ ↓ by item, ◀ ▶ by turn.** `↑ Previous` and `↓ Next` move the focus ring item by item. `◀ Turn` and `▶ Turn` jump it to the turn section above or below with an item the filters leave visible, skipping turns whose items they all hide, and scroll the pane there. They don't page. Each is a setting under `keys`.
-- **Filters.** A row under the header row holds one toggle per list, one for Done items, one each for answered and unanswered Decide items, answered meaning an option chosen or sent, and an **Only show this turn** checkbox, off by default, which draws only the turn ◀ and ▶ last reached, so they swap which turn that is. Every toggle is on and the checkbox off by default; a toggle that's off shows how many items it hides across every turn. **Set default** keeps the current set, the checkbox among it, in the plugin's `$.store`, across sessions on this machine, and **Reset** puts every toggle back on and the checkbox off.
-- **Done, in the UI's words.** An item settled any way, by an answer, a merged pull request, a `reassess`, a stopped wait, is Done, in its group's Done section. **Submit** moves the items it answers into their Done sections at once, and the transcript read at the turn's end keeps each there or puts it back. A Done section is collapsed to one header row with its count, `▸ Done (n)`, and expands on a click. A Done item's box stays dimmed, says what made it Done, and its actions still write the draft.
+- **One scrolling list, by state, then turn, then list.** The pane is one list grouped by state, then by turn, newest first, then by list in the spec's order ([pane-turn-sections](pane-turn-sections.md)). The states are three branches, in this order: Open, the items that need the person and that the draft doesn't answer; Queued, the ones the draft answers, not yet sent; and Done. Each branch sits under its own toggle with its count, `▾ Open (n)`, `▾ Queued (n)` and `▸ Done (n)`, Done collapsed at first; within a branch, each turn's group sits under its turn's header, and each list's items under their list's header. A turn's header, in each branch, carries its id, its index relative to the latest turn and its item count there, such as `▾ ── 9efb08a1 ₋₃ (2) ──`, and folds that turn in that branch alone. An item moving between branches changes only the counts, never a fold.
+- **A turn reads as one block.** Each turn's item boxes in a branch sit inside one outline, in the pane and under a reply, each item's box whole inside it.
+- **↑ ↓ by stop, ◀ ▶ by turn.** `↑ Previous` and `↓ Next` move the focus ring stop by stop: each branch's header, each turn's header and each item. `◀ Turn` and `▶ Turn` jump it to the next turn's header up or down with an item the filters leave visible, across the branches in the pane's order, Open's turns, then Queued's, then Done's, skipping turns whose items they all hide and the turns of a collapsed branch, and scroll the pane there ([pane-turn-navigation](pane-turn-navigation.md)). They don't page. Each is a setting under `keys`.
+- **Filters.** A row under the header row holds one toggle per list, one for Done items, one each for answered and unanswered Decide items, answered meaning an option chosen or sent, and an **Only show this turn** checkbox, off by default, which draws only the turn ◀ and ▶ last reached, in every branch it has items in, so they swap which turn that is. Every toggle is on and the checkbox off by default; a toggle that's off shows how many items it hides across every turn. **Set default** keeps the current set, the checkbox among it, in the plugin's `$.store`, across sessions on this machine, and **Reset** puts every toggle back on and the checkbox off.
+- **Done, in the UI's words.** An item settled any way, by an answer, a merged pull request, a `reassess`, a stopped wait, is Done, in its turn under the Done branch. A pick or a note moves an item from Open to Queued, and undoing it moves the item back; **Submit** moves the items it answers from Queued to Done at once, and the transcript read at the turn's end keeps each there or puts it back. The Done branch is collapsed to one header row with its count, `▸ Done (n)`, and expands on a click. A Done item's box stays dimmed, says what made it Done, and its actions still write the draft.
 - **Hidden means not drawn.** A filtered-out item or section makes no elements and takes no layout; its count shows on its filter's toggle.
 - **Long lists stay fast.** The pane draws only the groups and items in or near its scroll window, with spacer rows of the right height for the rest, so a session with 2000 Done items and 20 open ones scrolls and refreshes without visible lag.
-- **The ✅ Done list.** Every turn's section holds its own ✅ Done list items, under that list's header, each with its Note button.
+- **The lists nothing settles.** The items of ✅ Done, 📝 Logged and ❓ Answers need nothing of the person, so they're Done from the start: each sits under its list's header, in its turn under the Done branch, as soon as it's raised, and keeps its Note button. Open holds only items that need the person, so `n of m answered` counts only those.
 - **Boxes in the reply.** A reply's list found intact is cut out and drawn as its items' boxes in its place, as a Decide list is; one that isn't is drawn whole, with the boxes under the reply.
 - **Grouped answers with context.** The buttons write the draft's answers grouped by turn and list, each item line with its context in parentheses, which every reader skips, and a note after `: `:
 
@@ -41,6 +41,17 @@ With the coding-agent-kanban-turns plugin loaded:
 
   The plugin, and the skill derived from it, read the settling words and this syntax from the spec, `plugin/spec/kanban.yaml`, and a plain reference, such as `9efb08a1.Decide.2.B` or `Todo.3: done`, still settles its item.
 - **The spec is the only statement of the rules.** The settling words and the grouped syntax are written in the spec alone ([kanban-skill-list-answers](kanban-skill-list-answers.md)), and no other repository states them.
+
+## Already true for Todo items
+
+The pane holds 👉 Todo items beside 🧠 Decide items, end to end:
+
+- each Todo item sits in its turn under Open, Queued or Done, the turn's Todo items before its Decide items, each list under a faint header;
+- its box carries `👉 Todo.3` and its summary on the title line, its body, **Done** and **Skip**, and a notes field;
+- Done and Skip write plain references, `9efb08a1.Todo.3: done`, a line each, and a note goes after the word or stands alone, settling nothing;
+- a word settles a Todo item in the 📌 roll-up and the count line too, as Todo's `settled-by`, `settling-word`, says, and a note alone settles it nowhere.
+
+Still to come: the boxes under a reply, which hold Decide items alone; the other 7 lists; the grouped answers; the filters; turn navigation; and the windowed rendering.
 
 Checks:
 

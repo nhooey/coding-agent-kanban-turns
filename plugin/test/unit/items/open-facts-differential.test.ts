@@ -228,10 +228,11 @@ const counted = (
 /**
  * The most reads of each field of one turn that `openOf` may make, one per
  * derivation that reads the field: the reassess start reads a prompt's
- * owner and its text, the answers and the reports one prompt each; the
- * items and the latest Decide items read the replies; the items' known
- * references and the Decide states read the raised items; the answers and
- * the reports read the messages.
+ * owner and its text, the user's own lines, which both kinds of answer
+ * are read from, and the reports one prompt each; the items and the latest
+ * Decide items read the replies; the items' known references and the
+ * Decide states read the raised items; the user's own lines and the
+ * reports read the messages.
  */
 const MOST_READS: Readonly<Record<Counted, number>> = {
   prompt: 4,
@@ -270,7 +271,7 @@ describe("the facts gathered once, against each reading working them out again",
         .map((item) => item.list),
     }));
     expect(new Set(seen.flatMap(({ hows }) => hows))).toEqual(
-      new Set(["answered", "reassessed", "restated"]),
+      new Set(["answered", "reassessed", "superseded"]),
     );
     expect(seen.some(({ isFreeing }) => isFreeing)).toBe(true);
     expect(seen.some(({ isPinnedFreeing }) => isPinnedFreeing)).toBe(true);

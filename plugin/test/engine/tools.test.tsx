@@ -87,6 +87,12 @@ const DEFAULTS = JSON.stringify({
   keys: { dismiss: "q", next: "j", previous: "k", submit: "s", reassess: "r", help: "h" },
   pane: { "close-when-all-submitted": true },
   notes: { rows: 3 },
+  actions: {
+    todo: {
+      done: { label: "Done", settled: "done" },
+      skip: { label: "Skip", settled: "skipped" },
+    },
+  },
   marks: {
     sent: "✅",
     chosen: "✅",

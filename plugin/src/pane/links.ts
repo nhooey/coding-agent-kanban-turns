@@ -2,14 +2,15 @@
 // a link that names the item, the item a pressed link names, and the items a
 // reply links, drawn under it; or the reply's Decide list cut out, for the
 // items' boxes to stand in its place. Both read the reply's blocks, as
-// parseReply gives them.
+// parseReply gives them. And the ref a link to an item names, a question's
+// or one between a superseded item and the item that replaced it.
 
 import { refOf } from "../items/items.ts";
 import { DECISIONS, isLineOf } from "../protocol/rules.ts";
 import { SPEC } from "../protocol/spec.ts";
 import { parseReply } from "../transcript/reply.ts";
 import type { Block, ItemHead, Option } from "../transcript/reply.ts";
-import type { DecideItem } from "../../types/index.d.ts";
+import type { DecideItem, TodoItem } from "../../types/index.d.ts";
 
 /** Where a question's link points: a name that never resolves, so a click the plugin misses opens nothing real. */
 export const QUESTION_LINK = "https://kanban-turns.invalid/";
@@ -73,16 +74,19 @@ export const linkedQuestions = (
   };
 };
 
+/** The item with the ref, of any list the pane draws, by its place among `items`; -1 when none has it. */
+export const itemOfRef = (items: readonly (DecideItem | TodoItem)[], ref: string): number =>
+  items.findIndex((item) => refOf(item) === ref);
+
+/** The ref a question's link names, by its href; empty when it names none. */
+export const refOfLink = (href: string): string =>
+  href.startsWith(QUESTION_LINK) ? href.slice(QUESTION_LINK.length) : "";
+
 /** The item a question's link names, by its href; -1 when it names none. */
 export const itemOfLink = (
   items: readonly DecideItem[],
   href: string,
-): number =>
-  href.startsWith(QUESTION_LINK)
-    ? items.findIndex(
-        (item) => refOf(item) === href.slice(QUESTION_LINK.length),
-      )
-    : -1;
+): number => itemOfRef(items, refOfLink(href));
 
 /** Whether the options written include each of the item's, by letter and plain name. */
 const hasOptionsOf = (item: DecideItem, options: readonly Option[]): boolean => {

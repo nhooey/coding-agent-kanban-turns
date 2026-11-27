@@ -37,15 +37,44 @@ export type DecideItem = Readonly<{
   options: readonly DecideOption[];
   /** The items it frees, by reference, `0f311c94.Todo.1`: those its `Frees:` line names. */
   frees?: readonly string[];
+  /**
+   * The earlier Decide items it replaces, by reference, `682e71fb.Decide.1`.
+   * Left out, a later item on an item's subject replaces it; given, even
+   * empty, it replaces those it names alone.
+   */
+  supersedes?: readonly string[];
 }>;
+
+/**
+ * One Todo item, as a reply's own Todo list prints it: its turn, number,
+ * bold summary and the lines under it, and its reference.
+ */
+export type TodoItem = Readonly<{
+  turn: string;
+  list: "Todo";
+  number: number;
+  summary: string;
+  ref: string;
+  /** The lines under the summary, its body; the `Frees:` line apart. */
+  note?: readonly string[];
+  /** The items it frees, by reference: those its `Frees:` line names. */
+  frees?: readonly string[];
+}>;
+
+/**
+ * An item of a list the pane draws, which carries its list: a Decide item,
+ * the case with options, or a Todo item, which a settling word answers.
+ */
+export type ListedItem = DecideItem | TodoItem;
 
 /**
  * How a Decide item stopped being open, which the UI calls Done: the user's
  * answer to it, the letters and note it gave and the id of the turn it was
- * sent in; a later `reassess` turn; a later item on its subject, the item
- * asked again; or, until the turn's end reads the transcript, the answer the
- * pane's Submit sent. `HowSettled` is that alone, apart from which item it
- * settled; `Settlement` names the item by its ref.
+ * sent in; a later `reassess` turn; a later item that replaced it, by that
+ * item's ref, one naming it in `supersedes` or else one on its subject; or,
+ * until the turn's end reads the transcript, the answer the pane's Submit
+ * sent. `HowSettled` is that alone, apart from which item it settled;
+ * `Settlement` names the item by its ref.
  */
 export type HowSettled = Readonly<
   | {
@@ -54,11 +83,24 @@ export type HowSettled = Readonly<
       letters: readonly string[];
       note: string;
     }
-  | { how: "reassessed" | "restated" }
+  | { how: "reassessed" }
+  | { how: "superseded"; by: string }
   | { how: "sent"; letters: readonly string[]; note: string }
+  | WordSettled
 >;
 
-/** How a Decide item stopped being open, and the item, by its ref. */
+/**
+ * How an item of a list with settling words, a Todo item, stopped being
+ * open by one: the word and note of the user's answer and the id of the
+ * turn it was sent in; or, until the turn's end reads the transcript, the
+ * word and note the pane's Submit sent.
+ */
+export type WordSettled = Readonly<
+  | { how: "worded"; turn: string; word: string; note: string }
+  | { how: "sent-word"; word: string; note: string }
+>;
+
+/** How a listed item stopped being open, and the item, by its ref. */
 export type Settlement = Readonly<{ ref: string } & HowSettled>;
 
 /**
@@ -135,21 +177,22 @@ export type ItemState = Readonly<
   { tag: "open" } | { tag: "settled"; settlement?: HowSettled }
 >;
 
-/** A raised Decide item, and where it stands. */
-export type RaisedItem = Readonly<{ item: DecideItem; state: ItemState }>;
+/** A raised item, of any list the pane draws, and where it stands. */
+export type RaisedItem = Readonly<{ item: ListedItem; state: ItemState }>;
 
 /**
- * Every Decide item raised in this session, oldest first: the pane lists
- * them all, and a reply draws its own under its text. An item stays once
- * raised; one no longer open is settled, Done in the UI, drawn dimmed, its
- * options still live, so a click answers it again.
+ * Every item raised in this session, Decide's and Todo's, oldest first:
+ * the pane lists them all, and a reply draws its own Decide items under
+ * its text. An item stays once raised; one no longer open is settled, Done
+ * in the UI, drawn dimmed, its actions still live, so a click answers it
+ * again.
  */
 export type Raised = Readonly<{
   /** The session the items were raised in: another session starts empty. */
   session: string;
   /** The ids of the turns the last refresh read, oldest first: what a turn's index in the pane counts back from. */
   turns: readonly string[];
-  /** Each item a `kanban_options` call drew or a refresh found open, by ref once, oldest first, with where it stands. */
+  /** Each item a `kanban_options` call drew or a refresh found open, a reply's Todo items among them, by ref once, oldest first, with where it stands. */
   items: readonly RaisedItem[];
   /** Refs raised by the last main-loop turn's end, so the pane opens by itself only for a new one. */
   seenRefs: readonly string[];
@@ -309,6 +352,13 @@ export type Settings = Readonly<{
   }>;
   pane: Readonly<{ "close-when-all-submitted": boolean }>;
   notes: Readonly<{ rows: number }>;
+  /** Each list's actions, by the settling word each writes: its button's label, and what a Done row says the word did. */
+  actions: Readonly<{
+    todo: Readonly<{
+      done: Readonly<{ label: string; settled: string }>;
+      skip: Readonly<{ label: string; settled: string }>;
+    }>;
+  }>;
   marks: Readonly<{
     sent: string;
     chosen: string;
@@ -347,6 +397,18 @@ export type Settings = Readonly<{
  */
 export type LintNote = Readonly<{ conversation: string; text: string }>;
 
+/**
+ * What the pane's toggles a click moved hold, each set by key: `expanded`,
+ * the Done branch and the Done items opened to their full box, which start
+ * collapsed; `collapsed`, the Open and Queued branches and the turn headers
+ * folded, which start expanded. No move of an item between branches
+ * changes them.
+ */
+export type Folds = Readonly<{
+  expanded: readonly string[];
+  collapsed: readonly string[];
+}>;
+
 /** The settings in effect, where each came from, and what was wrong with the files. */
 export type Loaded = Readonly<{
   /** Null while the defaults file can't be used. */
@@ -360,8 +422,9 @@ export type Loaded = Readonly<{
 declare module "claude-code" {
   interface PluginState {
     "coding-agent-kanban-turns": {
-      expanded: readonly string[];
+      folds: Shaped<Folds>;
       focused: string;
+      held: string;
       isKeysOpen: boolean;
       draft: string;
       noting: string;

@@ -30,11 +30,15 @@ import {
   notesMode,
   pickedText,
   sentLetters,
+  settledLink,
   settledText,
   submitStep,
+  boxLines,
+  doneRowOf,
+  supersedesLinks,
 } from "../../../src/pane/view.ts";
 import type { SettledTexts } from "../../../src/pane/view.ts";
-import type { DecideItem, Raised, Settlement } from "../../../types/index.d.ts";
+import type { DecideItem, Raised, Settlement, TodoItem } from "../../../types/index.d.ts";
 import { SETTINGS } from "../../fixtures/settings.ts";
 import { openItems } from "../../fixtures/raised.ts";
 
@@ -81,6 +85,23 @@ describe("/answers's reply", () => {
     );
   });
 
+  test("counts every open item, a Todo item's too, list by list in the pane's order, a list with none left out", () => {
+    const todo: TodoItem = {
+      turn: "9efb08a1",
+      list: "Todo",
+      number: 1,
+      summary: "Rotate the deploy token",
+      ref: "9efb08a1.Todo.1",
+    };
+
+    expect(answersText({ ...emptyRaised, items: openItems([todo]) })).toBe(
+      "Decide pane opened: 1 open Todo items.",
+    );
+    expect(answersText({ ...raised, items: openItems([radio, binary, todo]) })).toBe(
+      "Decide pane opened: 1 open Todo items, 2 open Decide items.",
+    );
+  });
+
   test("says there are none, and why", () => {
     expect(answersText({ ...emptyRaised, problem: "it broke" })).toBe(
       "No open Decide items: it broke.",
@@ -114,6 +135,32 @@ describe("the tool's result", () => {
       "Drew buttons for 2 Decide items under the final response and in the Decide pane: 9efb08a1.Decide.1, 9efb08a1.Decide.2.",
     );
   });
+
+  test("then says what it ignored of each item's supersedes, as naming no Decide item", () => {
+    expect(
+      drewText(
+        [radio, binary],
+        [{ ref: "9efb08a1.Decide.2", values: [`"Decide.1"`, `"682e71fb.Todo.1"`, "7"], left: "some" }],
+      ),
+    ).toBe(
+      "Drew buttons for 2 Decide items under the final response and in the Decide pane: 9efb08a1.Decide.1, 9efb08a1.Decide.2." +
+        ` Ignored in 9efb08a1.Decide.2's supersedes, as no Decide item's reference, <turn>.Decide.<n>: "Decide.1", "682e71fb.Todo.1", 7.`,
+    );
+  });
+
+  test("says an item whose supersedes it ignored whole replaces an earlier item on its subject, and names the list's form where it was no list", () => {
+    const drew =
+      "Drew buttons for 1 Decide items under the final response and in the Decide pane: 9efb08a1.Decide.1.";
+
+    expect(drewText([radio], [{ ref: "9efb08a1.Decide.1", values: [`"Decide.1"`], left: "all" }])).toBe(
+      `${drew} Ignored all of 9efb08a1.Decide.1's supersedes, as no Decide item's reference, <turn>.Decide.<n>: "Decide.1";` +
+        " so it replaces an earlier item on its subject, as with no supersedes.",
+    );
+    expect(drewText([radio], [{ ref: "9efb08a1.Decide.1", values: [`"682e71fb.Decide.1"`], left: "list" }])).toBe(
+      `${drew} Ignored 9efb08a1.Decide.1's supersedes, "682e71fb.Decide.1", as no list, ["<turn>.Decide.<n>"];` +
+        " so it replaces an earlier item on its subject, as with no supersedes.",
+    );
+  });
 });
 
 describe("an item's title", () => {
@@ -140,12 +187,23 @@ describe("what made an item Done", () => {
     expect(sentLetters({ ...answered, letters: ["A", "C"] })).toEqual(["A", "C"]);
   });
 
-  test("says so when a reassess, an item asked again, or nothing the transcript says made it Done", () => {
+  test("says so when a reassess, the item that superseded it, or nothing the transcript says made it Done", () => {
     expect(settledText({ ref: "r", how: "reassessed" })).toBe("Done: reassessed");
-    expect(settledText({ ref: "r", how: "restated" })).toBe("Done: asked again");
+    expect(settledText({ ref: "r", how: "superseded", by: "5b4b0642.Decide.1" })).toBe(
+      "Superseded by 5b4b0642.Decide.1",
+    );
     expect(settledText(undefined)).toBe("Done");
     expect(sentLetters({ ref: "r", how: "reassessed" })).toEqual([]);
+    expect(sentLetters({ ref: "r", how: "superseded", by: "5b4b0642.Decide.1" })).toEqual([]);
     expect(sentLetters(undefined)).toEqual([]);
+  });
+
+  test("is a link to the item that superseded it, and no link for any other way", () => {
+    const superseded = { ref: "682e71fb.Decide.1", how: "superseded", by: "5b4b0642.Decide.1" } as const;
+    expect(settledLink(superseded)).toEqual({ text: "Superseded by 5b4b0642.Decide.1", to: "5b4b0642.Decide.1" });
+    expect(settledLink({ ref: "r", how: "reassessed" })).toBeUndefined();
+    expect(settledLink({ ref: "r", how: "sent", letters: ["A"], note: "" })).toBeUndefined();
+    expect(settledLink(undefined)).toBeUndefined();
   });
 
   test("is the answer Submit sent, until the turn's end reads it", () => {
@@ -159,28 +217,96 @@ describe("what made an item Done", () => {
     // `npm run typecheck` checks this: a table of texts missing a `how` is
     // refused, so a `how` added to `Settlement` without its text is a
     // compile error, not a line that says something else.
-    const lacking: Omit<SettledTexts, "restated"> = {
+    const lacking: Omit<SettledTexts, "superseded"> = {
       answered: () => "",
       sent: () => "",
       reassessed: () => "",
+      worded: () => "",
+      "sent-word": () => "",
     };
-    // @ts-expect-error `restated` has no text.
+    // @ts-expect-error `superseded` has no text.
     const missing: SettledTexts = lacking;
     const every: Record<Settlement["how"], true> = {
       answered: true,
       sent: true,
       reassessed: true,
-      restated: true,
+      superseded: true,
+      worded: true,
+      "sent-word": true,
     };
     const hows = Object.keys(every) as readonly Settlement["how"][];
 
     expect(missing).toBe(lacking);
-    expect(hows.map((how) => settledText({ ref: "r", how, turn: "4a2206b0", letters: [], note: "" } as Settlement))).toEqual([
+    expect(
+      hows.map((how) =>
+        settledText({
+          ref: "r",
+          how,
+          turn: "4a2206b0",
+          letters: [],
+          word: "done",
+          note: "",
+          by: "5b4b0642.Decide.1",
+        } as Settlement),
+      ),
+    ).toEqual([
       "Answered in 4a2206b0: ",
       "Sent: ",
       "Done: reassessed",
-      "Done: asked again",
+      "Superseded by 5b4b0642.Decide.1",
+      "Done: done",
+      "Sent: done",
     ]);
+  });
+});
+
+describe("a Done item's row", () => {
+  test("ends on what made it Done, or, where that's a link, stops before it, for the link to follow", () => {
+    const sent = { ref: "9efb08a1.Decide.1", how: "sent", letters: ["A"], note: "" } as const;
+    const superseded = { ref: "9efb08a1.Decide.1", how: "superseded", by: "5b4b0642.Decide.1" } as const;
+    expect(doneRowOf(radio, sent)).toEqual({
+      line: { label: "🧠 Decide.1", text: "Which cache to keep · Sent: A" },
+      link: undefined,
+    });
+    expect(doneRowOf(radio, superseded)).toEqual({
+      line: { label: "🧠 Decide.1", text: "Which cache to keep · " },
+      link: { text: "Superseded by 5b4b0642.Decide.1", to: "5b4b0642.Decide.1" },
+    });
+  });
+});
+
+describe("what an item's box says of where it stands", () => {
+  const superseded = { ref: "9efb08a1.Decide.1", how: "superseded", by: "5b4b0642.Decide.1" } as const;
+
+  test("a Done item's line saying what made it Done, and no link, where that's no link", () => {
+    expect(boxLines(true, { ref: "r", how: "reassessed" }, [])).toEqual({ settled: "Done: reassessed", links: [] });
+    expect(boxLines(true, undefined, [])).toEqual({ settled: "Done", links: [] });
+  });
+
+  test("a superseded item's link to the item that superseded it, in place of the line", () => {
+    expect(boxLines(true, superseded, [])).toEqual({
+      settled: "",
+      links: [{ text: "Superseded by 5b4b0642.Decide.1", to: "5b4b0642.Decide.1" }],
+    });
+  });
+
+  test("a link to each item it supersedes, open or Done, after any link of its own", () => {
+    expect(boxLines(false, undefined, ["682e71fb.Decide.1", "682e71fb.Decide.2"])).toEqual({
+      settled: "",
+      links: [
+        { text: "Supersedes 682e71fb.Decide.1", to: "682e71fb.Decide.1" },
+        { text: "Supersedes 682e71fb.Decide.2", to: "682e71fb.Decide.2" },
+      ],
+    });
+    expect(boxLines(true, superseded, ["682e71fb.Decide.1"]).links.map((link) => link.to)).toEqual([
+      "5b4b0642.Decide.1",
+      "682e71fb.Decide.1",
+    ]);
+  });
+
+  test("nothing for an open item that supersedes none, whatever settlement it's handed", () => {
+    expect(boxLines(false, superseded, [])).toEqual({ settled: "", links: [] });
+    expect(supersedesLinks([])).toEqual([]);
   });
 });
 
@@ -373,6 +499,13 @@ describe("the column left of an option", () => {
     expect(settled([], "A")).toEqual({});
     expect(settled([], "B")).toEqual({});
   });
+
+  test("lights beside no option of a superseded item, whose settlement gives no letters", () => {
+    const answered = sentLetters({ ref: "9efb08a1.Decide.1", how: "superseded", by: "b2c3d4e5.Decide.1" });
+
+    expect(settled(answered, "A")).toEqual({});
+    expect(settled(answered, "B")).toEqual({});
+  });
 });
 
 describe("what the footer says Submit will send", () => {
@@ -461,7 +594,7 @@ describe("the keys panel", () => {
 
   test("lists each key the pane takes and what it does, then the engine's", () => {
     expect(keyRows(keys, SETTINGS.marks.buttons)).toEqual([
-      { key: "j", does: "↓ Next: the next item, or Done header" },
+      { key: "j", does: "↓ Next: the next item, or header" },
       { key: "k", does: "↑ Previous: the item before" },
       { key: "s", does: "📤 Submit: send the draft" },
       { key: "r", does: "🔄 Reassess: add or take out the reassess line" },
@@ -480,7 +613,7 @@ describe("the keys panel", () => {
   test("draws each button's glyph as it's given", () => {
     const glyphs = { dismiss: "X", next: "v", previous: "^", submit: ">", reassess: "R", help: "H", kanban: "K" };
     expect(keyRows(keys, glyphs).slice(0, 6)).toEqual([
-      { key: "j", does: "v Next: the next item, or Done header" },
+      { key: "j", does: "v Next: the next item, or header" },
       { key: "k", does: "^ Previous: the item before" },
       { key: "s", does: "> Submit: send the draft" },
       { key: "r", does: "R Reassess: add or take out the reassess line" },

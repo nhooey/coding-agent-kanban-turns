@@ -69,6 +69,12 @@ const SEED = 0x7265706c;
 const read = (path: string): string =>
   readFileSync(new URL(`../../../${path}`, import.meta.url), "utf8");
 
+/** A reply's items without the body a Todo item keeps for the pane, which the old scanners never read: listed.test.ts holds it. */
+const withoutBodies = (
+  items: ReturnType<typeof itemsOfText>,
+): readonly Omit<ReturnType<typeof itemsOfText>[number], "body">[] =>
+  items.map(({ body: _body, ...item }) => item);
+
 /** Each golden case's replies, with the Decide items each reply's turn raised. */
 const GOLDEN: readonly Readonly<{ text: string; items: readonly DecideItem[] }>[] =
   readdirSync(new URL(`../../../${CASES_DIR}`, import.meta.url))
@@ -152,7 +158,7 @@ describe("the readers of a reply against the old scanners", () => {
 
   test("itemsOfText: the same items, strict replies and loose", () => {
     property(fc.oneof(strictArb, replyArb("loose")), (text) => {
-      expect(itemsOfText(text)).toEqual(oracle.itemsOfText(text));
+      expect(withoutBodies(itemsOfText(text))).toEqual(oracle.itemsOfText(text));
     });
   });
 
@@ -303,7 +309,7 @@ describe("where the readers part: fixed", () => {
     expect(sectionsOf(prose)[0]?.text).toBe(prose);
     expect(oracle.decideItemsOfText(prose).map((found) => found.number)).toEqual([1]);
     expect(decideItemsOfText(prose).map((found) => found.number)).toEqual([1, 2]);
-    expect(itemsOfText(prose)).toEqual(oracle.itemsOfText(prose));
+    expect(withoutBodies(itemsOfText(prose))).toEqual(oracle.itemsOfText(prose));
     expect(isKanbanReply("Still open from earlier, the loader.")).toBe(false);
   });
 
@@ -449,7 +455,7 @@ describe("where the readers part: kept", () => {
   test("a bare older roll-up header alone on its line ends a section, and pins nothing, ends no cut and makes no reply kanban", () => {
     const older = lines(DECIDE_HEADER, ...CACHE, "", "Still open from earlier", "📋 **To review:**", "- **The README** 🔖 b2c3d4e5₋₁");
 
-    expect(itemsOfText(older)).toEqual(oracle.itemsOfText(older));
+    expect(withoutBodies(itemsOfText(older))).toEqual(oracle.itemsOfText(older));
     expect(itemsOfText(older).at(-1)?.isPinned).toBe(false);
 
     const restated = lines(DECIDE_HEADER, ...CACHE, "", "Still open from earlier:", "🧠 **Decide:**", "- **Which cache to keep** 🔖 b2c3d4e5₋₁");

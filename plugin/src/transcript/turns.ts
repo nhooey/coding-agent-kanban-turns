@@ -14,7 +14,7 @@ import { PLUGIN } from "../protocol/instructions.ts";
 import { REASSESS, classOf } from "../protocol/rules.ts";
 import { SPEC } from "../protocol/spec.ts";
 import { escaped } from "../text/patterns.ts";
-import type { Owner, Turn } from "../../types/index.d.ts";
+import type { Message, Owner, Turn } from "../../types/index.d.ts";
 
 /** Whether text its owner wrote is the user's own: the user's, or this plugin's sent for them. */
 export const isOwn = (owner: Owner): boolean =>
@@ -30,6 +30,32 @@ const DRAFT_HEADER = new RegExp(
 /** A message's text without the line naming the plugin that a draft its clicks started opens with, so that line is never read as an answer or a note. */
 export const withoutDraftHeader = (text: string): string =>
   text.replace(DRAFT_HEADER, "");
+
+/** A turn's prompt, then the messages sent while it ran. */
+export const textsOf = (turn: Turn): readonly Message[] => [
+  turn.prompt,
+  ...turn.messages,
+];
+
+/** One line of the user's own text, with the place `at` of the turn a bare answer on it means, the turn before its own, and the id of the turn it was `sent` in. */
+export type OwnLine = Readonly<{ line: string; at: number; sent: string }>;
+
+/**
+ * Every line of the user's own text, oldest first, which every answer is
+ * read from: a turn's prompt where it's the user's own, and each message
+ * the user sent while a turn ran, the line naming the plugin that opens a
+ * draft its clicks started left out. The first turn's lines answer
+ * nothing, so it gives none.
+ */
+export const ownLinesOf = (turns: readonly Turn[]): readonly OwnLine[] =>
+  turns.flatMap((turn, n) =>
+    n === 0
+      ? []
+      : textsOf(turn)
+          .filter((message) => isOwn(message.owner))
+          .flatMap((message) => withoutDraftHeader(message.text).split("\n"))
+          .map((line) => ({ line, at: n - 1, sent: turn.id })),
+  );
 
 /** The offsets of the reads, `chunk` bytes each, that cover a file of `size` bytes. */
 export const chunkOffsets = (size: number, chunk: number): readonly number[] =>

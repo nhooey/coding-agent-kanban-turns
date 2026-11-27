@@ -1,6 +1,6 @@
 // The golden cases run through the kanban CLI, whichever way it is run: its
-// pure commands, cli/kanban.ts under Node, the bundled kanban.js or the
-// standalone binary. Each case's turns go in both ways the CLI reads them,
+// pure commands, cli/kanban.ts under Node or the bundled kanban.js.
+// Each case's turns go in both ways the CLI reads them,
 // as neutral turns on stdin and as a Claude Code transcript through the
 // adapter, and what each command writes is compared with what the case
 // expects. Each reply also goes in alone, as a draft on stdin.

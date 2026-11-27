@@ -1,7 +1,7 @@
 # Bundle the kanban CLI, plugin/cli/kanban.ts, with the core it imports and
 # vendor/'s YAML parser, into one ES module, $out/bin/kanban.js, that runs
 # under Node 20 or later with no node_modules: what the derived skill runs
-# where Node is on the path, and what the standalone binary is built from.
+# where Node is on the path.
 # The YAML parser's licence goes beside it, in share/licenses/yaml/.
 #
 # $src is plugin/'s cli/, src/, types/ and vendor/. The plugin's defaults
