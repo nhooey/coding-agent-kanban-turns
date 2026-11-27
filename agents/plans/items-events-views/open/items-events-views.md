@@ -128,6 +128,11 @@ A picked answer that isn't sent is no item state: it's a line of the draft's tex
   - Tests find a completed reassess closing exactly the covered items its turn neither kept, raised again nor resolved, and a lapsed one changing no item its turn's own events didn't.
   - A test finds no control drawn for an item being reassessed, in the pane, under a reply or at a reference.
   - In a live session, a submitted `reassess` closes the pane and the count line reads `reassessing`; the pane reopens when the turn's final response lands, only if an item awaits the person; and an interrupted reassess leaves the items open, with the pane saying how many weren't reassessed.
+- **A command runs where the agent sees it.**
+  Tests find an item's command drawn as one control that fills the prompt draft with `! <cmd>`, and, for a command that must run in another shell, the wrapper's status lines and log file and a Started control that fires `start`.
+  An item for a refused action also draws a grant, whose fill holds the refused command byte for byte ([commands-run-where-the-agent-sees](commands-run-where-the-agent-sees.md)).
+- **A task whose command has run, or whose target is already in place, is closed without the person writing `done`.**
+  Tests find a `!` command's bash output, followed by the agent's `resolve`, closing its item, and an item whose target is already in place resolved with no run; in a live session, a task whose command the person ran doesn't show as open in the next turn.
 - **The architecture still holds.**
   [The refactor plan](../../items-events-views-refactor/open/items-events-views-refactor.md)'s checks pass with the model built, and its unused-exports check lists no exception.
 - **Nothing is kept for the lists.**
@@ -169,6 +174,7 @@ Then, each `needs` the ones it builds on:
 - [reply-prose-readers-retired](reply-prose-readers-retired.md): no reader takes an item from a reply's prose.
 - [derived-skill-follows-items](derived-skill-follows-items.md): the derived skill's update.
 - [pane-windowed-render](pane-windowed-render.md): the pane draws only what's in or near its scroll window.
+- [commands-run-where-the-agent-sees](commands-run-where-the-agent-sees.md): a command the person is asked to run, as a control that fills the prompt with it.
 
 **The 9-list path keeps working until the cut-over.**
 Each part up to the tree lands beside the list readers, unreached by the hooks; [pane-facet-tree](pane-facet-tree.md) and [reply-refers-to-items](reply-refers-to-items.md) switch the pane and the reply to items, and [reply-prose-readers-retired](reply-prose-readers-retired.md) deletes the old path.
