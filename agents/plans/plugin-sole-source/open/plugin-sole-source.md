@@ -26,7 +26,7 @@ kind: end-state
 - **The plugin carries a derived skill that follows every change** ([derived-skill-package](../closed/derived-skill-package.md)):
   - `packages.plugin` holds a SKILL.md, its examples and its scripts under `skills/`, built from the spec, the fragments, the golden cases and the CLI, and Claude Code loads it as `coding-agent-kanban-turns:coding-agent-kanban-turn-responses`;
   - installing the plugin installs the skill, the fallback when the plugin's hooks fail to load;
-  - its scripts are the CLI, `kanban.js` under Node or a standalone binary, so the fallback runs the same core functions as the hooks;
+  - its scripts are the CLI, `kanban.js` under Node, so the fallback runs the same core functions as the hooks;
   - the same skill folder is `packages.skill-standalone`, for a harness that loads skills but not plugins;
   - the same commit always builds the same plugin, skill included, and a flake check builds it, so a plugin change that breaks the skill fails `nix flake check`.
 - **Instructions arrive once.** With the hooks and the skill both loaded, the agent gets the protocol's instructions once ([instructions-once-with-skill](../closed/instructions-once-with-skill.md)).
