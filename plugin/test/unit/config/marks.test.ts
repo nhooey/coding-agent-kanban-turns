@@ -26,7 +26,6 @@ const TODAY = {
   collapsed: "▸",
   expanded: "▾",
   buttons: {
-    dismiss: "✖",
     next: "↓",
     previous: "↑",
     submit: "📤",
@@ -93,7 +92,7 @@ describe("a mark that can't be used", () => {
       `${U}: marks.buttons is string, not a section`,
     ]);
     expect(loaded(defaults, user("marks:\n  buttons:\n    close: x\n")).problems).toEqual([
-      `${U}: marks.buttons.close is no setting; the keys here are dismiss, next, previous, submit, reassess, help, kanban`,
+      `${U}: marks.buttons.close is no setting; the keys here are next, previous, submit, reassess, help, kanban`,
     ]);
   });
 

@@ -41,7 +41,7 @@ const NO_MARKS = "marks is missing, a section KINDS names";
 
 // The least each section KINDS names must hold in a defaults file, as YAML
 // and as a value, so a test's own defaults give a shape.
-const KINDS_YAML = "keys:\n  dismiss: q\nmarks:\n  m: x\n";
+const KINDS_YAML = "keys:\n  help: q\nmarks:\n  m: x\n";
 const MARKS = { m: "x" };
 
 const D = "defaults/config.yaml";
@@ -127,7 +127,7 @@ describe("a null section", () => {
 });
 
 /** A sound user file, which these tests show gives no problems of its own. */
-const SOUND_USER = { path: U, text: "keys:\n  dismiss: x\nnotes:\n  rows: 5\n" };
+const SOUND_USER = { path: U, text: "keys:\n  help: x\nnotes:\n  rows: 5\n" };
 
 describe("a defaults file that is missing, empty or gives no shape", () => {
   const cases: readonly (readonly [string, string | undefined, readonly string[]])[] = [
@@ -135,7 +135,7 @@ describe("a defaults file that is missing, empty or gives no shape", () => {
     ["empty", "", ["the file holds no settings", NO_KEYS, NO_MARKS]],
     ["an empty section", "{}", ["the file holds no settings", NO_KEYS, NO_MARKS]],
     ["an empty keys section", '{"keys": {}, "marks": {"m": "x"}}', ["keys holds no settings"]],
-    ["no marks section", '{"keys": {"dismiss": "q"}}', [NO_MARKS]],
+    ["no marks section", '{"keys": {"help": "q"}}', [NO_MARKS]],
   ];
 
   for (const [name, text, problems] of cases) {
@@ -161,7 +161,7 @@ describe("a default named `constructor` or `toString`", () => {
   test("is in effect where the user's file leaves it out", () => {
     const got = loaded(defaults, { path: U, text: "misc:\n  toString: 2\n" });
     expect(got.problems).toEqual([]);
-    expect(got.settings).toEqual({ keys: { dismiss: "q" }, marks: MARKS, misc: { constructor: "x", toString: 2 } });
+    expect(got.settings).toEqual({ keys: { help: "q" }, marks: MARKS, misc: { constructor: "x", toString: 2 } });
   });
 
   test("is checked where the user's file sets it", () => {
@@ -176,7 +176,7 @@ describe("a default named `constructor` or `toString`", () => {
       { path: U, text: "misc:\n  rows: 2\n" },
     );
     expect(got.problems).toEqual([]);
-    expect(got.settings).toEqual({ keys: { dismiss: "q" }, marks: MARKS, misc: { rows: 2 } });
+    expect(got.settings).toEqual({ keys: { help: "q" }, marks: MARKS, misc: { rows: 2 } });
   });
 });
 
@@ -294,12 +294,13 @@ const userTextArb: fc.Arbitrary<string> = fc.oneof(
       "",
       "---\n",
       "--- {}\n--- {}\n",
-      "keys:\n  dismiss: x\n  dismiss: y\n",
+      "keys:\n  help: x\n  help: y\n",
+      "keys:\n  dismiss: x\n",
       "marks:\n  sent: *x\n",
       "keys:\n",
       "notes:\n  rows: .inf\n",
       "<<: {}\n",
-      "keys:\n  next: q\n",
+      "keys:\n  next: s\n",
       "[1, 2]\n",
     ),
     weight: 1,
@@ -357,7 +358,7 @@ const CASES: readonly Case[] = [
   },
   {
     name: "binding a key twice",
-    text: stringify(withSection("keys", { ...sectionOf("keys"), next: "q" })),
+    text: stringify(withSection("keys", { ...sectionOf("keys"), next: "s" })),
     change: { kind: "none" },
   },
   retyped("with a number default written as a string", "notes", { ...sectionOf("notes"), rows: "3" }, [

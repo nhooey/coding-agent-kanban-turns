@@ -14,8 +14,9 @@
 // still answer it again.
 //
 // The pane, top to bottom: a header row, `🖥️ Kanban · 📌 <count line>`, how
-// many open items the draft answers, and ↑ Previous, ↓ Next, ? Keys and
-// ✖ Close; under it, once ? Keys opens it, a panel listing every key; then
+// many open items the draft answers, and ↑ Previous, ↓ Next and ? Keys,
+// the pane closed by Claude Code's own close mark in its frame's top
+// right; under it, once ? Keys opens it, a panel listing every key; then
 // each turn with an open item under a faint header, a toggle, its open
 // items drawn in full; then the Done branch's toggle, `▸ Done (n)`, and
 // under it each turn with a Done item, under its own toggle; then a footer
@@ -191,11 +192,14 @@ import type {
 import { loadSettings } from "./settings.ts";
 
 // The pane that lists the items, and its title, the pane's name, since it
-// holds every list's items. The keys, marks and colours are settings, in
-// defaults/config.yaml; its spacing is src/pane/layout.ts's.
+// holds every list's items; Escape, which hands the keyboard back to the
+// prompt, also closes it, as the person's close does. The keys, marks and
+// colours are settings, in defaults/config.yaml; its spacing is
+// src/pane/layout.ts's.
 const PANE = {
   id: "kanban-turns",
   title: PANE_NAME,
+  closeOnEscape: true,
 } as const;
 // The most bytes one `$.fs.read` returns: the transcript is read in ranges
 // this long.
@@ -223,7 +227,9 @@ const focused = atom(
 );
 // The checkbox item a pick in Open holds there, by ref, so further picks
 // land where the first did: it moves to Queued once the ring leaves it.
-// Empty for none, and once the pane closes.
+// Empty for none, and once the pane closes, however it closes: the
+// `ui.close` hook clears it, so a pane closed with the ring still on the
+// item lets it go to Queued.
 const held = atom(
   { plugin: "coding-agent-kanban-turns", key: "held" } as const,
   "",
@@ -835,14 +841,8 @@ const showLevels = async ($: EngineInterface, item: ListedItem): Promise<void> =
   }
 };
 
-/** Closes the pane; its notes field no longer waits for the focus, its ring is on nothing, no item is held, and its keys panel is closed. */
-const closePane = async ($: EngineInterface): Promise<void> => {
-  await update($, noting, () => "");
-  await update($, focused, () => "");
-  await update($, held, () => "");
-  await update($, isKeysOpen, () => false);
-  await $.ui.close({ id: PANE.id });
-};
+/** Closes the pane; the `ui.close` hook, which every close raises, clears what the pane held. */
+const closePane = ($: EngineInterface): Promise<void> => $.ui.close({ id: PANE.id });
 
 /** `? Keys`: the keys panel opened, or closed again. */
 const toggleKeys = ($: EngineInterface) =>
@@ -1099,15 +1099,17 @@ export const register: Register = (on) => {
         };
   });
 
-  // The person closing the pane: its notes field no longer waits for the
-  // focus, its ring is on nothing, and its keys panel is closed. The
-  // plugin's own close, ✖, clears them itself.
+  // Any close of the pane, the person's mark, ctrl+x x or Escape, another
+  // plugin's, or the plugin's own after a Submit: its notes field no longer
+  // waits for the focus, its ring is on nothing, no item is held, and its
+  // keys panel is closed.
   on("ui.close", async ($, e, next) => {
     const closed = await next(e);
 
     if (e.id === PANE.id) {
       await update($, noting, () => "");
       await update($, focused, () => "");
+      await update($, held, () => "");
       await update($, isKeysOpen, () => false);
     }
 
@@ -1287,15 +1289,6 @@ export const register: Register = (on) => {
               hotkey: s.keys.help,
               onPress: () => toggleKeys($),
             })}
-            {control(elements, {
-              key: "dismiss",
-              glyph: s.marks.buttons.dismiss,
-              glyphColor: s.colors.close,
-              label: "Close",
-              hotkey: s.keys.dismiss,
-              role: "dismiss",
-              onPress: () => closePane($),
-            })}
           </Box>
         </Box>
         {(await read($, isKeysOpen)) ? keysPanel(elements, s) : null}
@@ -1430,45 +1423,35 @@ type Elements = Pick<
 >;
 
 /**
- * One of the pane's controls, drawn as every button is: `glyph label`, no
- * chrome, its key drawn before it where it has one, inverted under the
- * pointer; dim while it can't act. A press always runs `onPress`, which
- * itself does nothing while it can't act, as it reads that afresh: what
- * the drawing knew may be a moment old.
+ * One of the pane's controls, each pressed by its key: `[ glyph label ]`,
+ * in the engine's bracket chrome, which, unlike a plain button's `k: `,
+ * draws no hint of the key, listed instead in the panel `? Keys` opens;
+ * inverted under the pointer, dim while it can't act. A press always runs
+ * `onPress`, which itself does nothing while it can't act, as it reads
+ * that afresh: what the drawing knew may be a moment old.
  */
 const control = (
-  elements: Pick<Elements, "Button" | "Text">,
+  elements: Pick<Elements, "Button">,
   c: Readonly<{
     key: string;
     glyph: string;
     label: string;
+    hotkey: string;
     onPress: () => unknown;
-    hotkey?: string;
     isInert?: boolean;
-    glyphColor?: string;
-    role?: "dismiss";
   }>,
 ) => {
-  const { Button, Text } = elements;
+  const { Button } = elements;
 
   return (
     <Button
       key={c.key}
       label={c.label}
-      plain
+      hotkey={c.hotkey}
       dimColor={c.isInert === true}
-      {...(c.hotkey ? { hotkey: c.hotkey } : {})}
-      {...(c.role ? { role: c.role } : {})}
       onPress={() => c.onPress()}
     >
-      {c.glyphColor ? (
-        <Text key={`${c.key}-glyph`} color={c.glyphColor}>
-          {c.glyph}
-        </Text>
-      ) : (
-        c.glyph
-      )}
-      {` ${c.label}`}
+      {`${c.glyph} ${c.label}`}
     </Button>
   );
 };

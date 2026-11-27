@@ -57,9 +57,9 @@ describe("the shipped defaults file", () => {
   test("with no user file, is what's in effect", () => {
     const got = loaded(defaults, undefined);
     expect(got.problems).toEqual([]);
-    expect(got.settings?.keys.dismiss).toBe("q");
+    expect(got.settings?.keys.help).toBe("h");
     expect(got.effective).toContain(
-      'keys.dismiss = "q"  # defaults: defaults/config.yaml',
+      'keys.help = "h"  # defaults: defaults/config.yaml',
     );
   });
 
@@ -78,20 +78,20 @@ describe("the shipped defaults file", () => {
 
 describe("the user's file over the defaults", () => {
   test("changes only the keys it names, and says where each came from", () => {
-    const got = loaded(defaults, user("keys:\n  dismiss: x\ncolors:\n  kanban: red # mine\n"));
+    const got = loaded(defaults, user("keys:\n  help: x\ncolors:\n  kanban: red # mine\n"));
     expect(got.problems).toEqual([]);
-    expect(got.settings?.keys).toMatchObject({ dismiss: "x", next: "j" });
+    expect(got.settings?.keys).toMatchObject({ help: "x", next: "j" });
     expect(got.settings?.colors.kanban).toBe("red");
     expect(got.settings?.colors["title-label"]).toBe("inverseText");
-    expect(got.effective).toContain('keys.dismiss = "x"  # user: ~/.config/x/config.yaml');
+    expect(got.effective).toContain('keys.help = "x"  # user: ~/.config/x/config.yaml');
     expect(got.effective).toContain('colors.title-label = "inverseText"  # defaults: defaults/config.yaml');
   });
 
   test("an unknown key refuses the file, which leaves the defaults in effect", () => {
     const got = loaded(defaults, user('{"keys": {"prev": "h"}}'));
-    expect(got.settings?.keys.dismiss).toBe("q");
+    expect(got.settings?.keys.help).toBe("h");
     expect(got.problems).toEqual([
-      "~/.config/x/config.yaml: keys.prev is no setting; the keys here are dismiss, next, previous, submit, reassess, help",
+      "~/.config/x/config.yaml: keys.prev is no setting; the keys here are next, previous, submit, reassess, help",
     ]);
   });
 
@@ -116,9 +116,9 @@ describe("the user's file over the defaults", () => {
   test("a section the plugin no longer reads is left out with a warning, and the rest of the file used", () => {
     const got = loaded(
       defaults,
-      user('{"outstanding": {"script": "~/x.py", "python": "python3"}, "keys": {"dismiss": "x"}}'),
+      user('{"outstanding": {"script": "~/x.py", "python": "python3"}, "keys": {"help": "x"}}'),
     );
-    expect(got.settings?.keys.dismiss).toBe("x");
+    expect(got.settings?.keys.help).toBe("x");
     expect(got.settings).not.toHaveProperty("outstanding");
     expect(got.problems).toEqual([
       "~/.config/x/config.yaml: outstanding is no longer read and is left out: the plugin reads the transcript itself; counts.turns sets how many turns the count line reads",
@@ -145,18 +145,17 @@ describe("the user's file over the defaults", () => {
     ]);
   });
 
-  test("the title label's, the settled bar's, the close button's and the Kanban button's colours are settings", () => {
+  test("the title label's, the settled bar's and the Kanban button's colours are settings", () => {
     expect(loaded(defaults, undefined).settings?.colors).toMatchObject({
       "title-label": "inverseText",
       "title-background": "claude",
       settled: "ide",
-      close: "error",
       kanban: "claude",
     });
-    const got = loaded(defaults, user('{"colors": {"settled": "permission", "close": "warning"}}'));
+    const got = loaded(defaults, user('{"colors": {"settled": "permission", "kanban": "warning"}}'));
     expect(got.problems).toEqual([]);
     expect(got.settings?.colors.settled).toBe("permission");
-    expect(got.settings?.colors.close).toBe("warning");
+    expect(got.settings?.colors.kanban).toBe("warning");
     expect(loaded(defaults, user('{"colors": {"settled": true}}')).problems).toEqual([
       "~/.config/x/config.yaml: colors.settled is boolean, not a string; quote it",
     ]);
@@ -164,7 +163,6 @@ describe("the user's file over the defaults", () => {
 
   test("the pane's keys are settings, one each", () => {
     expect(loaded(defaults, undefined).settings?.keys).toEqual({
-      dismiss: "q",
       next: "j",
       previous: "k",
       submit: "s",
@@ -240,13 +238,36 @@ describe("the user's file over the defaults", () => {
     });
   });
 
-  test("colors.close-x, which no ✖ background is drawn for, is left out with a warning", () => {
-    const got = loaded(defaults, user('{"colors": {"close-x": "inverseText", "close": "warning"}}'));
-    expect(got.settings?.colors.close).toBe("warning");
+  test("the ✖ Close button's settings, the button gone, are each left out with a warning, the rest of the file used", () => {
+    const got = loaded(
+      defaults,
+      user(
+        "keys:\n  dismiss: x\n  help: o\nmarks:\n  buttons:\n    dismiss: X\ncolors:\n  close: warning\n  close-x: inverseText\n  border: claude\n",
+      ),
+    );
+    const instead =
+      "is no longer read and is left out: the pane has no ✖ Close button; Claude Code's close mark in its top right, ctrl+x x or esc closes it";
+    expect(got.settings?.keys).not.toHaveProperty("dismiss");
+    expect(got.settings?.keys.help).toBe("o");
+    expect(got.settings?.marks.buttons).not.toHaveProperty("dismiss");
+    expect(got.settings?.colors).not.toHaveProperty("close");
     expect(got.settings?.colors).not.toHaveProperty("close-x");
+    expect(got.settings?.colors.border).toBe("claude");
+    expect(got.problems).toEqual(
+      ["colors.close-x", "colors.close", "keys.dismiss", "marks.buttons.dismiss"].map(
+        (key) => `~/.config/x/config.yaml: ${key} ${instead}`,
+      ),
+    );
+    expect(got.effective.some((line) => line.includes("dismiss") || line.startsWith("colors.close"))).toBe(false);
+  });
+
+  test("an old keys.dismiss on the same key as another button clashes with none, being left out first", () => {
+    const got = loaded(defaults, user("keys:\n  dismiss: s\n  submit: s\n"));
     expect(got.problems).toEqual([
-      "~/.config/x/config.yaml: colors.close-x is no longer read and is left out: the ✖ is drawn in colors.close, on no background, as every button is",
+      "~/.config/x/config.yaml: keys.dismiss is no longer read and is left out: the pane has no ✖ Close button; Claude Code's close mark in its top right, ctrl+x x or esc closes it",
     ]);
+    expect(got.settings?.keys.submit).toBe("s");
+    expect(got.effective).toContain('keys.submit = "s"  # user: ~/.config/x/config.yaml');
   });
 
   test("the notes field's rows are a setting", () => {
@@ -259,7 +280,7 @@ describe("the user's file over the defaults", () => {
 
   test("a retired section beside a broken key still refuses the file, with both said", () => {
     const got = loaded(defaults, user('{"outstanding": {}, "keys": {"prev": "h"}}'));
-    expect(got.settings?.keys.dismiss).toBe("q");
+    expect(got.settings?.keys.help).toBe("h");
     expect(got.problems).toHaveLength(2);
   });
 
@@ -286,16 +307,16 @@ describe("the user's file over the defaults", () => {
   });
 
   test("a key written twice refuses the file", () => {
-    const got = loaded(defaults, user("keys:\n  dismiss: x\n  dismiss: y\n"));
-    expect(got.settings?.keys.dismiss).toBe("q");
+    const got = loaded(defaults, user("keys:\n  help: x\n  help: y\n"));
+    expect(got.settings?.keys.help).toBe("h");
     expect(got.problems).toEqual([
       "~/.config/x/config.yaml: Map keys must be unique at line 3, column 3",
     ]);
   });
 
   test("a tag outside the core schema refuses the file", () => {
-    expect(loaded(defaults, user("keys:\n  dismiss: !!binary eA==\n")).problems).toEqual([
-      "~/.config/x/config.yaml: Unresolved tag: tag:yaml.org,2002:binary at line 2, column 12",
+    expect(loaded(defaults, user("keys:\n  help: !!binary eA==\n")).problems).toEqual([
+      "~/.config/x/config.yaml: Unresolved tag: tag:yaml.org,2002:binary at line 2, column 9",
     ]);
   });
 
@@ -306,8 +327,8 @@ describe("the user's file over the defaults", () => {
   });
 
   test("a __proto__ or constructor key is no setting", () => {
-    const shape = "is no setting; the keys here are dismiss, next, previous, submit, reassess, help";
-    expect(loaded(defaults, user('keys:\n  __proto__:\n    dismiss: x\n')).problems).toEqual([
+    const shape = "is no setting; the keys here are next, previous, submit, reassess, help";
+    expect(loaded(defaults, user('keys:\n  __proto__:\n    help: x\n')).problems).toEqual([
       `~/.config/x/config.yaml: keys.__proto__ ${shape}`,
     ]);
     expect(loaded(defaults, user("keys:\n  constructor: x\n")).problems).toEqual([
@@ -316,9 +337,9 @@ describe("the user's file over the defaults", () => {
   });
 
   test("a section with every key under it commented out is an empty section", () => {
-    const got = loaded(defaults, user("keys:\n  # dismiss: x\nnotes:\n  rows: 5\n"));
+    const got = loaded(defaults, user("keys:\n  # help: x\nnotes:\n  rows: 5\n"));
     expect(got.problems).toEqual([]);
-    expect(got.settings?.keys.dismiss).toBe("q");
+    expect(got.settings?.keys.help).toBe("h");
     expect(got.settings?.notes.rows).toBe(5);
   });
 
@@ -353,8 +374,8 @@ describe("the user's file over the defaults", () => {
   });
 
   test("a << is an ordinary key, so no merge happens and the file is refused", () => {
-    expect(loaded(defaults, user("keys:\n  <<: {dismiss: x}\n")).problems).toEqual([
-      "~/.config/x/config.yaml: keys.<< is no setting; the keys here are dismiss, next, previous, submit, reassess, help",
+    expect(loaded(defaults, user("keys:\n  <<: {help: x}\n")).problems).toEqual([
+      "~/.config/x/config.yaml: keys.<< is no setting; the keys here are next, previous, submit, reassess, help",
     ]);
   });
 
@@ -383,7 +404,7 @@ describe("the user's file over the defaults", () => {
   });
 
   test("a parse error beside an alias to no anchor is the parse error that's said", () => {
-    expect(loaded(defaults, user("keys:\n  dismiss: *x\n  dismiss: y\n")).problems).toEqual([
+    expect(loaded(defaults, user("keys:\n  help: *x\n  help: y\n")).problems).toEqual([
       "~/.config/x/config.yaml: Map keys must be unique at line 3, column 3",
     ]);
     expect(loaded(defaults, user("keys: [\nnotes: *x\n")).problems).toEqual([
@@ -404,7 +425,7 @@ describe("the user's file over the defaults", () => {
   });
 
   test("a defaults file with a null default leaves no settings, and the user's file unchecked", () => {
-    const got = loaded({ path: "d", text: '{"keys": {"dismiss": "q"}, "marks": {"m": "x"}, "counts": {"turns": null}}' }, user('{"keys": {"x": "y"}}'));
+    const got = loaded({ path: "d", text: '{"keys": {"help": "q"}, "marks": {"m": "x"}, "counts": {"turns": null}}' }, user('{"keys": {"x": "y"}}'));
     expect(got.settings).toBeNull();
     expect(got.problems).toEqual([
       "d: counts.turns is null, so its default gives it no type; write a string, a number, or true or false, or name its section's type in KINDS in src/config/config.ts",
@@ -414,11 +435,11 @@ describe("the user's file over the defaults", () => {
 
 describe("a config.yaml written as JSON", () => {
   test("reads with tabs inside a multi-line flow mapping", () => {
-    const nested = '{\n\t"keys": {\n\t\t"dismiss": "x",\n\t\t"next": "n"\n\t},\n\t"colors": {\n\t\t"kanban": "red"\n\t}\n}\n';
+    const nested = '{\n\t"keys": {\n\t\t"help": "x",\n\t\t"next": "n"\n\t},\n\t"colors": {\n\t\t"kanban": "red"\n\t}\n}\n';
     const got = loaded(defaults, user(nested));
     expect(got.problems).toEqual([]);
     expect(got.settings).toMatchObject({
-      keys: { dismiss: "x", next: "n" },
+      keys: { help: "x", next: "n" },
       colors: { kanban: "red" },
     });
   });
@@ -435,9 +456,9 @@ describe("a config.yaml written as JSON", () => {
   });
 
   test("reads with a trailing comma in a flow map and in a flow list", () => {
-    const map = loaded(defaults, user('{"keys": {"dismiss": "x",}, "notes": {"rows": 5,},}'));
+    const map = loaded(defaults, user('{"keys": {"help": "x",}, "notes": {"rows": 5,},}'));
     expect(map.problems).toEqual([]);
-    expect(map.settings?.keys.dismiss).toBe("x");
+    expect(map.settings?.keys.help).toBe("x");
     expect(map.settings?.notes.rows).toBe(5);
     // The list parses, so the one problem is that no setting takes a list.
     expect(loaded(defaults, user('{"marks": {"sent": ["a", "b",]}}')).problems).toEqual([
@@ -454,26 +475,26 @@ describe("a config.yaml written as JSON", () => {
   });
 
   test("reads # comment lines inside a flow mapping", () => {
-    const got = loaded(defaults, user('{\n  "keys": {"dismiss": "x"},\n  # mine\n  "notes": {"rows": 5}\n}'));
+    const got = loaded(defaults, user('{\n  "keys": {"help": "x"},\n  # mine\n  "notes": {"rows": 5}\n}'));
     expect(got.problems).toEqual([]);
-    expect(got.settings?.keys.dismiss).toBe("x");
+    expect(got.settings?.keys.help).toBe("x");
     expect(got.settings?.notes.rows).toBe(5);
   });
 
   test("refuses a key written twice in a flow mapping, placed by line and column", () => {
-    expect(loaded(defaults, user('{"keys": {"dismiss": "x", "dismiss": "y"}}')).problems).toEqual([
-      "~/.config/x/config.yaml: Map keys must be unique at line 1, column 27",
+    expect(loaded(defaults, user('{"keys": {"help": "x", "help": "y"}}')).problems).toEqual([
+      "~/.config/x/config.yaml: Map keys must be unique at line 1, column 24",
     ]);
-    expect(loaded(defaults, user('{\n  "keys": {"dismiss": "x"},\n  "keys": {}\n}')).problems).toEqual([
+    expect(loaded(defaults, user('{\n  "keys": {"help": "x"},\n  "keys": {}\n}')).problems).toEqual([
       "~/.config/x/config.yaml: Map keys must be unique at line 3, column 3",
     ]);
   });
 
   test("refuses a comment with no whitespace before it", () => {
-    const got = loaded(defaults, user('{"keys": {"dismiss": "x"},# mine\n}'));
-    expect(got.settings?.keys.dismiss).toBe("q");
+    const got = loaded(defaults, user('{"keys": {"help": "x"},# mine\n}'));
+    expect(got.settings?.keys.help).toBe("h");
     expect(got.problems).toEqual([
-      "~/.config/x/config.yaml: Comments must be separated from other tokens by white space characters at line 1, column 27",
+      "~/.config/x/config.yaml: Comments must be separated from other tokens by white space characters at line 1, column 24",
     ]);
   });
 });

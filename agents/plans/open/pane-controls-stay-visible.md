@@ -9,7 +9,7 @@ touches: [plugin/hooks/register.tsx, plugin/test/engine/, README.md]
 
 With the coding-agent-kanban-turns plugin loaded:
 
-- **The header row stays.** The pane's header row, `🖥️ Kanban · 📌 <count line>`, `n of m answered`, `↑ Previous`, `↓ Next`, `? Keys` and `✖ Close`, with whatever later joins it, stays at the pane's top while the person scrolls its items.
+- **The header row stays.** The pane's header row, `🖥️ Kanban · 📌 <count line>`, `n of m answered`, `↑ Previous`, `↓ Next` and `? Keys`, with whatever later joins it, stays at the pane's top while the person scrolls its items.
 - **The footer stays.** The footer, the draft's summary, `🔄 Reassess` and `📤 Submit`, stays at the pane's bottom.
 - **Only the items scroll.** The turn headers, items and Done sections between them are the pane's scrolled body, and scrolling moves nothing else.
 

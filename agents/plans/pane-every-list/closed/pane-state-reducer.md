@@ -21,7 +21,7 @@ The pane's state is 15 atoms in `plugin/hooks/register.tsx` today: `raised`, `se
 
 - **One state value.** The pane's state is one readonly `PaneState` in `plugin/src/pane/pane-state.ts`, with no `claude-code` import, held in one atom with one shape tag. The `instructed` atom isn't pane state and stays as it is.
 - **Events are data.** Every change to the state is an `Event` value, one union that a `never` check closes:
-  - the person's keys and clicks: an option picked, a note, Submit, ✖, `? Keys`, a Done toggle, the focus ring moving;
+  - the person's keys and clicks: an option picked, a note, Submit, `? Keys`, a Done toggle, the focus ring moving;
   - the engine's events: session start, turn start and complete, a prompt change, the pane closed, a `kanban_options` call;
   - the effects' results: the transcript read, the settings read, a draft sent, a submit refused, a pull request merged.
 - **A pure step function.** `step(state, event)` returns `{ state, effects }`, the effects as data, in the Elm-architecture style: fill the prompt, submit, close the pane, open it, read the transcript, read the settings, ask `gh`, reveal an element.
