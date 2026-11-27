@@ -1,6 +1,6 @@
-// What the pane-state tests and Submit's differential test drive Submit
-// with: two raised items, the boxes a press may read, the turns that may
-// run, and the random events and answers fast-check draws from them.
+// What the pane-state tests drive Submit with: two raised items, the
+// boxes a press may read, the turns that may run, and the random events
+// and answers fast-check draws from them.
 
 import fc from "fast-check";
 
@@ -59,7 +59,7 @@ export const BOXES = {
 export const TURNS = ["t1", "t2", "t3"] as const;
 
 export const boxArb = fc.constantFrom(...Object.values(BOXES));
-export const turnArb = fc.constantFrom(...TURNS);
+const turnArb = fc.constantFrom(...TURNS);
 // Half the prompts sent are taken, half refused.
 export const refusalArb = fc.option(fc.constantFrom("busy", "hook said no"), {
   nil: undefined,

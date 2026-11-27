@@ -5,7 +5,9 @@
 // ones Claude Code writes.
 
 import { describe, test } from "node:test";
+import { isDeepStrictEqual } from "node:util";
 import { expect } from "expect";
+import fc from "fast-check";
 
 import {
   decideOf,
@@ -27,6 +29,7 @@ import { PLUGIN } from "../../../src/protocol/instructions.ts";
 import { itemsOf } from "../../../src/items/items.ts";
 import { openDecideItems, settlementsOf } from "../../../src/items/outstanding.ts";
 import { reassessStart } from "../../../src/transcript/turns.ts";
+import type { Turn } from "../../../types/index.d.ts";
 import {
   apiError,
   assistant,
@@ -648,5 +651,90 @@ describe("each turn's times", () => {
     expect(turns.map((t) => [t.promptedAt, t.answeredAt])).toEqual([
       ["2026-11-16T20:00:00.000Z", "2026-11-16T20:05:20.000Z"],
     ]);
+  });
+});
+
+const GROWING_DECIDE = "🧠 **Decide:**\n▔▔▔▔▔▔▔▔▔▔\n1. **Which cache**\n   🔘 A. **Disk**: x.\n   🔘 B. **Memory**: y.\n";
+
+/** Every kind of record the adapter reads or skips, given a prompt id, a prompt's text and a reply. */
+const RECORD_KINDS: readonly ((id: string, text: string, reply: string) => TranscriptRecord)[] = [
+  human,
+  human,
+  peer,
+  notification,
+  pluginPrompt,
+  otherPluginPrompt,
+  submitted,
+  (id, text) => submitted(id, text, "other-mod"),
+  (id, text) => ({ ...submitted(id, text), isSidechain: true }),
+  scheduled,
+  (id, text) => scheduled(id, text, "loop_wakeup"),
+  (id, text) => ({ ...scheduled(id, text), isSidechain: true }),
+  sdkPrompt,
+  (id, text) => ({ ...human(id, text), promptId: undefined }),
+  (id, text) => ({ ...human(id, text), turnOrigin: "system" }),
+  (id, text) => ({ ...human(id, text), isSidechain: true }),
+  (id, text) => ({ ...peer(id, text), isSidechain: true }),
+  (id, text) => ({ ...notification(id, text), isSidechain: true }),
+  (id) => compactSummary(id),
+  () => engineRow("<system-reminder>x</system-reminder>", { isMeta: true }),
+  (_, text) => queued(text),
+  (_, text) => queued(text, "peer"),
+  (_, text) => queued(text, "task-notification"),
+  (_, text) => queued(text, "system"),
+  (_, text) => ({ ...queued(text), isSidechain: true }),
+  (_, __, reply) => assistant(reply),
+  (_, __, reply) => assistant(reply),
+  (id, _, reply) => assistant(reply, [call(id)]),
+  (_, __, reply) => assistant(reply, [], { isSidechain: true }),
+  () => toolResult(),
+  () => skillBody(),
+  (id) => commandOutput(id),
+  (_, text) => pluginRow(text),
+];
+
+const recordArb: fc.Arbitrary<TranscriptRecord> = fc
+  .tuple(
+    fc.constantFrom(FIRST, SECOND, THIRD, "cccc3333", "dddd4444"),
+    fc.constantFrom("go", "1. A", "reassess", "<task-notification>\n<task-id>b8</task-id>\n</task-notification>"),
+    fc.constantFrom("done", "   ", GROWING_DECIDE, `Prose.\n\n${GROWING_DECIDE}`),
+    fc.constantFrom(...RECORD_KINDS),
+  )
+  .map(([id, text, reply, kind]) => kind(id, text, reply));
+
+/** A turn's parts that only grow as records come: its replies, its Decide items and the messages sent while it ran. */
+const grown = (turn: Turn) => ({ replies: turn.replies, decide: turn.decide, messages: turn.messages });
+
+/** Whether every one of `before`'s parts begins `after`'s. */
+const begins = (before: ReturnType<typeof grown>, after: ReturnType<typeof grown>): boolean =>
+  (Object.keys(before) as (keyof typeof before)[]).every((part) =>
+    isDeepStrictEqual(after[part].slice(0, before[part].length), before[part]),
+  );
+
+describe("the turns of a transcript as it grows", () => {
+  test("are, after every record, the first of the whole transcript's turns, each one's replies, Decide items and messages a beginning of the whole's", () => {
+    fc.assert(
+      fc.property(fc.array(recordArb, { maxLength: 24 }), (records) => {
+        const whole = turnsOf(records);
+
+        records.forEach((_, n) => {
+          const sofar = turnsOf(records.slice(0, n + 1));
+
+          expect(whole.slice(0, sofar.length).map((t) => t.id)).toEqual(sofar.map((t) => t.id));
+          expect(sofar.filter((turn, at) => !begins(grown(turn), grown(whole[at] as Turn)))).toEqual([]);
+        });
+      }),
+      { seed: 0x6b616e62, numRuns: 400 },
+    );
+  });
+
+  test("the random records open several turns, raise Decide items, print Decide lists and send messages while a turn runs", () => {
+    const turns = fc.sample(fc.array(recordArb, { maxLength: 24 }), { seed: 0x6b616e62, numRuns: 400 }).map(turnsOf);
+
+    expect(turns.filter((one) => one.length >= 3).length).toBeGreaterThan(40);
+    expect(turns.flat().some((turn) => turn.decide.length > 0)).toBe(true);
+    expect(turns.flat().some((turn) => turn.replies.some((reply) => reply.includes("🧠 **Decide:**")))).toBe(true);
+    expect(turns.flat().some((turn) => turn.messages.length > 0)).toBe(true);
+    expect(new Set(turns.flat().map((turn) => turn.prompt.owner)).size).toBeGreaterThanOrEqual(5);
   });
 });

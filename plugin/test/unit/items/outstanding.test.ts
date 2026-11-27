@@ -2,8 +2,9 @@
 // neutral turns built directly, with the Decide items raised by the turns'
 // `kanban_options` calls; and what settles each list's items.
 
-import { describe, test } from "node:test";
+import { describe, mock, test } from "node:test";
 import { expect } from "expect";
+import fc from "fast-check";
 import { readFileSync } from "node:fs";
 
 import {
@@ -1006,8 +1007,42 @@ describe("subjectKey", () => {
     expect(subjectKey("Fix Kentry 0550 now")).toBe("entry 0550");
   });
 
+  test("a backlog entry's number is 3 or 4 digits", () => {
+    expect(subjectKey("Fix entry 055 now")).toBe("entry 055");
+    expect(subjectKey("Fix entry 1234 now")).toBe("entry 1234");
+    expect(subjectKey("Fix entry 12 now")).toBe("fix entry 12");
+    expect(subjectKey("Fix entry 12345 now")).toBe("fix entry 12345");
+  });
+
+  test("a backlog entry is whole words: no letter or digit runs on either side", () => {
+    expect(subjectKey("Fix sentry 0550 now")).toBe("fix sentry 0550");
+    expect(subjectKey("Fix entry 0550a now")).toBe("fix entry 0550a");
+    expect(subjectKey("Fix entries 05501 now")).toBe("fix entries 05501");
+  });
+
+  test("a backlog entry's word and number are parted by any run of white space", () => {
+    expect(subjectKey("Fix entry\t0550 now")).toBe("entry 0550");
+    expect(subjectKey("Fix entry\n0550 now")).toBe("entry 0550");
+    expect(subjectKey("Fix entry   0550 now")).toBe("entry 0550");
+    expect(subjectKey("Fix entry0550 now")).toBe("fix entry0550 now");
+  });
+
+  test("a backlog entry wins over a branch-shaped code span, wherever each stands", () => {
+    expect(subjectKey("Merge `atomic-reload` for entry 0550")).toBe("entry 0550");
+    expect(subjectKey("Entry 0550: merge `atomic-reload`")).toBe("entry 0550");
+  });
+
   test("else a branch-shaped code span", () => {
     expect(subjectKey("Merge `README.md` and `atomic-reload` today")).toBe("branch atomic-reload");
+  });
+
+  test("leaves out every article and preposition, each as written here", () => {
+    const stopWords = "a an and at by for from in is its of on the to with".split(" ");
+
+    expect(stopWords.map((word) => subjectKey(`Ship ${word} release ${word} users`))).toEqual(
+      stopWords.map(() => "ship release users"),
+    );
+    expect(subjectKey("Ship into release as users")).toBe("ship into release");
   });
 
   test("a branch name may hold every lowercase letter and digit", () => {
@@ -1572,7 +1607,127 @@ describe("openOf", () => {
     openOf(watched, WINDOW, new Set(["example/kanban#22"]));
     expect(reads.every((count) => count >= 1 && count <= 2)).toBe(true);
   });
+
+  test("reads each turn's fields once per reading that needs them, over random turns: its prompt at most four times, its replies, Decide items and messages at most twice", () => {
+    fc.assert(
+      fc.property(readTurnsArb, fc.constantFrom(0, 1, 3, 20), (turns, window) => {
+        expect(overRead(turns, window)).toEqual([]);
+      }),
+      { seed: 0x6f70656e, numRuns: 400 },
+    );
+  });
+
+  test("the random turns raise Decide items, free items, open turns a peer or a task sent, and reassess", () => {
+    const drawn = fc.sample(readTurnsArb, { seed: 0x6f70656e, numRuns: 400 }).flat();
+
+    expect(drawn.some((one) => one.decide.length > 0)).toBe(true);
+    expect(drawn.some((one) => one.replies.some((reply) => reply.includes("Frees:")))).toBe(true);
+    expect(drawn.some((one) => (one.decide[0]?.frees ?? []).length > 0)).toBe(true);
+    expect(new Set(drawn.map((one) => one.prompt.owner))).toEqual(new Set(READ_OWNERS));
+    expect(drawn.some((one) => one.prompt.text === "reassess")).toBe(true);
+  });
 });
+
+/** The most reads of each field of one turn `openOf` may make, one per reading that needs it. */
+const MOST_READS = { prompt: 4, replies: 2, decide: 2, messages: 2 } as const;
+type ReadField = keyof typeof MOST_READS;
+const READ_FIELDS = Object.keys(MOST_READS) as readonly ReadField[];
+
+/** The fields of `turns` that `openOf` read more often than MOST_READS allows, as `[turn's place, field, reads]`. */
+const overRead = (turns: readonly Turn[], window: number): readonly (readonly [number, string, number])[] => {
+  const read = mock.fn((_at: number, _field: string) => undefined);
+  const watched = turns.map(
+    (found, at) =>
+      new Proxy(found, {
+        get: (target, field, receiver) => {
+          read(at, String(field));
+
+          return Reflect.get(target, field, receiver);
+        },
+      }),
+  );
+  openOf(watched, window, new Set(["example/kanban#22"]));
+  const calls = read.mock.calls.map((call) => call.arguments);
+
+  return turns.flatMap((_, at) =>
+    READ_FIELDS.flatMap((field) => {
+      const count = calls.filter(([place, name]) => place === at && name === field).length;
+
+      return count > MOST_READS[field] ? [[at, field, count] as const] : [];
+    }),
+  );
+};
+
+const READ_REFS = [
+  "00000000.Todo.1",
+  "00000000.Pending.1",
+  "00000001.Decide.1",
+  "00000002.Pending.1",
+  "00000003.Todo.1",
+  "00000005.Decide.2",
+] as const;
+
+const READ_REPLIES = [
+  "Prose.\n\n🧠 **Decide:**\n▔▔▔▔▔▔▔▔▔▔\n1. **Which cache to keep for the loader**\n   🔘 A. **Disk**: x.\n   🔘 B. **Memory**: y.\n   Frees: 00000000.Todo.1, 00000002.Pending.1\n   ⠀\n2. **Ship the release tonight?**\n   🔘 A. **Ship it**: out.\n   🔘 B. **Hold it**: waits.\n",
+  "Prose only.",
+  "🚧 **Pending:**  \n1. **Rework the loader** It reads twice.\n   Frees: 00000000.Todo.1, 00000001.Decide.1\n",
+  "👉 **Todo:**  \n1. **Paste the prompt**\n   Frees: 00000000.Pending.1\n",
+  "⏳ **Waiting:**  \n1. **Watcher (`b8a83gfv0`)**\n2. **The implementer, on branch `outstanding-settled-items`**\n",
+  "🔍 **Review:**  \n1. **🔗 [#21 Close](https://github.com/example/kanban/pull/21)**\n   ⠀\n2. **example/kanban#22 Bump**  \n   It sits on example/other#7.\n   Frees: 00000003.Todo.1\n",
+  `Prose.\n\n📌 **Outstanding from previous turns:**  \n${"━".repeat(35)}\n🧠 **Decide:**  \n- **Which cache to keep for the loader** 🔖 00000001₋₁\n🚧 **Pending:**  \n- **Rework the loader** 🔖 00000002₋₁\n⏳ **Waiting:**  \n- **Watcher (\`b8a83gfv0\`)** 🔖 00000001₋₂\n`,
+] as const;
+
+const READ_PROMPTS = ["go", "1. A", "2. B", "Decide.1: B", "00000001.Decide.1.A", "1. B? how would B work", "reassess", "Todo.1: done"] as const;
+
+const READ_OWNERS: readonly Owner[] = ["user", "this-plugin", "peer", "notification"];
+
+const readMessageArb = fc
+  .constantFrom<readonly [string, Owner, readonly string[] | undefined]>(
+    ["2. B", "user", undefined],
+    ["1. A", "peer", undefined],
+    ["Task done.", "notification", ["b8a83gfv0"]],
+    ["Pushed branch outstanding-settled-items.", "peer", ["a48bb"]],
+  )
+  .map(([text, owner, names]) => said(text, owner, names));
+
+/** Random turns that answer, reassess, free items, raise Decide items by a call and settle by merges and reports, each turn's id its place. */
+const readTurnsArb: fc.Arbitrary<readonly Turn[]> = fc
+  .array(
+    fc.record({
+      prompt: fc.constantFrom(...READ_PROMPTS),
+      owner: fc.constantFrom(...READ_OWNERS),
+      replies: fc.array(fc.constantFrom(...READ_REPLIES), { maxLength: 3 }),
+      raised: fc.integer({ min: 0, max: 2 }),
+      frees: fc.subarray([...READ_REFS], { maxLength: 2 }),
+      messages: fc.array(readMessageArb, { maxLength: 2 }),
+    }),
+    { minLength: 1, maxLength: 9 },
+  )
+  .map((drawn) =>
+    drawn.map(({ prompt, owner, replies, raised, frees, messages }, at) => {
+      const id = String(at).padStart(8, "0");
+
+      return turnOf(id, prompt, {
+        owner,
+        reportNames: owner === "user" ? undefined : ["b8a83gfv0"],
+        replies,
+        decide: itemsOf({
+          items: ["Which cache to keep for the loader", "Ship the release tonight?"].slice(0, raised).map((summary, n) => ({
+            turn: id,
+            number: n + 1,
+            summary,
+            kind: "radio",
+            options: [
+              { letter: "A", name: "First" },
+              { letter: "B", name: "Second" },
+            ],
+            frees,
+          })),
+        }),
+        messages,
+      });
+    }),
+  );
 
 /** Turns that reassess, answer and report, each printing Decide and Waiting items. */
 const FACTS_TURNS: readonly Turn[] = [

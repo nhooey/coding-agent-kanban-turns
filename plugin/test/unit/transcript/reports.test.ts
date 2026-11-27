@@ -3,7 +3,9 @@
 
 import { describe, test } from "node:test";
 import { expect } from "expect";
+import fc from "fast-check";
 
+import { subjectKey } from "../../../src/items/outstanding.ts";
 import {
   branchSpans,
   elements,
@@ -106,5 +108,76 @@ describe("branchSpans", () => {
 
     expect(branchSpans(text)).toEqual(["a-b", "c-d"]);
     expect(branchSpans(text)).toEqual(["a-b", "c-d"]);
+  });
+});
+
+/** A piece of a summary: its text, and the name inside it where it is a code span. */
+type Piece = Readonly<{ text: string; name?: string }>;
+
+const wordArb = fc.string({ unit: fc.constantFrom(..."abcxyz0189"), minLength: 1, maxLength: 4 });
+const spanArb: fc.Arbitrary<Piece> = fc
+  .array(wordArb, { minLength: 1, maxLength: 3 })
+  .map((words) => words.join("-"))
+  .map((name) => ({ text: `\`${name}\``, name }));
+const freeArb: fc.Arbitrary<Piece> = fc
+  .array(fc.constantFrom(..."aZ9 -_.*(?é"), { maxLength: 6 })
+  .map((chars) => ({ text: chars.join("") }));
+
+/** A summary of code spans, one to three words joined by `-`, among free text holding no backtick, and a report naming some of its spans. */
+const caseArb = fc
+  .array(fc.oneof({ arbitrary: spanArb, weight: 2 }, { arbitrary: freeArb, weight: 3 }), { maxLength: 8 })
+  .chain((pieces) => {
+    const names = pieces.flatMap((piece) => (piece.name === undefined ? [] : [piece.name]));
+
+    return fc.subarray(names).map((named) => ({
+      summary: pieces.map((piece) => piece.text).join(""),
+      names,
+      named,
+    }));
+  });
+
+const isBranch = (name: string): boolean => name.includes("-");
+
+describe("a summary's branch spans, over random summaries", () => {
+  test("are its code spans of two words or more, in order", () => {
+    fc.assert(
+      fc.property(caseArb, ({ summary, names }) => {
+        expect(branchSpans(summary)).toEqual(names.filter(isBranch));
+      }),
+      { seed: 0x5eed, numRuns: 2000 },
+    );
+  });
+
+  test("name the item to a report exactly when it names one of them", () => {
+    fc.assert(
+      fc.property(caseArb, ({ summary, named }) => {
+        expect(reportNamesItem(summary, [], [...named, "done"].join(" "))).toBe(named.some(isBranch));
+      }),
+      { seed: 0x5eed, numRuns: 2000 },
+    );
+  });
+
+  test("give the summary's subject key by the first of them", () => {
+    fc.assert(
+      fc.property(caseArb, ({ summary, names }) => {
+        const first = names.find(isBranch);
+
+        if (first !== undefined) {
+          expect(subjectKey(summary)).toBe(`branch ${first}`);
+        }
+      }),
+      { seed: 0x5eed, numRuns: 2000 },
+    );
+  });
+
+  test("hold none, one, or several in a fair share of the draws", () => {
+    const counts = fc
+      .sample(caseArb, { seed: 0x5eed, numRuns: 2000 })
+      .map(({ summary }) => branchSpans(summary).length);
+    const share = (isIt: (count: number) => boolean): number => counts.filter(isIt).length / counts.length;
+
+    expect(share((count) => count === 0)).toBeGreaterThan(0.1);
+    expect(share((count) => count === 1)).toBeGreaterThan(0.1);
+    expect(share((count) => count >= 2)).toBeGreaterThan(0.2);
   });
 });

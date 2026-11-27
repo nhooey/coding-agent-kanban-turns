@@ -4,14 +4,14 @@
 // separators, underlines, topic headers, 📌 roll-ups and count lines; and
 // the Decide items a reply's Decide list may print.
 //
-// A `strict` reply keeps to what every reader read alike before
-// `parseReply`, so the old readers and the new give the same for it; a
-// loose one also writes what only the old `itemsOfText` read as the new one
-// does: items 1 to 3 spaces in, numbered `1)`, numbered lines under an item,
-// a number alone on its line with the bold summary beneath it, an option
-// after a blank line, and code blocks holding any line. What a strict reply
-// leaves out, and why, is the list of the readers' differences in
-// test/unit/transcript/reply-differential.test.ts.
+// A `strict` reply writes its items as the protocol's examples do: at the
+// line's start, numbered `1.` with the bold summary on the number's line,
+// options right under their item, and code blocks holding inert lines. A
+// `loose` one also writes items 1 to 3 spaces in, numbered `1)`, numbered
+// lines under an item, a number alone on its line with the bold summary
+// beneath it, an option after a blank line, and code blocks holding any
+// line. test/unit/transcript/reply-text.test.ts states how each reader
+// reads those shapes.
 
 import fc from "fast-check";
 
@@ -76,8 +76,7 @@ const optionArb = fc
 /**
  * A code block under an item: its fences `pad` in, as far as the item's
  * text, closed, holding inert lines, blank lines among them where `blanks`,
- * and any line where loose and `rich`, in an item of a list that rolls up,
- * the only code the old `itemsOfText` read as code.
+ * and any line where loose and `rich`, in an item of a list that rolls up.
  */
 const codeArb = (mode: Mode, blanks: boolean, rich = false, pad = "   ") =>
   fc
@@ -298,55 +297,3 @@ export const decideItemsArb: fc.Arbitrary<readonly DecideItem[]> = fc
       ),
     ),
   );
-
-/** A Decide list printing `items` as the instructions draw them, with lines of their own besides. */
-export const decideListArb = (
-  items: readonly DecideItem[],
-): fc.Arbitrary<readonly string[]> =>
-  fc
-    .tuple(
-      headerArb(DECISIONS),
-      fc.option(underlineArb(CHARS["header-underline"]), { nil: undefined }),
-      fc.tuple(
-        ...items.map((item) =>
-          fc
-            .tuple(
-              BR,
-              fc.subarray(["   It still reads twice.", "   Frees: 9efb08a1.Todo.1"]),
-              fc.constantFrom(...OPTION_GLYPHS),
-              fc.option(codeArb("strict", false), { nil: undefined }),
-              fc.subarray(["Prose at the line's start."]),
-            )
-            .map(([br, extra, glyph, code, prose]) => [
-              `${item.number}. **${item.summary}**${br}`,
-              ...extra,
-              ...item.options.map(
-                (option) => `   ${glyph} ${option.letter}. **${option.name}**: why.`,
-              ),
-              ...(code ?? []),
-              ...prose,
-            ]),
-        ),
-      ),
-    )
-    .map(([header, underline, printed]) => [
-      header,
-      ...(underline === undefined ? [] : [underline]),
-      ...printed.flatMap((lines, n) => (n > 0 ? ["   ⠀", ...lines] : lines)),
-    ]);
-
-/** A random reply with `items`' Decide list among its parts, and the items. */
-export const replyWithItemsArb: fc.Arbitrary<
-  Readonly<{ text: string; items: readonly DecideItem[] }>
-> = decideItemsArb.chain((items) =>
-  fc
-    .tuple(
-      fc.array(fc.tuple(fc.boolean(), partArb("strict")), { maxLength: 2 }),
-      decideListArb(items),
-      fc.array(fc.tuple(fc.boolean(), partArb("strict")), { maxLength: 2 }),
-    )
-    .map(([before, list, after]) => ({
-      text: joined([...before, [true, list], ...after]).join("\n"),
-      items,
-    })),
-);

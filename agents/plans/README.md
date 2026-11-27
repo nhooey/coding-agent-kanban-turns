@@ -6,20 +6,19 @@
 
 None.
 
-## Ready (7)
+## Ready (6)
 
 - [The pane's header row and footer stay in sight while its items scroll](open/pane-controls-stay-visible.md) `pane-controls-stay-visible`
 - [Items are one type changed only by events, and every view is a pure function of them and the view state](items-events-views/open/items-events-views.md) `items-events-views`
 - [No code is kept for an older setting, reply or stored shape](items-events-views-refactor/open/compatibility-code-deleted.md) `compatibility-code-deleted`, part of [The plugin's code is one module per layer with imports one way, effects only in the hooks, and nothing kept for what came before or left unused](items-events-views-refactor/open/items-events-views-refactor.md)
 - [The plugin's code is one module per layer with imports one way, effects only in the hooks, and nothing kept for what came before or left unused](items-events-views-refactor/open/items-events-views-refactor.md) `items-events-views-refactor`
-- [No test compares the core with a copy of code it replaced](items-events-views-refactor/open/refactor-oracles-deleted.md) `refactor-oracles-deleted`, part of [The plugin's code is one module per layer with imports one way, effects only in the hooks, and nothing kept for what came before or left unused](items-events-views-refactor/open/items-events-views-refactor.md)
 - [The coding-agent-kanban-turn-responses skill is retired, and no repository or session installs it](plugin-sole-source/open/kanban-skill-retired.md) `kanban-skill-retired`, part of [The plugin is the only source of the kanban turn-response protocol, and carries a skill derived from it, built deterministically](plugin-sole-source/open/plugin-sole-source.md)
 - [The plugin is the only source of the kanban turn-response protocol, and carries a skill derived from it, built deterministically](plugin-sole-source/open/plugin-sole-source.md) `plugin-sole-source`
 
 ## Blocked (17)
 
 - [A command the person is asked to run is a control that fills the prompt with it as a `!` line, so its output lands where the agent reads it, and a refused action also offers its grant](items-events-views/open/commands-run-where-the-agent-sees.md) `commands-run-where-the-agent-sees`, part of [Items are one type changed only by events, and every view is a pure function of them and the view state](items-events-views/open/items-events-views.md), waiting on `item-renderer-densities`, `item-tool-declares-events`, `item-reference-grammar`, `pane-view-state`
-- [The core's folders are the model's layers, and a check holds every import to one direction](items-events-views-refactor/open/core-folders-are-layers.md) `core-folders-are-layers`, part of [The plugin's code is one module per layer with imports one way, effects only in the hooks, and nothing kept for what came before or left unused](items-events-views-refactor/open/items-events-views-refactor.md), waiting on `compatibility-code-deleted`, `refactor-oracles-deleted`
+- [The core's folders are the model's layers, and a check holds every import to one direction](items-events-views-refactor/open/core-folders-are-layers.md) `core-folders-are-layers`, part of [The plugin's code is one module per layer with imports one way, effects only in the hooks, and nothing kept for what came before or left unused](items-events-views-refactor/open/items-events-views-refactor.md), waiting on `compatibility-code-deleted`
 - [The derived skill teaches the item model and declares events through the CLI, built from the same spec, fragments and cases](items-events-views/open/derived-skill-follows-items.md) `derived-skill-follows-items`, part of [Items are one type changed only by events, and every view is a pure function of them and the view state](items-events-views/open/items-events-views.md), waiting on `item-tool-declares-events`, `reply-refers-to-items`
 - [What the harness and the trackers report, a finished shell, a subagent's end or a merged pull request, reaches the fold as observations](items-events-views/open/harness-observations-as-events.md) `harness-observations-as-events`, part of [Items are one type changed only by events, and every view is a pure function of them and the view state](items-events-views/open/items-events-views.md), waiting on `item-event-reducer`
 - [The hooks are a module per concern, and `register.tsx` only registers them](items-events-views-refactor/open/hooks-split-by-concern.md) `hooks-split-by-concern`, part of [The plugin's code is one module per layer with imports one way, effects only in the hooks, and nothing kept for what came before or left unused](items-events-views-refactor/open/items-events-views-refactor.md), waiting on `core-folders-are-layers`
@@ -46,4 +45,4 @@ None.
 
 ## Closed
 
-51 in [closed/](closed/): 28 implemented, 1 rejected, 1 abandoned, 21 superseded.
+52 in [closed/](closed/): 29 implemented, 1 rejected, 1 abandoned, 21 superseded.

@@ -106,9 +106,10 @@ export const todoStates = (turns: readonly Turn[]): readonly TodoState[] =>
 
 /**
  * The subject keys of the Todo items a settling word settled, each as its
- * subject's latest printing in its own list, read from the items' states:
- * the 📌 roll-up's `settling-word` reads the same from the facts directly,
- * and the differential test holds the two to one answer.
+ * subject's latest printing in its own list, read from the items' states,
+ * a word before the latest reassess among them: the 📌 roll-up's
+ * `settling-word` reads the same from the facts directly, but only since
+ * that reassess.
  */
 export const wordedSubjects = (turns: readonly Turn[]): ReadonlySet<string> => {
   const latest = new Map(

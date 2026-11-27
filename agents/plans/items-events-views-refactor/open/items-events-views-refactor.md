@@ -55,7 +55,7 @@ In the plugin's code:
 Each `needs` the ones before it that it builds on:
 
 1. [compatibility-code-deleted](compatibility-code-deleted.md): the retired settings' warnings, the aliases and the untaught option kind go.
-2. [refactor-oracles-deleted](refactor-oracles-deleted.md): the tests' copies of replaced code go.
+2. [refactor-oracles-deleted](../closed/refactor-oracles-deleted.md): the tests' copies of replaced code go.
 3. [core-folders-are-layers](core-folders-are-layers.md), after both: the core's folders are the layers, and a check holds the imports one way.
 4. [hooks-split-by-concern](hooks-split-by-concern.md), after that: `register.tsx` is a module per concern.
 5. [unused-exports-checked](unused-exports-checked.md), last: a check fails the build on an unused file or export.

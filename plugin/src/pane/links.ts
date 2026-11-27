@@ -309,7 +309,7 @@ export const listSpan = (
  * The reply's text either side of `list`, the list's header, its rule and
  * every line of its items cut out; undefined unless `listSpan` finds it
  * intact. The hooks cut a reply with `replyDrawing`; this form is what the
- * tests and the differential oracle check a cut by.
+ * tests check a cut by.
  */
 export const listCut = (
   text: string,
