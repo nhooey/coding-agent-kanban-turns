@@ -1,0 +1,228 @@
+# The shape of a golden case, as a JSON Schema (draft-07) written in YAML.
+# A case is one transcript, as the neutral turns a harness's adapter builds,
+# and what the core gives for it. test/unit/protocol/golden-cases.test.ts
+# reads every other file in this folder and hands its text, with this
+# schema's, to tools/spec/cases.ts, which reads it as strictly as the spec:
+# YAML 1.2's core schema, duplicate keys refused, then this schema, then
+# the checks no schema can state, such as a command or an option kind the
+# spec doesn't name. The test then runs each case through the core.
+#
+# A reply's text is a double-quoted scalar: `"\` alone on its first line,
+# then each line of the reply ending on `\n\`, but the last, which ends on
+# `\n"`. A summary's hard line break, its 2 trailing spaces, then shows
+# before the `\n`, and no editor that strips trailing whitespace can drop
+# it. `\ ` opens an indented line, the backslash taking no column:
+# `\   It reads.` is 3 spaces, then `It reads.`. tools/spec/cases.ts refuses
+# a line that ends otherwise, whose line break YAML would fold into a
+# space or drop.
+$schema: http://json-schema.org/draft-07/schema#
+title: A golden case of the kanban turn-response protocol
+type: object
+additionalProperties: false
+required: [title, turns, expect]
+definitions:
+  # A turn's id; tools/spec/cases.ts checks it against the spec's
+  # reference grammar, its length and its alphabet.
+  turn-id:
+    type: string
+    minLength: 1
+  # A lowercase word: a command's name or an option kind's.
+  word:
+    type: string
+    pattern: ^[a-z]+$
+  # Who wrote a prompt or a message, as `Owner` in types/index.d.ts says.
+  owner:
+    enum: [user, this-plugin, other-plugin, peer, notification, scheduled]
+  # The names a report goes by, where the text reports that some work
+  # ended: a session's name, an agent's id or a finished task's id.
+  report-names:
+    type: array
+    items: { type: string, minLength: 1 }
+    minItems: 1
+  # A message sent while a turn ran.
+  message:
+    type: object
+    additionalProperties: false
+    required: [owner, text]
+    properties:
+      owner: { $ref: "#/definitions/owner" }
+      text: { type: string }
+      report-names: { $ref: "#/definitions/report-names" }
+  # One option of a Decide item, as the `kanban_options` tool takes it;
+  # tools/spec/cases.ts checks its letter against the spec's reference
+  # grammar and its item's kind.
+  option:
+    type: object
+    additionalProperties: false
+    required: [letter, name]
+    properties:
+      letter: { type: string, minLength: 1 }
+      name: { type: string, minLength: 1 }
+  # A Decide item a `kanban_options` call raised in the turn, the turn's id
+  # filled in from the turn that holds it.
+  decide-item:
+    type: object
+    additionalProperties: false
+    required: [number, summary, kind, options]
+    properties:
+      number: { type: integer, minimum: 1 }
+      summary: { type: string, minLength: 1 }
+      kind: { $ref: "#/definitions/word" }
+      options:
+        type: array
+        items: { $ref: "#/definitions/option" }
+        minItems: 1
+      # The references the item's `Frees:` line names, as the call gives
+      # them.
+      frees:
+        type: array
+        items: { type: string, minLength: 1 }
+  # What items free, by each item's reference.
+  frees:
+    type: object
+    additionalProperties:
+      type: array
+      items: { type: string, minLength: 1 }
+      minItems: 1
+    default: {}
+  # One finding the reply lint gives, by the reply's line, counted from 1,
+  # and the rule it breaks; the comments name the letter the kanban skill's
+  # `lint_reply.py` gives each.
+  finding:
+    type: object
+    additionalProperties: false
+    required: [line, rule]
+    properties:
+      line: { type: integer, minimum: 1 }
+      rule:
+        enum:
+          # [a] a multi-line item followed by the next item of its list
+          # with no separator line
+          - no-separator
+          # [b] a separator line between 2 one-line items, or right under a
+          # header's underline
+          - stray-separator
+          # [c] a line holding only spaces, tabs or U+00A0, but not empty,
+          # inside a list
+          - whitespace-line
+          # [d] a separator line whose indent is not its list's indent
+          - separator-indent
+          # [e] a blank line directly above a separator line, or below one
+          # where the list goes on
+          - blank-beside-separator
+          # [f] a numbered item with text after its bold summary on the
+          # same line
+          - text-after-summary
+          # [g] a numbered item's summary line with lines under it but no
+          # hard line break
+          - no-hard-break
+          # [h] a list line among a Decide item's options
+          - list-among-options
+          # [i] a header underline whose width is not the header's
+          - underline-width
+          # [j] a header or line of prose directly under a list, with no
+          # blank line to end the list
+          - list-not-ended
+          # [k] a table inside a list item, indented to its text
+          - table-in-item
+          # [l] a table with no blank line above it, or a line directly
+          # under its last row
+          - table-not-parted
+          # [m] a list under a topic header that doesn't number on from
+          # where the same list ended in the topics before
+          - list-renumbered
+          # [n] a Decide option drawn with a kind the instructions no longer
+          # teach: a 👍 or 👎 glyph, or lettered `Y` or `N`
+          - untaught-option
+  # One of the agent's responses in the turn, and the lint's findings for
+  # it, in line order: empty for a clean reply. `turn-end-lints` is an
+  # expectation: whether the turn's end lints the reply when it is the
+  # final response, false for one in no list's shape, which it passes over,
+  # so that only a draft's lint gives the findings `lint` lists.
+  reply:
+    type: object
+    additionalProperties: false
+    required: [text, lint]
+    properties:
+      text: { type: string, minLength: 1 }
+      lint:
+        type: array
+        items: { $ref: "#/definitions/finding" }
+      turn-end-lints: { type: boolean, default: true }
+  # One turn: its id, its prompt and who wrote it, the agent's responses,
+  # the Decide items its `kanban_options` calls raised, and the messages
+  # sent while it ran. The prompt is the user's unless `owner` says
+  # otherwise. `runs` is an expectation: the command the prompt runs, by
+  # its name in the spec; none where it runs none.
+  turn:
+    type: object
+    additionalProperties: false
+    required: [id, prompt, replies]
+    properties:
+      id: { $ref: "#/definitions/turn-id" }
+      prompt: { type: string, minLength: 1 }
+      owner: { $ref: "#/definitions/owner" }
+      report-names: { $ref: "#/definitions/report-names" }
+      runs: { $ref: "#/definitions/word" }
+      replies:
+        type: array
+        items: { $ref: "#/definitions/reply" }
+      decide:
+        type: array
+        items: { $ref: "#/definitions/decide-item" }
+        default: []
+      messages:
+        type: array
+        items: { $ref: "#/definitions/message" }
+        default: []
+properties:
+  # What the case shows, in a sentence.
+  title: { type: string, minLength: 1 }
+  # Whether the case's replies keep every rule of the protocol, so it can
+  # serve as a worked example; false for a case whose replies break one on
+  # purpose, to show what the core or the lint does with it.
+  example: { type: boolean, default: true }
+  # How many of the last turns the count line reads; every turn since the
+  # latest `reassess` when absent, as a window of 0 reads.
+  window: { type: integer, minimum: 0, default: 0 }
+  # The pull requests GitHub reports merged, as `owner/repo#N`, lowercased.
+  merged:
+    type: array
+    items:
+      type: string
+      pattern: ^[a-z0-9_.-]+/[a-z0-9_.-]+#[0-9]+$
+    uniqueItems: true
+    default: []
+  turns:
+    type: array
+    items: { $ref: "#/definitions/turn" }
+    minItems: 1
+  # What the core gives for the whole transcript, after its last turn.
+  expect:
+    type: object
+    additionalProperties: false
+    required: [open, outstanding, counts]
+    properties:
+      # The open Decide items the `kanban_options` calls raised, by
+      # reference, oldest first.
+      open:
+        type: array
+        items: { type: string, minLength: 1 }
+      # The items of the lists that roll up into 📌 that nothing settled,
+      # each as its list's header, a colon and the item's summary, in the
+      # order the roll-up keeps them.
+      outstanding:
+        type: array
+        items: { type: string, minLength: 1 }
+      # The 📌 count line; empty when nothing is outstanding.
+      counts: { type: string }
+      # What each numbered item of a reply's own list frees, by the item's
+      # reference: the items its `Frees:` line names that the spec's
+      # `frees` rule lets it name, each by its turn's whole id, in the
+      # line's order. An item that frees none is left out; none when absent.
+      frees: { $ref: "#/definitions/frees" }
+      # What each Decide item a `kanban_options` call raised frees, by its
+      # reference: its reply's `Frees:` line, as `frees` gives it, where
+      # that names an item, else the call's `frees`. An item that frees none
+      # is left out; none when absent.
+      decide-frees: { $ref: "#/definitions/frees" }

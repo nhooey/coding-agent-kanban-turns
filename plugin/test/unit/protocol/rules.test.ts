@@ -3,15 +3,22 @@ import { expect } from "expect";
 
 import {
   DECIDE,
+  DECISIONS,
+  DEFAULT_KIND,
+  DONE,
+  SECTION_NAMES,
   LETTER,
   REASSESS,
+  SUBJECT_WORD,
   SUBSCRIPT_CHAR,
   TURN_ID,
   TURN_ID_CHAR,
   TURN_ID_PREFIX,
   classOf,
-  escaped,
+  inClass,
   isLineOf,
+  isOptionLetter,
+  isTurnId,
   itemLabel,
   namesOf,
 } from "../../../src/protocol/rules.ts";
@@ -44,10 +51,23 @@ describe("the protocol's patterns", () => {
   });
 });
 
-describe("escaped", () => {
-  test("matches text literally", () => {
-    expect(new RegExp(`^${escaped("a.b*(c)")}$`, "u").test("a.b*(c)")).toBe(true);
-    expect(new RegExp(`^${escaped("a.b")}$`, "u").test("axb")).toBe(false);
+describe("isTurnId", () => {
+  test("holds for the spec's length in its alphabet, and nothing else", () => {
+    expect(isTurnId("9efb08a1")).toBe(true);
+    expect(isTurnId("9efb08a")).toBe(false);
+    expect(isTurnId("9efb08a12")).toBe(false);
+    expect(isTurnId("9EFB08A1")).toBe(false);
+    expect(isTurnId("")).toBe(false);
+  });
+});
+
+describe("isOptionLetter", () => {
+  test("holds for one letter from the grammar's first to its last", () => {
+    expect(isOptionLetter(SPEC.reference.letters.first)).toBe(true);
+    expect(isOptionLetter(SPEC.reference.letters.last)).toBe(true);
+    expect(isOptionLetter("a")).toBe(false);
+    expect(isOptionLetter("AB")).toBe(false);
+    expect(isOptionLetter("")).toBe(false);
   });
 });
 
@@ -62,9 +82,35 @@ describe("classOf", () => {
   });
 });
 
+describe("inClass", () => {
+  test("escapes what a class gives a meaning, so a class beside a property escape holds each character", () => {
+    const pattern = new RegExp(String.raw`^[\p{N}${inClass("a-c^]\\")}]+$`, "u");
+
+    expect(pattern.test("7a-c^]\\")).toBe(true);
+    expect(pattern.test("b")).toBe(false);
+  });
+});
+
+describe("SUBJECT_WORD", () => {
+  test("matches a run of lowercase letters and digits, and nothing else", () => {
+    const word = new RegExp(`^${SUBJECT_WORD}$`);
+
+    expect(word.test("abcdefghijklmnopqrstuvwxyz0123456789")).toBe(true);
+    expect(["", "A", "a-b", "a_b", "é"].filter((text) => word.test(text))).toEqual([]);
+  });
+});
+
 describe("namesOf", () => {
   test("gives a list's header, then its aliases", () => {
     expect(namesOf(SPEC.lists.decide)).toEqual(["Decide", "Decisions", "Blocked"]);
+  });
+});
+
+describe("SECTION_NAMES and DECISIONS", () => {
+  test("give every list's names, and the Decide list's", () => {
+    expect(SECTION_NAMES).toContain("To review");
+    expect(SECTION_NAMES).toContain("Decide");
+    expect(DECISIONS).toEqual(["Decide", "Decisions", "Blocked"]);
   });
 });
 
@@ -78,6 +124,20 @@ describe("itemLabel", () => {
 describe("REASSESS", () => {
   test("is a command the spec names", () => {
     expect(Object.keys(SPEC.commands.names)).toContain(REASSESS);
+  });
+});
+
+describe("DONE", () => {
+  test("is the spec's Done list", () => {
+    expect(DONE).toBe(SPEC.lists.done);
+    expect(DONE.header).toBe("Done");
+  });
+});
+
+describe("DEFAULT_KIND", () => {
+  test("is a kind the spec names, one the instructions teach", () => {
+    expect(SPEC.options.kinds[DEFAULT_KIND].taught).toBe(true);
+    expect(SPEC.options.kinds[DEFAULT_KIND].picks).toBe("one");
   });
 });
 

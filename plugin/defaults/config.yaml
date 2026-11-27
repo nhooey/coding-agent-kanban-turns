@@ -20,7 +20,7 @@
 # `outstanding` section, or a `pane.hints`, `colors.title`,
 # `colors.expand` or `colors.close-x` setting, which the plugin no longer
 # reads, is left out with a warning instead, and the rest of your file is
-# used. No other file of yours is read: a config.jsonc is not.
+# used. Your own file is `config.yaml`; no other name is read.
 
 # The count line above the prompt, such as `📌 Outstanding: 🚧 2 · 🧠 3`,
 # which the plugin works out from this session's transcript.
@@ -71,12 +71,54 @@ notes:
   # drawn as 1.
   rows: 3
 
-# The marks an option is drawn with, beside its letter.
+# The marks the pane draws, each a short string, such as an emoji or one
+# character, drawn as it is on one line: an empty one, or one holding a
+# control character or a line break, refuses your file. Quote a mark YAML
+# would read as something else, such as ">" or "-". An option's mark is
+# padded to the widest of `chosen`, `sent` and its item's glyphs, and a
+# Done header's to the wider of `collapsed` and `expanded`, so a pick or a
+# toggle moves no text.
 marks:
   # A Done item's options that the answer which made it Done picked,
-  # drawn at full strength in the dimmed item, with no underline: the
-  # draft's own picks keep ✅ underlined.
-  sent: ☑️
+  # drawn at full strength in the dimmed item, with no underline, beside
+  # its letter: the draft's own picks keep `chosen` underlined. The same
+  # as `chosen`, so an answered option reads as a picked one; ☑️, which
+  # common terminals draw grey, sets it apart.
+  sent: ✅
+  # An option the draft picks, in place of its glyph beside its letter,
+  # the option's line underlined; also the glyph of 🔄 Reassess while the
+  # draft ends on the `reassess` line.
+  chosen: ✅
+  # The label of the notes field under each open item in the pane, the
+  # glyph of the ✏️ Add a note button under a reply, and what opens the
+  # count of picks above the prompt, `✏️ 2 picked`.
+  note: ✏️
+  # The bar that opens a Done item's line in its turn's Done section,
+  # drawn in colors.settled.
+  settled-bar: ▌
+  # What opens a turn's Done header while its section is closed, such as
+  # `▸ Done (2)`.
+  collapsed: ▸
+  # What opens it while the section is open, such as `▾ Done (2)`.
+  expanded: ▾
+  # The glyph each of the pane's buttons is drawn with, before its label,
+  # and beside its key in the panel ? Keys opens; a keyed button's by the
+  # name of its key in `keys`.
+  buttons:
+    # ✖ Close.
+    dismiss: ✖
+    # ↓ Next.
+    next: ↓
+    # ↑ Previous.
+    previous: ↑
+    # 📤 Submit.
+    submit: 📤
+    # 🔄 Reassess, while the draft doesn't end on the `reassess` line.
+    reassess: 🔄
+    # ? Keys. Quoted, since YAML reads a bare `?` as the start of a key.
+    help: "?"
+    # 🖥️ Kanban, above the prompt and atop the pane, which opens the pane.
+    kanban: 🖥️
 
 # The colours each part is drawn in, by the name of a colour in Claude
 # Code's theme, so each keeps its contrast in light and dark themes.
@@ -95,10 +137,30 @@ colors:
   # full height while the pointer is over any of its lines.
   hover: suggestion
   # The bar in the same column beside each of a Done item's option, ➕
-  # and ➖ lines, which stays lit, and the ▌ that opens a Done item's
-  # line in its turn's Done section; a Done item lights no hover bar.
+  # and ➖ lines, which stays lit, and marks.settled-bar, which opens a
+  # Done item's line in its turn's Done section; a Done item lights no
+  # hover bar.
   settled: ide
-  # The ✖ of the button that closes the pane.
+  # marks.buttons.dismiss, the glyph of the ✖ Close button that closes
+  # the pane.
   close: error
   # The word Kanban in 🖥️ Kanban, above the prompt and atop the pane.
   kanban: claude
+
+# The draft of the full 📌 roll-up the `kanban_outstanding` tool gives.
+roll-up:
+  # How long an item's summary may be, a whole number of Unicode code
+  # points, a Markdown link counting its label alone, as the kanban
+  # skill's `outstanding.py --width` counts them; a longer one is cut,
+  # ending on `…`, a link kept whole. 0 or less keeps summaries whole.
+  summary-width: 100
+
+# The reply lint, which checks a final response's layout: its separator
+# lines, its summary lines, its Decide options, its underlines and where
+# its tables go. The `kanban_lint` tool lints a draft whatever this says.
+lint:
+  # Whether the plugin lints each final response as its turn ends: what
+  # it finds shows beneath the response, and reaches the agent with the
+  # next prompt in the same conversation. false lints only the drafts the
+  # agent hands `kanban_lint`.
+  turn-end: true

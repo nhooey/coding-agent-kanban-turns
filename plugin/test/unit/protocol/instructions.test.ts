@@ -5,17 +5,27 @@ import {
   BLOCK,
   INPUT_SCHEMA,
   INSTRUCTIONS,
+  INSTRUCTION_FRAGMENTS,
   ITEM_SCHEMA,
   KINDS,
+  LINT_CALLED,
+  OUTSTANDING_CALLED,
   PLUGIN,
+  PLUGIN_SKILL,
   TOOL,
   TOOL_CALLED,
   TOOL_DESCRIPTION,
-  glyphsInWords,
   instructionsFor,
   turnIdSource,
   withInstructions,
 } from "../../../src/protocol/instructions.ts";
+import { FRAGMENTS } from "../../../src/protocol/fragments.ts";
+import {
+  filled,
+  fragmentProblems,
+  placeholderValues,
+  unusedFragments,
+} from "../../../src/protocol/prose.ts";
 import { SPEC } from "../../../src/protocol/spec.ts";
 import { itemsOf } from "../../../src/items/items.ts";
 
@@ -41,8 +51,8 @@ describe("the instructions", () => {
       '`{"items": [...]}`',
       "`turn`",
       "`number` and `summary`",
-      "`radio`, `checkbox` or `binary`",
-      "from the item's option glyphs (🔘, 🔲, or 👍 and 👎)",
+      "`radio` or `checkbox`",
+      "from the item's option glyphs (🔘 or 🔲)",
       "`letter`, `name` and `consequence`",
       "its ➕ and ➖ lines",
       "`pros` and `cons`",
@@ -50,6 +60,27 @@ describe("the instructions", () => {
       "sends nothing",
       "exactly as you would without the tool",
     ].forEach((phrase) => expect(INSTRUCTIONS).toContain(phrase));
+  });
+
+  test("open with a line naming the plugin's skill, saying the block is its format and what it leaves out, so it needn't be loaded", () => {
+    const [opening] = INSTRUCTIONS.split("\n");
+
+    expect(opening?.startsWith(`This block is the \`${PLUGIN_SKILL}\` skill's format,`)).toBe(true);
+    expect(opening).toContain("without its worked examples or its preferences files");
+    expect(opening).toContain("needn't be loaded");
+    expect(INSTRUCTION_FRAGMENTS[0]).toBe("block");
+  });
+
+  test("govern alone, deferring to no copy of the skill installed apart from the plugin", () => {
+    ["installed apart from the plugin", "that copy governs", "governs"].forEach((phrase) =>
+      expect(INSTRUCTIONS).not.toContain(phrase),
+    );
+  });
+});
+
+describe("PLUGIN_SKILL", () => {
+  test("is the plugin's name and the spec's skill name, as Claude Code names a plugin's skill", () => {
+    expect(PLUGIN_SKILL).toBe(`${PLUGIN}:${SPEC.skill.name}`);
   });
 });
 
@@ -69,10 +100,75 @@ describe("turnIdSource", () => {
   });
 });
 
-describe("glyphsInWords", () => {
-  test("names each kind's glyphs, a kind with lettered glyphs by each", () => {
-    expect(glyphsInWords(["radio", "binary"])).toBe("🔘, or 👍 and 👎");
-    expect(glyphsInWords(["checkbox"])).toBe("🔲");
+const values = placeholderValues(SPEC, {
+  plugin: PLUGIN,
+  tool: TOOL_CALLED,
+  "outstanding-tool": OUTSTANDING_CALLED,
+  "lint-tool": LINT_CALLED,
+  "roll-up-drafter": `The tool \`${OUTSTANDING_CALLED}\` drafts`,
+});
+
+describe("the instructions' fragments", () => {
+  test("are every fragment but the derived skill's own, its description, preferences, scripts and examples", () => {
+    expect(unusedFragments(Object.keys(FRAGMENTS), [INSTRUCTION_FRAGMENTS])).toEqual([
+      "examples",
+      "preferences",
+      "scripts",
+      "skill-description",
+    ]);
+  });
+
+  test("each find a value in the spec for every placeholder", () => {
+    expect(fragmentProblems(FRAGMENTS, values)).toEqual([]);
+  });
+
+  test("are each in the instructions, filled from the spec, in their order", () => {
+    const at = INSTRUCTION_FRAGMENTS.map((name) =>
+      INSTRUCTIONS.indexOf(filled(FRAGMENTS[name], values)),
+    );
+
+    expect(at.every((n) => n >= 0)).toBe(true);
+    expect(at).toEqual(at.toSorted((a, b) => a - b));
+    expect(INSTRUCTIONS).not.toContain("{{");
+  });
+});
+
+describe("the instructions teach the whole format", () => {
+  test("hold every list's header, as a final response writes it", () => {
+    Object.values(SPEC.lists).forEach((list) =>
+      expect(INSTRUCTIONS).toContain(`${list.glyph} **${list.header}:**`),
+    );
+  });
+
+  test("hold the roll-up's header, its count line and the 🔖 tag", () => {
+    expect(INSTRUCTIONS).toContain(`${SPEC["roll-up"].glyph} **${SPEC["roll-up"].header}:**`);
+    expect(INSTRUCTIONS).toContain(`${SPEC["roll-up"].glyph} ${SPEC["roll-up"]["count-label"]}: `);
+    expect(INSTRUCTIONS).toContain(SPEC.tag.glyph);
+  });
+
+  test("name every command and its synonyms", () => {
+    Object.entries(SPEC.commands.names).forEach(([name, command]) =>
+      [name, ...command.synonyms].forEach((word) =>
+        expect(INSTRUCTIONS).toContain(`\`${word}\``),
+      ),
+    );
+  });
+
+  test("tell an item that blocks other work to end on the line naming what it frees, by the spec's label", () => {
+    expect(INSTRUCTIONS).toContain(filled(FRAGMENTS["frees"], values));
+    expect(INSTRUCTIONS).toContain(`\`${SPEC.frees.label}:\``);
+    expect(INSTRUCTIONS).toContain(values["example.frees"]);
+  });
+
+  test("give the rules a parser can't check", () => {
+    [
+      "A progress update is any text the agent writes between tool calls",
+      "names its subject, never its category",
+      "a ➕ line for what it gains and a ➖ line for what it costs",
+      "A question is never a choice.",
+      "The roll-up interval.",
+      "otherwise the final response closes on one count line",
+    ].forEach((phrase) => expect(INSTRUCTIONS).toContain(phrase));
   });
 });
 
@@ -80,6 +176,9 @@ describe("the tool's input schema", () => {
   test("describes an option's letters, list and lines from the spec", () => {
     const option = ITEM_SCHEMA.properties.options.items.properties;
 
+    expect(ITEM_SCHEMA.properties.number.description).toBe(
+      "The item number in the Decide list.",
+    );
     expect(option.letter.description).toBe(
       "The capital letter, A, B, C, or Y and N.",
     );
@@ -133,6 +232,7 @@ const item = {
   summary: "Which cache to keep",
   kind: "radio",
   ref: "0f311c94.Decide.2",
+  frees: ["0f311c94.Todo.1"],
   options: [option],
 };
 
@@ -173,9 +273,28 @@ describe("the tool's schema", () => {
     ).toEqual([...options.required]);
   });
 
-  test("offers the kinds the instructions name", () => {
+  test("takes every kind the spec reads, and the instructions teach only the taught ones", () => {
+    const kinds = Object.entries(SPEC.options.kinds);
+
     expect(ITEM_SCHEMA.properties.kind.enum).toEqual(KINDS);
-    expect(INSTRUCTIONS).toContain("`radio`, `checkbox` or `binary`");
+    expect(KINDS).toEqual(kinds.map(([name]) => name));
+    kinds
+      .filter(([, kind]) => kind.taught)
+      .forEach(([name, kind]) => {
+        expect(INSTRUCTIONS).toContain(`\`${name}\``);
+        expect(INSTRUCTIONS).toContain(kind.glyph);
+      });
+    expect(INSTRUCTIONS).not.toContain("`binary`");
+    expect(INSTRUCTIONS).not.toContain("👍 Y.");
+  });
+
+  test("gives the kind an item takes when it names none, the one itemsOf fills in", () => {
+    const [read] = itemsOf({ items: [without(item, "kind")] });
+
+    expect(ITEM_SCHEMA.properties.kind.description).toBe(
+      `From the item's option glyphs; ${read?.kind ?? ""} when left out.`,
+    );
+    expect(read?.kind).toBe("radio");
   });
 
   test("is the items array of the tool's input", () => {
@@ -187,6 +306,7 @@ describe("the tool's schema", () => {
     [
       ...ITEM_SCHEMA.required,
       "kind",
+      "frees",
       ...Object.keys(ITEM_SCHEMA.properties.options.items.properties),
     ].forEach((field) => expect(INSTRUCTIONS).toContain(`\`${field}\``));
   });
@@ -200,5 +320,12 @@ describe("the tool's description", () => {
       "right before writing the final response",
       "nothing is sent",
     ].forEach((phrase) => expect(TOOL_DESCRIPTION).toContain(phrase));
+  });
+
+  test("describes the input's shape itself, naming no script that prints it", () => {
+    ["turn id", "number", "summary", "kind", "letter", "name", "consequence", "pros", "cons"].forEach(
+      (field) => expect(TOOL_DESCRIPTION).toContain(field),
+    );
+    expect(TOOL_DESCRIPTION).not.toContain("outstanding.py");
   });
 });

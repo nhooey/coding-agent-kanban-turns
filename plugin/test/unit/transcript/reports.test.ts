@@ -4,7 +4,12 @@
 import { describe, test } from "node:test";
 import { expect } from "expect";
 
-import { elements, namesWord, reportNamesItem } from "../../../src/transcript/reports.ts";
+import {
+  branchSpans,
+  elements,
+  namesWord,
+  reportNamesItem,
+} from "../../../src/transcript/reports.ts";
 
 describe("elements", () => {
   test("each element with its attributes and its own text, no child's", () => {
@@ -66,5 +71,40 @@ describe("reportNamesItem", () => {
 
   test("an empty name names nothing", () => {
     expect(namesWord("  ", "anything")).toBe(false);
+  });
+});
+
+describe("namesWord", () => {
+  test("a word holds the separator a branch name joins its words with, so no part of a branch name is named", () => {
+    expect(namesWord("atomic", "merged atomic-reload")).toBe(false);
+    expect(namesWord("reload", "merged atomic-reload")).toBe(false);
+    expect(namesWord("atomic-reload", "merged atomic-reload-two")).toBe(false);
+    expect(namesWord("atomic-reload", "merged ATOMIC-RELOAD")).toBe(true);
+  });
+
+  test("a name before a sentence's full stop, or beside a path's slash, is named", () => {
+    expect(namesWord("atomic-reload", "Merged atomic-reload.")).toBe(true);
+    expect(namesWord("atomic-reload", "see origin/atomic-reload/notes")).toBe(true);
+  });
+});
+
+describe("branchSpans", () => {
+  test("the code spans shaped like a branch name, in order", () => {
+    expect(
+      branchSpans("merge `core-shared-helpers`, then `pane-state` and `x`"),
+    ).toEqual(["core-shared-helpers", "pane-state"]);
+  });
+
+  test("none for spans with no hyphen, capitals, or other characters", () => {
+    expect(
+      branchSpans("`main` `Core-Helpers` `a_b-c` `-a` `a-` `a--b` plain-text"),
+    ).toEqual([]);
+  });
+
+  test("the same twice in a row, the pattern holding no state between calls", () => {
+    const text = "`a-b` and `c-d`";
+
+    expect(branchSpans(text)).toEqual(["a-b", "c-d"]);
+    expect(branchSpans(text)).toEqual(["a-b", "c-d"]);
   });
 });

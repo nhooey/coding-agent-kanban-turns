@@ -70,7 +70,9 @@
       perSystem =
         {
           config,
+          lib,
           pkgs,
+          system,
           ...
         }:
         let
@@ -78,9 +80,16 @@
           # dev shell and the checks run it.
           nodejs = pkgs.nodejs_26;
 
+          # The package nodejs's own `node` is, without npm: the binary the
+          # standalone CLI is built from, and whose path it cuts out of it.
+          nodejsSlim = pkgs."nodejs-slim_${lib.versions.major nodejs.version}";
+
+          inherit (pkgs.stdenv.hostPlatform) isDarwin;
+
           # plugin/'s npm dependencies (the YAML parser, and for
-          # development TypeScript, Node's types, Jest's expect and ajv, which
-          # checks the protocol's spec against its schema), each
+          # development TypeScript, Node's types, Jest's expect, fast-check,
+          # for the property tests, and ajv, which checks the protocol's
+          # spec against its schema), each
           # fetched by the integrity hash its
           # package-lock.json records: no `npm ci`, and no hash to keep
           # beside the lock. Built from the two files alone, so an edit
@@ -91,12 +100,12 @@
             inherit nodejs;
           };
 
-          # The libraries the plugin runs, yaml alone, each bundled
-          # into one ES module file with its licence beside it, for
+          # The library the plugin runs, the YAML parser, bundled into
+          # one ES module file with its licence beside it, for
           # plugin/vendor/<library>/: the engine loads a hooks module's `claude-code`
           # import and the plugin's own files, as plugin-authoring's
-          # reference says, so each library goes in as a file of the
-          # plugin's. plugin/vendor/ commits them, for the marketplace
+          # reference says, so the library goes in as a file of the
+          # plugin's. plugin/vendor/ commits it, for the marketplace
           # install, the build and the checks alike, and checks.vendor holds
           # the committed files to these. A bundle that names node_modules'
           # store path fails to build: it would keep node_modules in the
@@ -114,16 +123,136 @@
             bundled = pluginVendor;
           } (builtins.readFile ./nix/scripts/vendor/check.sh);
 
+          # The kanban CLI, plugin/cli/, and the core it runs, bundled into
+          # one ES module, bin/kanban.js, that runs under Node 20 or later
+          # with no node_modules: the derived skill's script where Node is
+          # on the path. Built from cli/, src/, types/ and vendor/ alone,
+          # with the defaults file inlined, since it runs with no plugin
+          # folder beside it, and the YAML parser's licence in
+          # share/licenses/. It names no store path, so it runs anywhere.
+          kanbanJs = pkgs.runCommand "coding-agent-kanban-turns-kanban-js" {
+            nativeBuildInputs = [ pkgs.esbuild ];
+            allowedReferences = [ ];
+            src = lib.fileset.toSource {
+              root = ./plugin;
+              fileset = lib.fileset.unions [
+                ./plugin/cli
+                ./plugin/src
+                ./plugin/types
+                ./plugin/vendor
+              ];
+            };
+            bundledDefaults = builtins.toJSON (builtins.readFile ./plugin/defaults/config.yaml);
+            meta.mainProgram = "kanban.js";
+          } (builtins.readFile ./nix/scripts/cli/bundle.sh);
+
+          # The same CLI as a standalone binary, bin/kanban, for this
+          # system: a Node single executable application, which needs no
+          # Node installed, but does need its Nix closure, the libraries
+          # Node links to; Node's own package is cut out of it.
+          # packages.kanban, for a PATH; the skill runs kanban.js instead.
+          kanbanBin = pkgs.runCommand "coding-agent-kanban-turns-kanban" {
+            # macOS signs the binary again: sigtool's codesign, which runs
+            # cctools' codesign_allocate.
+            nativeBuildInputs = [
+              nodejsSlim
+              pkgs.removeReferencesTo
+            ]
+            ++ lib.optionals isDarwin [
+              pkgs.darwin.sigtool
+              pkgs.cctools
+            ];
+            node = nodejsSlim;
+            disallowedReferences = [
+              nodejs
+              nodejsSlim
+            ];
+            inherit kanbanJs;
+            seaConfig = ./nix/scripts/cli/sea.json;
+            signs = isDarwin;
+            meta.mainProgram = "kanban";
+          } (builtins.readFile ./nix/scripts/cli/binary.sh);
+
+          # The skill's name, its folder's and its frontmatter's, as the
+          # spec gives it and tools/skill/render.ts reads it.
+          skillName = (lib.importJSON ./plugin/spec/kanban.json).skill.name;
+
+          # The skill derived from the plugin, as plugin/skills/ commits it
+          # for a git install: SKILL.md and its worked examples, built by
+          # tools/skill/build.ts from the prose fragments, the spec and the
+          # golden cases, and scripts/kanban.js with the YAML parser's
+          # licence.
+          skillFiles = pkgs.runCommand "coding-agent-kanban-turns-skill-files" {
+            nativeBuildInputs = [ nodejs ];
+            src = lib.fileset.toSource {
+              root = ./plugin;
+              fileset = lib.fileset.unions [
+                ./plugin/package.json
+                ./plugin/cli
+                ./plugin/spec
+                ./plugin/src
+                ./plugin/tools
+                ./plugin/types
+                ./plugin/vendor
+              ];
+            };
+            nodeModules = "${pluginNodeModules}/node_modules";
+            inherit kanbanJs;
+          } (builtins.readFile ./nix/scripts/skill/build.sh);
+
+          # plugin/skills/ as the flake builds it, the skill's files in
+          # their folder and nothing else: checks.skill holds the committed
+          # folder to it, and refresh-skill lays it there.
+          skillsFolder = pkgs.runCommand "coding-agent-kanban-turns-skills-folder" { } ''
+            mkdir $out
+            cp -R ${skillFiles} $out/${skillName}
+          '';
+
+          # The skill a Nix install carries: skillFiles, with
+          # scripts/kanban beside kanban.js, a wrapper that runs it with
+          # nodejs-slim's node, for where no Node is on the path. The
+          # wrapper names a store path, so the committed copy leaves it
+          # out. packages.plugin copies this into skills/, and it is
+          # packages.skill-standalone, for a harness that loads skills but
+          # not Claude Code plugins.
+          skill = pkgs.runCommand "coding-agent-kanban-turns-skill" {
+            files = skillFiles;
+            node = nodejsSlim;
+            shell = pkgs.runtimeShell;
+          } (builtins.readFile ./nix/scripts/skill/wrap.sh);
+
+          # The plugin as Claude Code loads it, the skill under skills/: the
+          # claudePlugin module's build, with the skill copied in after.
+          plugin = inputs.agent-plugins-nixpkgs.lib.mkClaudePlugin pkgs {
+            inherit (config.agent-plugins.claudePlugin) src include;
+            postPatch = ''
+              mkdir -p skills
+              cp -R ${skill} skills/${skillName}
+            '';
+          };
+
+          # Fails where plugin/skills/ isn't skillsFolder, file for file
+          # and mode for mode, or is missing, naming the command that lays
+          # it. A folder git doesn't track is missing to the flake.
+          skillCheck = pkgs.runCommand "coding-agent-kanban-turns-skill-check" {
+            committed = if builtins.pathExists ./plugin/skills then ./plugin/skills else "";
+            built = skillsFolder;
+          } (builtins.readFile ./nix/scripts/skill/check.sh);
+
           # Runs one of plugin/package.json's scripts in a writable copy of
           # plugin/, with the flake's node_modules linked in, against the
-          # committed bundles in vendor/ that the plugin ships.
-          pluginCheck =
-            name: script:
+          # committed bundles in vendor/ that the plugin ships, with `env`
+          # set.
+          pluginCheckWith =
+            env: name: script:
             pkgs.runCommand "coding-agent-kanban-turns-${name}"
-              {
-                nativeBuildInputs = [ nodejs ];
-                src = ./plugin;
-              }
+              (
+                env
+                // {
+                  nativeBuildInputs = [ nodejs ];
+                  src = ./plugin;
+                }
+              )
               ''
                 cp -R "$src" plugin
                 chmod -R u+w plugin
@@ -133,14 +262,26 @@
                 npm run --silent ${script}
                 touch $out
               '';
+          pluginCheck = pluginCheckWith { };
         in
         {
+          # One nixpkgs for every output, which allows one unfree package
+          # by name: claude-code, the claude CLI checks.validate runs
+          # `claude plugin validate` with.
+          _module.args.pkgs = import inputs.nixpkgs {
+            inherit system;
+            config.allowUnfreePredicate = package: inputs.nixpkgs.lib.getName package == "claude-code";
+          };
+
           # The plugin as Claude Code loads it: plugin/ with only what runs,
           # its manifest, hooks, pure core, shipped defaults, the types the
-          # manifest names and vendor/'s bundled parsers and their types. The
+          # manifest names and vendor/'s bundled YAML parser and its types. The
           # tests, the engine-driven tests, the tools and the npm files stay
-          # out: every other npm dependency is for development. agent-plugins-nixpkgs installs
-          # this through its nix-darwin module, and a `--plugin-dir
+          # out: every other npm dependency is for development. The derived
+          # skill goes in skills/, copied from its build rather than from
+          # plugin/skills/, so it carries the wrapper that runs kanban.js
+          # with the Nix store's node. agent-plugins-nixpkgs installs this
+          # through its nix-darwin module, and a `--plugin-dir
           # result-plugin` session loads it after `plugin-build`.
           agent-plugins.claudePlugin = {
             enable = true;
@@ -155,7 +296,35 @@
             ];
           };
 
-          packages.default = config.packages.plugin;
+          packages = {
+            # The claudePlugin module defines packages.plugin from src and
+            # include alone, and takes no postPatch to copy the skill in,
+            # so this definition, the module's builder given one, replaces
+            # its; without mkForce the two would conflict.
+            plugin = lib.mkForce plugin;
+            default = config.packages.plugin;
+            kanban-js = kanbanJs;
+            kanban = kanbanBin;
+            # The derived skill alone, the folder packages.plugin copies
+            # into skills/, for a harness that loads skills but not Claude
+            # Code plugins; not for beside the plugin, where it would load
+            # the instructions a second time under an unprefixed name.
+            skill-standalone = skill;
+          };
+
+          legacyPackages = {
+            # plugin/skills/ as the flake builds it, which refresh-skill
+            # builds and lays; no package of its own, being only the
+            # committed copy's source.
+            skills-folder = skillsFolder;
+            # The repository's own derivations in the plugin's closure,
+            # which check-reproducible rebuilds and compares, beside
+            # kanban-js, skill-standalone and the plugin, which are
+            # packages: the skill's files before the wrapper is added, and
+            # the bundled libraries in vendor/.
+            skill-files = skillFiles;
+            vendor = pluginVendor;
+          };
 
           # Repo-specific packages and commands, merged onto the modules'.
           devshells.default = {
@@ -203,29 +372,89 @@
               {
                 category = "build";
                 name = "spec-build";
-                help = "compile plugin/spec/kanban.yaml into plugin/src/protocol/spec.ts and plugin/spec/kanban.json, for a commit after the spec changes";
+                help = "compile plugin/spec/kanban.yaml into plugin/src/protocol/spec.ts and plugin/spec/kanban.json, and plugin/spec/fragments/ into plugin/src/protocol/fragments.ts, for a commit after either changes";
                 command = ''cd "$PRJ_ROOT/plugin" && npm run --silent spec:build'';
               }
               {
                 category = "build";
                 name = "refresh-vendor";
-                help = "lay the flake's bundled parsers in plugin/vendor/, as the dev shell does on entry, for a commit when nix flake check says they differ";
+                help = "lay the flake's bundled YAML parser in plugin/vendor/, as the dev shell does on entry, for a commit when nix flake check says they differ";
                 command = builtins.readFile ./nix/scripts/vendor/lay.sh;
+              }
+              {
+                category = "build";
+                name = "refresh-skill";
+                help = "lay the flake's derived skill in plugin/skills/, as a git install loads it, for a commit when nix flake check says it differs";
+                command = ''bash "$PRJ_ROOT/nix/scripts/skill/lay.sh"'';
+              }
+              {
+                category = "test";
+                name = "check-reproducible";
+                help = "build each of the repository's own derivations in the plugin's closure (kanban.js, the skill's files, the vendor bundles, the skill with its wrapper, the plugin), then rebuild each and compare it with the first build, byte for byte (nix build --rebuild); the nixpkgs inputs aren't rebuilt";
+                command = ''
+                  set -e
+                  for attribute in kanban-js skill-files vendor skill-standalone plugin; do
+                    echo "check-reproducible: $attribute"
+                    nix build "$PRJ_ROOT#$attribute" --no-link
+                    nix build "$PRJ_ROOT#$attribute" --no-link --rebuild
+                  done
+                '';
               }
             ];
           };
 
           # What a build can run: the core's type-check and its tests, the
           # committed bundles against the flake's, and the module and JSON
-          # copy the protocol's spec compiles to against the committed ones.
-          # The hooks' type-check and test/engine/ need the engine (its API
-          # declarations, and claude plugin test), which a build has not.
+          # copy the protocol's spec compiles to against the committed ones;
+          # kanban.js and the binary, each run on every golden case, apart
+          # so they run side by side; the plugin with its skill under
+          # skills/, which `claude plugin validate` accepts, its script the
+          # same as kanban.js and its wrapper running it; and the committed
+          # skill against the flake's. The hooks' type-check and
+          # test/engine/ need the engine (its API declarations, and claude
+          # plugin test), which a build has not; check-reproducible, in the
+          # dev shell, builds each of the repository's own derivations in
+          # the plugin's closure twice.
           checks = {
-            inherit (config.packages) plugin;
+            plugin =
+              let
+                folder = "${config.packages.plugin}/skills/${skillName}";
+              in
+              pkgs.runCommand "coding-agent-kanban-turns-plugin-check" { } ''
+                test -f ${folder}/SKILL.md
+                diff -r ${folder} ${config.packages.skill-standalone}
+                cmp ${folder}/scripts/kanban.js ${kanbanJs}/bin/kanban.js
+                ${folder}/scripts/kanban --help | grep --quiet '^Usage: kanban '
+                touch $out
+              '';
+            # `claude plugin validate` on the built plugin, its skill in
+            # place, by nixpkgs' claude-code, which validates offline: the
+            # variables keep it from reaching for updates, telemetry or
+            # anything else it needn't. Its log prints either way.
+            validate =
+              pkgs.runCommand "coding-agent-kanban-turns-validate"
+                {
+                  nativeBuildInputs = [ pkgs.claude-code ];
+                  CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1";
+                  DISABLE_AUTOUPDATER = "1";
+                  DISABLE_TELEMETRY = "1";
+                }
+                ''
+                  export HOME="$TMPDIR/home"
+                  mkdir -p "$HOME"
+                  status=0
+                  claude plugin validate ${config.packages.plugin} > validate.log 2>&1 || status=$?
+                  cat validate.log
+                  [ "$status" -eq 0 ]
+                  touch $out
+                '';
+            skill = skillCheck;
             vendor = vendorCheck;
             spec = pluginCheck "spec" "spec:check";
             typecheck = pluginCheck "typecheck" "typecheck";
             tests = pluginCheck "tests" "test";
+            cli-js = pluginCheckWith { KANBAN_JS = "${kanbanJs}/bin/kanban.js"; } "cli-js" "test:built";
+            cli-bin = pluginCheckWith { KANBAN_BIN = "${kanbanBin}/bin/kanban"; } "cli-bin" "test:built";
           };
 
           treefmt = {

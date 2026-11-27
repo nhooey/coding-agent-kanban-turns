@@ -1,58 +1,48 @@
-// What the plugin tells the agent about its own tool: when to call it, what its
-// input holds and what a click does. The turn-response format itself is the
-// kanban skill's to teach.
+// What the plugin tells the agent: the whole turn-response format, and its
+// own tool, when to call it, what its input holds and what a click does.
+// The text is the prose fragments of spec/fragments/, assembled by
+// prose.ts and filled in from the spec, so a session with the plugin and
+// no skill learns the format; the derived skill assembles the same
+// fragments.
 
-import { DECIDE } from "./rules.ts";
+import { FRAGMENTS } from "./fragments.ts";
+import type { FragmentName } from "./fragments.ts";
+import { lettersInWords } from "./kinds.ts";
+import { assembled, placeholderValues } from "./prose.ts";
+import { DECIDE, DEFAULT_KIND } from "./rules.ts";
 import { SPEC } from "./spec.ts";
+import {
+  LINT_TOOL,
+  OPTIONS_TOOL,
+  OUTSTANDING_TOOL,
+  calledAs,
+} from "./tools.ts";
 import type { DecideKind } from "../../types/index.d.ts";
 
 /** The plugin's name, which the engine puts in its tools' names. */
 export const PLUGIN = "coding-agent-kanban-turns";
 /** The tool's name as the plugin registers it. */
-export const TOOL = "kanban_options";
+export const TOOL = OPTIONS_TOOL;
 /** The tool's name as the agent sees and calls it. */
-export const TOOL_CALLED = `mcp__${PLUGIN}__${TOOL}`;
+export const TOOL_CALLED = calledAs(PLUGIN, TOOL);
+/** The other tools as the agent calls them. */
+export const OUTSTANDING_CALLED = calledAs(PLUGIN, OUTSTANDING_TOOL);
+export const LINT_CALLED = calledAs(PLUGIN, LINT_TOOL);
 /** The context block the instructions go in, keyed by the plugin's own name. */
 export const BLOCK = "kanbanTurns";
+/**
+ * The skill the plugin carries, as Claude Code names a plugin's skill: the
+ * plugin's name, a colon and the spec's skill name. Its Skill tool use or
+ * slash command loads the same format the instructions hold.
+ */
+export const PLUGIN_SKILL = `${PLUGIN}:${SPEC.skill.name}`;
 
-/** The item kinds, in the order the instructions and the schema name them. */
+/**
+ * The item kinds the tool takes, in the spec's order: every kind it reads,
+ * a kind the instructions no longer teach among them, so the schema
+ * describes what the plugin reads and the instructions what it teaches.
+ */
 export const KINDS = Object.keys(SPEC.options.kinds) as readonly DecideKind[];
-
-/** The kinds as the instructions write them: `radio`, `checkbox` or `binary`. */
-const kindsInWords = [
-  KINDS.slice(0, -1)
-    .map((kind) => `\`${kind}\``)
-    .join(", "),
-  `\`${KINDS[KINDS.length - 1]}\``,
-].join(" or ");
-
-/** The glyphs of a kind's options: its letters' own, joined by "and", else its one glyph. */
-const kindGlyphs = (kind: DecideKind): string => {
-  const lettered: readonly string[] = Object.values<string>(
-    SPEC.options.kinds[kind].letters,
-  );
-
-  return lettered.length > 0
-    ? lettered.join(" and ")
-    : SPEC.options.kinds[kind].glyph;
-};
-
-/** Each kind's glyphs as the instructions write them: `🔘, 🔲, or 👍 and 👎`. */
-export const glyphsInWords = (kinds: readonly DecideKind[]): string => {
-  const glyphs = kinds.map(kindGlyphs);
-
-  return glyphs.length > 1
-    ? `${glyphs.slice(0, -1).join(", ")}, or ${glyphs.at(-1) ?? ""}`
-    : glyphs.join("");
-};
-
-/** The letters an option takes, as the schema describes them: `A, B, C, or Y and N`. */
-const lettersInWords = (): string => {
-  const first = SPEC.reference.letters.first.charCodeAt(0);
-  const binary: readonly string[] = Object.keys(SPEC.options.kinds.binary.letters);
-
-  return `${[0, 1, 2].map((n) => String.fromCharCode(first + n)).join(", ")}, or ${binary.join(" and ")}`;
-};
 
 const { pro: PRO, con: CON } = SPEC.options;
 
@@ -78,17 +68,22 @@ export const ITEM_SCHEMA = {
     list: { type: "string", enum: [DECIDE.header] },
     number: {
       type: "integer",
-      description: "The item number in the Decide list.",
+      description: `The item number in the ${DECIDE.header} list.`,
     },
     summary: { type: "string", description: "The item's bold summary." },
     kind: {
       type: "string",
       enum: KINDS,
-      description: "From the item's option glyphs; radio when left out.",
+      description: `From the item's option glyphs; ${DEFAULT_KIND} when left out.`,
     },
     ref: {
       type: "string",
       description: `\`<turn>.${DECIDE.header}.<number>\`; filled in when left out.`,
+    },
+    frees: {
+      type: "array",
+      items: { type: "string" },
+      description: `The references the item's \`${SPEC.frees.label}:\` line names, each \`<turn>.<List>.<n>\`.`,
     },
     options: {
       type: "array",
@@ -98,7 +93,7 @@ export const ITEM_SCHEMA = {
         properties: {
           letter: {
             type: "string",
-            description: `The capital letter, ${lettersInWords()}.`,
+            description: `The capital letter, ${lettersInWords(SPEC.options.kinds, SPEC.reference.letters.first)}.`,
           },
           name: { type: "string", description: "The option's bold name." },
           consequence: {
@@ -130,27 +125,59 @@ export const INPUT_SCHEMA = {
 
 /** What the tool does, as the engine lists it to the agent. */
 export const TOOL_DESCRIPTION = [
-  "Draws clickable buttons for this turn's Decide items in the transcript, just under the final response, and lists them in the plugin's Decide pane.",
-  "Call it once, right before writing the final response, with every Decide item that response will hold, in the shape `outstanding.py decide --json` prints.",
+  `Draws clickable buttons for this turn's ${DECIDE.header} items in the transcript, just under the final response, and lists them in the plugin's ${DECIDE.header} pane.`,
+  `Call it once, right before writing the final response, with every ${DECIDE.header} item that response will hold, in its order: each item's turn id, number, summary, kind and frees, and each option's letter, name, consequence, pros and cons.`,
+  `\`${OUTSTANDING_TOOL}\` gives earlier turns' open ${DECIDE.header} items in this shape.`,
   "A click writes the item's reference into the user's prompt draft; nothing is sent.",
 ].join(" ");
 
-/** The instructions for the tool the agent calls as `tool`. */
-export const instructionsFor = (tool: string): string =>
-  [
-    `The coding-agent-kanban-turns plugin draws clickable buttons for a final response's Decide items, through the tool \`${tool}\`.`,
-    "",
-    `- When: call \`${tool}\` once, right before writing a final response that holds Decide items, so their buttons sit just under the reply and in the Decide pane. Don't call it for a response without Decide items.`,
-    '- Input: `{"items": [...]}`, one entry per Decide item of that response, in its order, each with:',
-    `  - \`turn\`: the turn id, ${TURN_ID_SOURCE} of the latest prompt's promptId;`,
-    "  - `number` and `summary`: the item's number in the Decide list and its bold summary;",
-    `  - \`kind\`: ${kindsInWords}, from the item's option glyphs (${glyphsInWords(KINDS)});`,
-    `  - \`options\`: each option's \`letter\`, \`name\` and \`consequence\`, and its ${PRO} and ${CON} lines, without the glyph, as \`pros\` and \`cons\`.`,
-    `- A click on a button writes the answer's reference, such as \`0f311c94.${DECIDE.header}.2.B\`, into the user's prompt draft and sends nothing.`,
-    "- Write the final response exactly as you would without the tool: the buttons add to it and replace nothing.",
-  ].join("\n");
+/**
+ * The fragments the instructions hold, in their order: the line naming the
+ * plugin's skill as the block's content, so the agent needn't load it, then
+ * the title, the format, then the plugin's buttons' tool and its other two.
+ * The derived skill holds the title and the format too, with its scripts in
+ * place of the tools, and its description names the block's line.
+ */
+export const INSTRUCTION_FRAGMENTS: readonly FragmentName[] = [
+  "block",
+  "title",
+  "overview",
+  "progress-updates",
+  "lists",
+  "shape",
+  "decide-items",
+  "frees",
+  "answers",
+  "roll-up",
+  "commands",
+  "around",
+  "tool",
+  "tools",
+];
 
-/** The instructions for the tool the plugin registers. */
+/**
+ * The instructions, for the buttons' tool the agent calls as `tool` and
+ * the other two as `outstanding` and `lint`: the format's fragments and the
+ * tools', filled in from the spec.
+ */
+export const instructionsFor = (
+  tool: string,
+  outstanding: string = OUTSTANDING_CALLED,
+  lint: string = LINT_CALLED,
+): string =>
+  assembled(
+    FRAGMENTS,
+    INSTRUCTION_FRAGMENTS,
+    placeholderValues(SPEC, {
+      plugin: PLUGIN,
+      tool,
+      "outstanding-tool": outstanding,
+      "lint-tool": lint,
+      "roll-up-drafter": `The tool \`${outstanding}\` drafts`,
+    }),
+  );
+
+/** The instructions for the tools the plugin registers. */
 export const INSTRUCTIONS = instructionsFor(TOOL_CALLED);
 
 type Block = Readonly<{ name: string; text: string }>;

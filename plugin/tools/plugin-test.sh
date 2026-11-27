@@ -9,8 +9,10 @@
 # node:test and won't load in the plugin's runtime. So the plugin's own files
 # are copied to a scratch folder and the runner pointed at that: the
 # manifest, the hooks, the core they import, the defaults file, the state
-# contract, the bundled parsers the dev shell lays in vendor/ and the
-# engine-driven tests, test/engine/ alone of test/.
+# contract, the bundled YAML parser the dev shell lays in vendor/, the
+# derived skill committed in skills/, so `claude plugin validate` checks
+# the plugin with its skill in place, and the engine-driven tests,
+# test/engine/ alone of test/.
 # Nothing is installed and no settings are touched.
 set -euo pipefail
 
@@ -20,7 +22,7 @@ trap 'rm -rf "$work"' EXIT
 
 mkdir -p "$work/.claude-plugin"
 cp "$plugin/.claude-plugin/plugin.json" "$work/.claude-plugin/"
-for dir in hooks src types defaults vendor; do
+for dir in hooks src types defaults vendor skills; do
   if [ -d "$plugin/$dir" ]; then
     cp -R "$plugin/$dir" "$work/"
   fi

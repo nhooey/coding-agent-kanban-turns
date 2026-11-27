@@ -36,18 +36,39 @@ import {
   toggledReassess,
   withNote,
 } from "../src/items/answers.ts";
-import { instructing } from "../src/transcript/instructed.ts";
+import { conversationKeyOf, instructing } from "../src/transcript/instructed.ts";
+import type { Instructing } from "../src/transcript/instructed.ts";
 import {
   INPUT_SCHEMA,
   INSTRUCTIONS,
+  LINT_CALLED,
+  OUTSTANDING_CALLED,
   TOOL,
   TOOL_CALLED,
   TOOL_DESCRIPTION,
   withInstructions,
 } from "../src/protocol/instructions.ts";
-import { CHOSEN_MARK, itemsOf, optionMark, refOf } from "../src/items/items.ts";
-import { INDENT, cellWidth, codeSpans } from "../src/pane/layout.ts";
-import { DECIDE } from "../src/protocol/rules.ts";
+import {
+  LINT_DESCRIPTION,
+  LINT_SCHEMA,
+  LINT_TOOL,
+  OUTSTANDING_DESCRIPTION,
+  OUTSTANDING_SCHEMA,
+  OUTSTANDING_TOOL,
+} from "../src/protocol/tools.ts";
+import {
+  isKanbanReply,
+  lintReply,
+  lintToolText,
+  replyLintText,
+} from "../src/lint/reply.ts";
+import { outstandingText, unreadText } from "../src/items/roll-up.ts";
+import { itemsOf, refOf } from "../src/items/items.ts";
+import { freesLineOf } from "../src/items/frees.ts";
+import { LAYOUT, codeSpans } from "../src/pane/layout.ts";
+import { cellWidth } from "../src/text/cells.ts";
+import { DECIDE, DONE, REASSESS } from "../src/protocol/rules.ts";
+import { capitalized } from "../src/text/words.ts";
 import { SPEC } from "../src/protocol/spec.ts";
 import {
   decideListCut,
@@ -56,30 +77,29 @@ import {
   linkedQuestions,
 } from "../src/pane/links.ts";
 import {
-  countLine,
+  isMergeKnown,
   mergedOfResponse,
   mergedQuery,
-  openOf,
   pullRequestsToAsk,
 } from "../src/items/outstanding.ts";
 import {
   answeredCount,
-  closesOnSubmit,
-  emptyRaised,
-  forSession,
+  decideItemsOf,
   isSettled,
   problemsOf,
-  refreshed,
-  seen,
-  sentOf,
   settlementOf,
   stillOpen,
-  unread,
-  unseen,
-  withItems,
-  withSent,
-  withoutRead,
 } from "../src/items/raised.ts";
+import {
+  INITIAL_PANE,
+  failingPress,
+  loadedOf,
+  settingsOf,
+  shownOf,
+  step as paneStep,
+  submitShown,
+} from "../src/pane/pane-state.ts";
+import type { Effect, Event, Found, Stepped } from "../src/pane/pane-state.ts";
 import {
   doneHeader,
   doneKey,
@@ -112,14 +132,11 @@ import {
   isPlainToolRow,
   itemTitle,
   noItemsText,
-  NOT_EMPTIED_TEXT,
   noteRows,
   notesKey,
   notesMode,
-  notPutBackText,
-  notSentText,
+  optionLead,
   pickedText,
-  putBackText,
   sentLetters,
   settledText,
   submitStep,
@@ -127,47 +144,27 @@ import {
 import type { NotesMode } from "../src/pane/view.ts";
 import type {
   DecideItem,
+  LintNote,
   Loaded,
+  PaneState,
   Raised,
   Settings,
-  Settlement,
 } from "../types/index.d.ts";
 import { loadSettings } from "./settings.ts";
 
-// The pane that lists the items, and its title. The keys and colours are
-// settings, in defaults/config.yaml.
+// The pane that lists the items, and its title. The keys, marks and colours
+// are settings, in defaults/config.yaml; its spacing is src/pane/layout.ts's.
 const PANE = {
   id: "kanban-turns",
   title: `${DECIDE.glyph} ${DECIDE.header}`,
 } as const;
-// The column left of an option's lines that lights while the pointer is over
-// the option, or stays lit once its item is Done: it comes out of the
-// option's indent, so its text stays put.
-const GUTTER = 1;
 // The most bytes one `$.fs.read` returns: the transcript is read in ranges
 // this long.
 const READ_BYTES = 4 * 1024 * 1024;
-// Nothing read yet: no settings until session.start reads the files.
-const UNREAD: Loaded = { settings: null, effective: [], problems: [], warnings: [] };
 // The keys of the buttons that move the focus ring between items: a ring
 // a hotkey leaves on one of them is no item's, so j and k don't count from it.
 const STEPS = { next: "next", previous: "previous" } as const;
 
-// Change the tag when Raised's fields change: it declines what an earlier
-// version stored, which outlives a reload.
-const raised = atom(
-  { plugin: "coding-agent-kanban-turns", key: "raised" } as const,
-  emptyRaised,
-  { shape: "raised-4" },
-);
-// The answers the last Submit sent, Done at once: the turn's end reads the
-// transcript, which confirms each or puts it back among the open items.
-// Change the tag when Settlement's fields change.
-const sent = atom(
-  { plugin: "coding-agent-kanban-turns", key: "sent" } as const,
-  [] as readonly Settlement[],
-  { shape: "sent-1" },
-);
 // The Done sections a click opened, by `doneKey`, and the Done items a click
 // opened to their full box, by ref: everything else Done stays collapsed.
 const expanded = atom(
@@ -186,18 +183,6 @@ const isKeysOpen = atom(
   { plugin: "coding-agent-kanban-turns", key: "isKeysOpen" } as const,
   false,
 );
-// How many refreshes have started: a `gh` answer redraws the count line only
-// while the refresh that asked is the latest.
-const refreshes = atom(
-  { plugin: "coding-agent-kanban-turns", key: "refreshes" } as const,
-  0,
-);
-// The pull requests `gh` said merged, as `owner/repo#N`: a merge stays, so
-// none is asked about again.
-const merged = atom(
-  { plugin: "coding-agent-kanban-turns", key: "merged" } as const,
-  [] as readonly string[],
-);
 const draft = atom(
   { plugin: "coding-agent-kanban-turns", key: "draft" } as const,
   "",
@@ -209,71 +194,59 @@ const noting = atom(
   { plugin: "coding-agent-kanban-turns", key: "noting" } as const,
   "",
 );
-// How many Submit presses there have been: each press's stamp.
-const submits = atom(
-  { plugin: "coding-agent-kanban-turns", key: "submits" } as const,
-  0,
-);
-// The stamp of the Submit under way, 0 when none is: a second press while
-// one is under way does nothing.
-const submitting = atom(
-  { plugin: "coding-agent-kanban-turns", key: "submitting" } as const,
-  0,
-);
-// The id of the main loop's running turn, from its turn.start to its own
-// turn.complete, empty while none runs: Submit waits it out. Only the end
-// of the turn it names clears it, so a late end of an earlier turn doesn't.
-const runningTurn = atom(
-  { plugin: "coding-agent-kanban-turns", key: "runningTurn" } as const,
-  "",
-);
-// Why the last Submit sent nothing, for the pane to say; empty when it
-// sent, once a turn starts, or as the session starts.
-const submitProblem = atom(
-  { plugin: "coding-agent-kanban-turns", key: "submitProblem" } as const,
-  "",
-);
-// The skill's count line, `📌 Outstanding: 🚧 2 · … · 🧠 3`, from the last
-// refresh; empty when nothing is open.
-const counts = atom(
-  { plugin: "coding-agent-kanban-turns", key: "counts" } as const,
-  "",
-);
-// Change the tag when Settings' fields change, as for Raised.
-const settings = atom(
-  { plugin: "coding-agent-kanban-turns", key: "settings" } as const,
-  UNREAD,
-  { shape: "settings-7" },
+// The pane's state, one value that `step` moves and `dispatch` alone writes:
+// Submit and the refresh, with the raised items, the answers Submit holds
+// Done, the pull requests known merged and the count line, and the
+// settings, so far. Change the tag when PaneState's fields, or those of a
+// type it holds, Settings' among them, change: it declines what an earlier
+// version stored, which outlives a reload.
+const pane = atom(
+  { plugin: "coding-agent-kanban-turns", key: "pane" } as const,
+  INITIAL_PANE,
+  { shape: "pane-5" },
 );
 
-/** The settings in effect, or none while the defaults file can't be used. */
+// What the reply lint found in the main loop's last final response, for the
+// next prompt's context to hand the agent, and the conversation it was
+// found in: a prompt in another, after a `/clear`, a compaction or a
+// resume, carries none. Empty when it found nothing, or once a prompt
+// carrying it has entered. Change the tag when LintNote's fields change.
+const NO_LINT_NOTE: LintNote = { conversation: "", text: "" };
+const lintNote = atom(
+  { plugin: "coding-agent-kanban-turns", key: "lintNote" } as const,
+  NO_LINT_NOTE,
+  { shape: "lint-note-1" },
+);
+/** The settings in effect, or none before a read has answered or while the defaults file can't be used. */
 const settingsNow = async ($: EngineInterface): Promise<Settings | null> =>
-  (await read($, settings)).settings;
+  settingsOf((await read($, pane)).settings);
 
 /** The raised items as the pane and a reply draw them: the answers Submit sent Done until the turn's end reads them. */
 const shownNow = async ($: EngineInterface): Promise<Raised> =>
-  withSent(await read($, raised), await read($, sent));
+  shownOf(await read($, pane));
 
-/** The pane's sections, newest turn first, the Done sections and items a click opened, and the stops j and k move between. */
+/** The pane's state, read once, with its sections, newest turn first, the Done sections and items a click opened, and the stops j and k move between. */
 const paneNow = async (
   $: EngineInterface,
 ): Promise<
   Readonly<{
+    state: PaneState;
     shown: Raised;
     sections: readonly TurnSection[];
     open: readonly string[];
     stops: ReturnType<typeof paneStops>;
   }>
 > => {
-  const shown = await shownNow($);
+  const state = await read($, pane);
+  const shown = shownOf(state);
   const sections = turnSections(
-    shown.items,
+    decideItemsOf(shown),
     (item) => isSettled(shown, item),
     shown.turns,
   );
   const open = await read($, expanded);
 
-  return { shown, sections, open, stops: paneStops(sections, open) };
+  return { state, shown, sections, open, stops: paneStops(sections, open) };
 };
 
 /** This session's transcript file: where the engine says it is, else, when it can't say, where Claude Code keeps it. */
@@ -332,32 +305,41 @@ const instructed = atom(
 
 /**
  * Whether the hook about to add the agent's instructions should: they are
- * owed to this conversation, which is then marked as having them. A
- * transcript not there yet, as at a new session's first prompt, holds none.
+ * owed to this conversation, which is then marked as having them; and the
+ * conversation's key, read in the same pass. A transcript not there yet, as
+ * at a new session's first prompt, holds none.
  */
-const instructNow = async ($: EngineInterface): Promise<boolean> => {
+const instructNow = async ($: EngineInterface): Promise<Instructing> => {
   const path = await transcriptPath($);
   const text = await transcriptText($, path).catch(() => "");
-  const { key, isOwed } = instructing(path, text, await read($, instructed));
+  const now = instructing(path, text, await read($, instructed));
 
-  if (isOwed) {
-    await update($, instructed, () => key);
+  if (now.isOwed) {
+    await update($, instructed, () => now.key);
   }
 
-  return isOwed;
+  return now;
+};
+
+/** The conversation the agent has now, by `conversationKey`; a transcript not there yet holds no records. */
+const conversationNow = async ($: EngineInterface): Promise<string> => {
+  const path = await transcriptPath($);
+
+  return conversationKeyOf(path, await transcriptText($, path).catch(() => ""));
 };
 
 /**
  * The pull requests among `refs` that GitHub says merged, asked of `gh` in
  * one call; none when there's nothing to ask, or `gh` is missing, fails or
- * outlasts `timeoutMs`. A GraphQL error exits non-zero yet still answers for
+ * outlasts `timeoutMs`; and whether its answer covers every one asked, as
+ * `isMergeKnown` says. A GraphQL error exits non-zero yet still answers for
  * the other pull requests, so the output is read whatever the exit code.
  */
 const mergedNow = async (
   $: EngineInterface,
   refs: readonly string[],
   timeoutMs: number,
-): Promise<ReadonlySet<string>> => {
+): Promise<Readonly<{ found: ReadonlySet<string>; isKnown: boolean }>> => {
   const { ordered, argv } = mergedQuery(refs);
   const stdout =
     ordered.length === 0
@@ -367,101 +349,69 @@ const mergedNow = async (
           () => "",
         );
 
-  return mergedOfResponse(ordered, stdout);
+  return {
+    found: mergedOfResponse(ordered, stdout),
+    isKnown: isMergeKnown(ordered, stdout),
+  };
 };
 
-/** Reads the settings files again, so an edit to either is taken up at the next refresh. */
+/** Reads the settings files again, for a tool or a command: the settings as the newest read to answer, this one or a later, found them. */
 const reloadSettings = async ($: EngineInterface): Promise<Loaded> => {
-  const now = await loadSettings($).catch(
-    (error: unknown): Loaded => ({ ...UNREAD, problems: [String(error)] }),
-  );
-  await update($, settings, () => now);
+  await dispatch($, { type: "settings-asked" });
 
-  return now;
+  return loadedOf((await read($, pane)).settings);
 };
 
-/** Sets the count line and the raised items from what `turns` leave open, given the pull requests known merged. */
-const settle = async (
-  $: EngineInterface,
-  turns: readonly Turn[],
-  window: number,
-  warnings: readonly string[],
-): Promise<void> => {
-  const open = openOf(turns, window, new Set(await read($, merged)));
-  await update($, counts, () => open.counts);
-  await update($, raised, (r) =>
-    refreshed(
-      r,
-      open.items,
-      open.settlements,
-      warnings,
-      turns.map((turn) => turn.id),
-    ),
+/** The settings files merged, as `loadSettings` reads them; a read that throws says why, as a defaults file that can't be used does. */
+const settingsFound = ($: EngineInterface): Promise<Loaded> =>
+  attempt(() => loadSettings($)).catch(
+    (error: unknown): Loaded => ({
+      settings: null,
+      effective: [],
+      problems: [String(error)],
+    }),
   );
-};
 
 /**
- * Asks `gh` which of the Review items' pull requests not yet known merged
- * have merged since, the pane and the count line drawn without waiting for
- * it. A merge joins the known ones, and redraws the count line from the
- * refresh's turns while no later refresh has started; one that has reads
- * the merge itself. The raised items don't hang on merges, so they stay.
+ * `kanban_outstanding`: the count line, the roll-up's draft and the open
+ * Decide items over the window the count line reads, once `gh` has said
+ * which of the Review items' pull requests not yet known merged have; a
+ * merge joins the known ones, and a `gh` that says nothing leaves the
+ * merges unknown, which the result says. Settings that can't be used say
+ * why instead.
  */
-const askMerged = async (
-  $: EngineInterface,
-  stamp: number,
-  turns: readonly Turn[],
-  window: Settings["counts"],
-): Promise<void> => {
-  const known = new Set(await read($, merged));
-  const found = await mergedNow(
+const outstandingNow = async ($: EngineInterface): Promise<string> => {
+  const { settings: s, problems } = await reloadSettings($);
+
+  if (s === null) {
+    return unreadText(problems.join("; "));
+  }
+  const turns = await turnsNow($);
+  const known = new Set((await read($, pane)).merged);
+  const { found, isKnown } = await mergedNow(
     $,
-    pullRequestsToAsk(turns, window.turns, known),
-    window["gh-timeout-ms"],
+    pullRequestsToAsk(turns, s.counts.turns, known),
+    s.counts["gh-timeout-ms"],
   );
 
   if (found.size > 0) {
-    const now = await update($, merged, (m) =>
-      [...new Set([...m, ...found])].sort(),
-    );
-
-    if ((await read($, refreshes)) === stamp) {
-      await update($, counts, () =>
-        countLine(turns, window.turns, new Set(now)),
-      );
-    }
+    await dispatch($, { type: "merged-found", found: [...found] });
   }
+
+  return outstandingText(turns, {
+    window: s.counts.turns,
+    width: s["roll-up"]["summary-width"],
+    merged: new Set([...known, ...found]),
+    isMergeKnown: isKnown,
+  });
 };
 
-/**
- * Reads the settings, the open items and the count line again: open items
- * join the raised ones, and raised ones no longer open settle. A transcript
- * that can't be read, or settings that can't be used, settle nothing.
- * Resolves to whether it read the transcript.
- */
-const refresh = async ($: EngineInterface): Promise<boolean> => {
-  const stamp = await update($, refreshes, (n) => n + 1);
-  const { settings: s, problems } = await reloadSettings($);
-  // Without settings there's no window to read: the settings' problems say why.
-  const found: Readonly<{ turns: readonly Turn[] } | { problem: string }> =
-    s === null
-      ? { problem: "" }
-      : await turnsNow($).then(
-          (turns) => ({ turns }),
-          (error: unknown) => ({ problem: String(error) }),
-        );
-
-  if (s === null || "problem" in found) {
-    const problem = "problem" in found ? found.problem : "";
-    await update($, raised, (r) => unread(r, problem, problems));
-
-    return false;
-  }
-  await settle($, found.turns, s.counts.turns, problems);
-  void askMerged($, stamp, found.turns, s.counts).catch(() => undefined);
-
-  return true;
-};
+/** What a refresh's transcript read finds: the session's turns; or, for a read that fails or throws, why it couldn't read them. */
+const transcriptFound = ($: EngineInterface): Promise<Found> =>
+  attempt(() => turnsNow($)).then(
+    (turns) => ({ turns }),
+    (error: unknown) => ({ problem: String(error) }),
+  );
 
 /**
  * Rewrites the prompt draft with `edit`: the one way a click, a note or
@@ -495,113 +445,203 @@ const note = ($: EngineInterface, item: DecideItem, said: string) =>
 const toggleReassess = ($: EngineInterface) =>
   rewriteDraft($, toggledReassess);
 
-/** Why the engine didn't take a prompt it was sent, or undefined once it entered. */
-const refusalOf = ($: EngineInterface, text: string): Promise<string | undefined> =>
-  $.prompt.submit({ text, asUser: true }).then(
-    (done) => done.drop,
-    (error: unknown) => String(error),
-  );
+/** `call()`'s promise, a synchronous throw in it turned into a rejection. */
+const attempt = <T,>(call: () => T | Promise<T>): Promise<T> =>
+  Promise.resolve().then(call);
+
+/** `event` stepped in a single update of the pane's atom: the state written, and the effects of the step that wrote it. */
+const stepNow = async ($: EngineInterface, event: Event): Promise<Stepped> => {
+  // `update` may run its function again on a missed write: the step whose
+  // state it wrote is the last it ran, taken once the write has landed.
+  let attempted = undefined as Stepped | undefined;
+  const written = await update($, pane, (state) => {
+    attempted = paneStep(state, event);
+
+    return attempted.state;
+  });
+
+  return { state: written, effects: attempted?.effects ?? [] };
+};
 
 /**
- * Puts a draft the engine refused back in the box Submit emptied, after
- * whatever the person typed there meanwhile, and says why it wasn't sent.
- * A box that can't take it back leaves the draft in what the pane says.
+ * What a failure stepping `event` or running its effects does: the press
+ * still under way or overtaken in `state` that it was for ends, saying why,
+ * as the old `finally` freed Submit; a failure for no such press rejects,
+ * as the old handlers' did.
  */
-const putBack = async (
+const failedOn = async (
   $: EngineInterface,
-  text: string,
-  refusal: string,
+  event: Event,
+  done: Stepped,
+  error: unknown,
 ): Promise<void> => {
-  const box = (await $.prompt.read().catch(() => ({ text: "" }))).text;
-  const added = putBackText(box, text);
-  const put = await $.prompt
-    .fill({ text: added, mode: "append" })
-    .catch(() => ({ isFilled: false }));
+  const press = failingPress(done.state, event, done.effects);
 
-  if (put.isFilled) {
-    await update($, draft, () => `${box}${added}`);
+  if (press === undefined) {
+    throw error;
   }
-  await update($, submitProblem, () =>
-    put.isFilled
-      ? notSentText(refusal, box !== "")
-      : notPutBackText(refusal, text),
+
+  return dispatch($, { type: "press-failed", press, why: String(error) });
+};
+
+/** Runs `effects` in order, each prompt call's answer dispatched before the next, stopping at the first that fails. */
+const runEffects = async (
+  $: EngineInterface,
+  event: Event,
+  done: Stepped,
+  effects: readonly Effect[],
+): Promise<void> => {
+  const [effect, ...rest] = effects;
+
+  if (effect === undefined) {
+    return;
+  }
+  const ran = await runEffect($, effect).then(
+    (answer) => ({ answer }),
+    (error: unknown) => ({ error }),
   );
+
+  if ("error" in ran) {
+    return failedOn($, event, done, ran.error);
+  }
+  if (ran.answer !== undefined) {
+    await dispatch($, ran.answer);
+  }
+
+  return runEffects($, event, done, rest);
 };
 
 /**
- * Sends `text`, the box emptied first, as the person's own words. A box that
- * can't be emptied sends nothing and leaves the draft as it was; a prompt
- * the engine refuses goes back in the box. Either way the pane says why.
- * The items the draft answers are Done from the moment it's sent, until the
- * turn's end reads the transcript; a refused prompt puts them back at once.
- * A prompt that went through closes the pane when it leaves no item open,
- * as `pane.close-when-all-submitted` says.
+ * The one way the pane's state changes: `event` stepped in a single update
+ * of the pane's atom, then the effects it asked for run in order, each
+ * prompt call's answer dispatched in turn. Resolves once they all have.
+ * A step that fails, before anything is written, is judged by the state as
+ * it stands; a transcript or settings read whose answer fails to step is
+ * dropped, so no refresh waits on it.
  */
-const sendDraft = async ($: EngineInterface, text: string): Promise<void> => {
-  const emptied = await $.prompt.fill({ text: "", mode: "replace" });
-
-  if (!emptied.isFilled) {
-    await update($, submitProblem, () => NOT_EMPTIED_TEXT);
-
-    return;
-  }
-  await update($, draft, () => "");
-  const moved = sentOf(text, await shownNow($));
-  const isMoved = (held: Settlement) =>
-    moved.some((settled) => settled.ref === held.ref);
-  await update($, sent, (held) => [...held.filter((s) => !isMoved(s)), ...moved]);
-  const refusal = await refusalOf($, text);
-
-  if (refusal !== undefined) {
-    await update($, sent, (held) => held.filter((s) => !isMoved(s)));
-    await putBack($, text, refusal);
-
-    return;
-  }
-  await update($, submitProblem, () => "");
-  const s = await settingsNow($);
-
-  if (
-    closesOnSubmit(
-      await read($, raised),
-      await read($, sent),
-      s?.pane["close-when-all-submitted"] === true,
-    )
-  ) {
-    await closePane($);
-  }
-};
-
-/**
- * The pane's Submit: sends the prompt box's text as the person's own. One
- * press at a time: a press while another is under way, or while a turn
- * runs, does nothing, as does a box of blanks or of the line naming the
- * plugin alone; a draft with a file mention, pasted text or an image stays
- * in the box, the pane saying why.
- */
-const submitDraft = async ($: EngineInterface): Promise<void> => {
-  const stamp = await update($, submits, (n) => n + 1);
-  const holder = await update($, submitting, (held) =>
-    held === 0 ? stamp : held,
+const dispatch = async ($: EngineInterface, event: Event): Promise<void> => {
+  const done = await stepNow($, event).then(
+    (stepped) => ({ stepped }),
+    (error: unknown) => ({ error }),
   );
 
-  if (holder !== stamp) {
-    return;
-  }
+  if ("error" in done) {
+    const dropped: Event | undefined =
+      event.type === "transcript-read"
+        ? { type: "read-dropped", refresh: event.refresh }
+        : event.type === "settings-read"
+          ? { type: "settings-dropped", read: event.read }
+          : undefined;
 
-  try {
-    const step = submitStep(
-      (await $.prompt.read()).text,
-      (await read($, runningTurn)) !== "",
-    );
-
-    if ("refuse" in step) {
-      await update($, submitProblem, () => step.refuse);
-    } else if ("send" in step) {
-      await sendDraft($, step.send);
+    if (dropped !== undefined) {
+      await dispatch($, dropped).catch(() => undefined);
     }
-  } finally {
-    await update($, submitting, (held) => (held === stamp ? 0 : held));
+    const state = await attempt(() => read($, pane)).catch(() => INITIAL_PANE);
+
+    return failedOn($, event, { state, effects: [] }, done.error);
+  }
+
+  return runEffects($, event, done.stepped, done.stepped.effects);
+};
+
+/**
+ * Runs one effect `paneStep` asked for, and resolves to the event its
+ * answer makes: under the press's number for a prompt call, and under the
+ * refresh's for a transcript read, and the read's for the settings files.
+ * A read that throws reads as an empty box, a put-back fill that throws as
+ * not taken, and a submit that throws as refused, for why; emptying the
+ * box that throws rejects, failing the press, as the box may have been
+ * emptied. A transcript read that throws reads as one that couldn't read
+ * the transcript, and a settings read that throws as files that can't be
+ * used, saying why. `gh` is asked without
+ * waiting for it, so the pane and the count line are drawn first; its
+ * answer is dispatched once it comes, and one that fails changes nothing.
+ */
+const runEffect = async (
+  $: EngineInterface,
+  effect: Effect,
+): Promise<Event | undefined> => {
+  switch (effect.kind) {
+    case "read-prompt":
+      return {
+        type: "prompt-read",
+        press: effect.press,
+        purpose: effect.purpose,
+        text: await attempt(() => $.prompt.read()).then(
+          (box) => box.text,
+          () => "",
+        ),
+      };
+    case "fill-prompt": {
+      const filled = attempt(() =>
+        $.prompt.fill({ text: effect.text, mode: effect.mode }),
+      ).then((done) => done.isFilled);
+
+      return {
+        type: "prompt-filled",
+        press: effect.press,
+        purpose: effect.purpose,
+        isFilled: await (effect.purpose === "put-back"
+          ? filled.catch(() => false)
+          : filled),
+      };
+    }
+    case "submit-prompt": {
+      const refusal = await attempt(() =>
+        $.prompt.submit({ text: effect.text, asUser: true }),
+      ).then(
+        (done) => done.drop,
+        (error: unknown) => String(error),
+      );
+
+      return {
+        type: "prompt-submitted",
+        press: effect.press,
+        ...(refusal === undefined ? {} : { refusal }),
+      };
+    }
+    case "close-pane":
+      await attempt(() => closePane($));
+
+      return undefined;
+    case "set-draft":
+      await attempt(() => update($, draft, () => effect.text));
+
+      return undefined;
+    case "read-settings":
+      return {
+        type: "settings-read",
+        read: effect.read,
+        loaded: await settingsFound($),
+      };
+    case "read-transcript":
+      return {
+        type: "transcript-read",
+        refresh: effect.refresh,
+        found: await transcriptFound($),
+      };
+    case "ask-merged":
+      void attempt(() => mergedNow($, effect.refs, effect.timeoutMs))
+        .then(({ found }) =>
+          dispatch($, {
+            type: "merged-found",
+            found: [...found],
+            asked: effect.asked,
+          }),
+        )
+        .catch(() => undefined);
+
+      return undefined;
+    case "open-pane":
+      await openPane($, false);
+
+      return undefined;
+    case "reveal":
+      await reveal($, effect.to);
+
+      return undefined;
+    default:
+      return effect satisfies never;
   }
 };
 
@@ -683,21 +723,19 @@ const closePane = async ($: EngineInterface): Promise<void> => {
 const toggleKeys = ($: EngineInterface) =>
   update($, isKeysOpen, (isOpen) => !isOpen);
 
-/** The end of a main-loop turn, or the session's start: opens the pane at its top, the newest turn, when an item is open that the pane hasn't been opened over. */
-const announce = async ($: EngineInterface): Promise<void> => {
-  const r = await read($, raised);
-  await update($, raised, seen);
-
-  if (unseen(r).length > 0) {
-    await openPane($, false);
-    await reveal($, "start");
-  }
-};
+/**
+ * Reads the settings, the open items and the count line again, once the
+ * transcript read and its result have been stepped; a turn's end's read
+ * also takes out the answers Submit held when it began. `gh` may answer
+ * later.
+ */
+const refresh = ($: EngineInterface, releases = false): Promise<void> =>
+  dispatch($, { type: "refresh-asked", releases });
 
 /** /answers: re-reads the open items and opens the pane with the keyboard, at the first item the draft doesn't answer. */
 const reopen = async ($: EngineInterface): Promise<Raised> => {
   await refresh($);
-  await update($, raised, seen);
+  await dispatch($, { type: "seen" });
   await openPane($, true);
   const { shown, sections } = await paneNow($);
   const item = firstUnansweredIn(sections, await read($, draft));
@@ -712,7 +750,8 @@ const reopen = async ($: EngineInterface): Promise<Raised> => {
 /** A question's link pressed: the pane, with the keyboard, scrolled to its item, its Done section and box opened when it's Done. */
 const showItem = async ($: EngineInterface, href: string): Promise<void> => {
   const r = await shownNow($);
-  const item = r.items[itemOfLink(r.items, href)];
+  const items = decideItemsOf(r);
+  const item = items[itemOfLink(items, href)];
   await openPane($, true);
 
   if (item !== undefined) {
@@ -727,22 +766,22 @@ const showItem = async ($: EngineInterface, href: string): Promise<void> => {
 
 export const register: Register = (on) => {
   on("session.start", async ($, e, next) => {
-    // No turn runs as the session starts, no Submit is under way, none has
-    // a problem to say, no sent answer waits for a turn's end and the ring
-    // is on nothing, though a reload mid-turn or mid-Submit may have left
-    // them set; the refresh reads what a sent answer did. Cleared before the
-    // hook awaits anything else, so a turn.start or a Submit that lands while
-    // it registers stays.
-    await update($, runningTurn, () => "");
-    await update($, submitting, () => 0);
-    await update($, submitProblem, () => "");
-    await update($, sent, () => []);
+    // No turn runs as the session starts, no Submit holds the button, none
+    // has a problem to say, no sent answer waits for a turn's end and the
+    // ring is on nothing, though a reload mid-turn or mid-Submit may have
+    // left them set; the refresh reads what a sent answer did. A Submit
+    // under way finishes as it would have, overtaken, since a hook already
+    // running when the plugin reloads still settles. Cleared before the hook
+    // registers anything, so a turn.start or a Submit that lands while it
+    // registers stays. What the reply lint found stays: a `/reload-plugins`
+    // starts the session again in the same conversation, and the note's
+    // conversation key keeps it from any other.
+    await dispatch($, { type: "session-started" });
     await update($, focused, () => "");
     const started = await next(e);
     await $.command.register({
       name: "answers",
-      description:
-        "Open the kanban Decide pane, at the first unanswered item",
+      description: `Open the kanban ${DECIDE.header} pane, at the first unanswered item`,
     });
     await $.command.register({
       name: "answers-config",
@@ -755,17 +794,30 @@ export const register: Register = (on) => {
       isDeferred: false,
       inputSchema: INPUT_SCHEMA,
     });
+    await $.tool.register({
+      name: OUTSTANDING_TOOL,
+      description: OUTSTANDING_DESCRIPTION,
+      isDeferred: false,
+      inputSchema: OUTSTANDING_SCHEMA,
+    });
+    await $.tool.register({
+      name: LINT_TOOL,
+      description: LINT_DESCRIPTION,
+      isDeferred: false,
+      inputSchema: LINT_SCHEMA,
+    });
     const session = await $.session.id();
-    await update($, raised, (r) => forSession(r, session));
+    await dispatch($, { type: "session-joined", session });
     void refresh($)
-      .then(() => announce($))
+      .then(() => dispatch($, { type: "announced" }))
       .catch(() => undefined);
 
     return started;
   });
 
-  // The plugin tells the agent about its tool itself, once per conversation,
-  // by whichever route runs first. This hook puts the instructions in the
+  // The plugin teaches the agent the turn-response format and its tool
+  // itself, once per conversation, by whichever route runs first, from the
+  // prose fragments the spec fills. This hook puts the instructions in the
   // conversation's context, after whatever the engine and other hooks put
   // there. A plugin above can send the event on past it, as
   // cc-plugin-sec-default does under managed settings; then the prompt.submit
@@ -774,32 +826,63 @@ export const register: Register = (on) => {
   on("prompt.context", async ($, e, next) => {
     const built = await next(e);
 
-    return (await instructNow($)) ? withInstructions(built) : built;
+    return (await instructNow($)).isOwed ? withInstructions(built) : built;
   }).catch(async ($, e, next) => withInstructions(await next(e)));
 
+  // The conversation ending, at a `/clear`, a resume or the session's own
+  // end: what the reply lint found in it is for it alone, and no
+  // `session.start` follows a `/clear` to clear it.
+  on("session.end", async ($, e, next) => {
+    await update($, lintNote, () => NO_LINT_NOTE);
+
+    return next(e);
+  });
+
   // A slash command's prompt may never reach the agent, so the instructions
-  // wait for one that does; a prompt that doesn't enter leaves them owed. A
-  // failure here never holds up the prompt.
+  // wait for one that does; a prompt that doesn't enter leaves them owed.
+  // What the reply lint found in the last final response goes in the same
+  // prompt's context, while the prompt is in the conversation it was found
+  // in, and waits the same way. A failure here never holds up the prompt.
   on("prompt.submit", async ($, e, next) => {
-    if (e.command !== undefined || !(await instructNow($))) {
+    if (e.command !== undefined) {
+      return next(e);
+    }
+    const { isOwed: isInstructing, key } = await instructNow($);
+    const held = await read($, lintNote);
+    const note =
+      held.text !== "" && held.conversation === key ? held.text : "";
+    const added = [
+      ...(isInstructing ? [INSTRUCTIONS] : []),
+      ...(note === "" ? [] : [note]),
+    ];
+
+    if (added.length === 0) {
       return next(e);
     }
     const entered = await next({
       ...e,
-      context: [...(e.context ?? []), INSTRUCTIONS],
+      context: [...(e.context ?? []), ...added],
     });
 
     if (entered.drop !== undefined) {
-      await update($, instructed, () => "");
+      if (isInstructing) {
+        await update($, instructed, () => "");
+      }
+    } else if (note !== "") {
+      await update($, lintNote, (now) =>
+        now.text === held.text && now.conversation === held.conversation
+          ? NO_LINT_NOTE
+          : now,
+      );
     }
 
     return entered;
   }).catch(($, e, next) => next(e));
 
   on("command.run", { command: "answers-config" }, async ($) => {
-    const { effective, problems, warnings } = await reloadSettings($);
+    const { effective, problems } = await reloadSettings($);
 
-    return { text: configText(effective, problems, warnings) };
+    return { text: configText(effective, problems) };
   });
 
   on("command.run", { command: "answers" }, async ($) => ({
@@ -808,11 +891,21 @@ export const register: Register = (on) => {
 
   on("tool.call", { tool: TOOL_CALLED }, async ($, e) => {
     const items = itemsOf(e);
-    await update($, raised, (r) => withItems(r, items));
+    await dispatch($, { type: "items-drawn", items });
 
     return { result: drewText(items) };
   }).catch(() => ({
     result: "The buttons could not be drawn; the reply reads as before.",
+  }));
+
+  on("tool.call", { tool: OUTSTANDING_CALLED }, async ($) => ({
+    result: await outstandingNow($),
+  })).catch(($, e, next) => ({
+    result: unreadText(next.error.message ?? next.error.kind),
+  }));
+
+  on("tool.call", { tool: LINT_CALLED }, async ($, e) => ({
+    result: lintToolText(e),
   }));
 
   // A main-loop turn starting: Submit waits it out, and what the last
@@ -821,8 +914,7 @@ export const register: Register = (on) => {
     const started = await next(e);
 
     if (e.agentId === undefined) {
-      await update($, runningTurn, () => e.turnId);
-      await update($, submitProblem, () => "");
+      await dispatch($, { type: "turn-started", turn: e.turnId });
     }
 
     return started;
@@ -831,22 +923,48 @@ export const register: Register = (on) => {
   // A main-loop turn ending: it clears the running turn only where that is
   // this turn, so an earlier turn's late end leaves a later one running; and
   // the transcript read again confirms the answers Submit sent or puts their
-  // items back among the open ones. Only the answers sent before the read
-  // began are taken out: a Submit pressed while it reads keeps its own.
+  // items back among the open ones. Only the answers held when the read
+  // began are taken out: a Submit pressed while it reads keeps its own, one
+  // to the same item among them.
+  // Then the reply lint, on an answer, while the `lint.turn-end` setting is
+  // on: what it finds in one in the protocol's shape is shown beneath it,
+  // after whatever a hook beneath showed there, and waits, keyed by the
+  // conversation, for the next prompt's context, which hands it to the
+  // agent. A clean answer, or one in no list's shape, clears what an
+  // earlier one left waiting. A `/clear` that lands while the hook runs
+  // moves the session to a new id, and the note, the old conversation's, is
+  // then not written; a `/rewind` keeps the conversation's key, so its note
+  // still reaches the next prompt.
   on("turn.complete", async ($, e, next) => {
     const done = await next(e);
 
-    if (e.agentId === undefined) {
-      await update($, runningTurn, (held) => (held === e.turnId ? "" : held));
-      const before = await read($, sent);
+    if (e.agentId !== undefined) {
+      return done;
+    }
+    const session = await $.session.id();
+    await dispatch($, { type: "turn-completed", turn: e.turnId });
+    await refresh($, true);
+    await dispatch($, { type: "announced" });
+    // The refresh has read the settings again.
+    const isLinting = (await settingsNow($))?.lint["turn-end"] === true;
+    const note =
+      isLinting && e.reason === "answer" && isKanbanReply(e.answer)
+        ? replyLintText(lintReply(e.answer))
+        : "";
 
-      if (await refresh($)) {
-        await update($, sent, (held) => withoutRead(held, before));
-      }
-      await announce($);
+    const held: LintNote =
+      note === "" ? NO_LINT_NOTE : { conversation: await conversationNow($), text: note };
+
+    if (e.reason === "answer" && (await $.session.id()) === session) {
+      await update($, lintNote, () => held);
     }
 
-    return done;
+    return note === ""
+      ? done
+      : {
+          ...done,
+          text: done.text === e.answer ? note : `${done.text}\n\n${note}`,
+        };
   });
 
   // The person closing the pane: its notes field no longer waits for the
@@ -885,6 +1003,15 @@ export const register: Register = (on) => {
     return changed;
   });
 
+  // The person typing or pasting raises `prompt.edit`, not `prompt.change`:
+  // the draft is the box as the edit leaves it.
+  on("prompt.edit", async ($, e, next) => {
+    const edited = await next(e);
+    await update($, draft, () => edited.text);
+
+    return edited;
+  });
+
   // Above the prompt: 🖥️ Kanban, then a faint ` · ` and the skill's count
   // line, then, while the draft answers open items, ` · ✏️ 2 picked`, each
   // opening the pane with the keyboard; 🖥️ Kanban alone when nothing is
@@ -899,14 +1026,15 @@ export const register: Register = (on) => {
     }
 
     const elements = $.ui.resolve(e);
-    const picked = answeredCount(await shownNow($), await read($, draft));
+    const state = await read($, pane);
+    const picked = answeredCount(shownOf(state), await read($, draft));
 
     return kanbanLine(
       elements,
       s,
       [
-        { key: "counts", text: await read($, counts) },
-        { key: "picked", text: pickedText(picked) },
+        { key: "counts", text: state.counts },
+        { key: "picked", text: pickedText(picked, s.marks.note) },
       ],
       () => openPane($, true),
     );
@@ -919,7 +1047,8 @@ export const register: Register = (on) => {
   // under the whole text instead.
   on("ui.render", { component: "AssistantMessage" }, async ($, e, next) => {
     const r = await shownNow($);
-    const linked = linkedQuestions(e.props.text, r.items);
+    const raisedItems = decideItemsOf(r);
+    const linked = linkedQuestions(e.props.text, raisedItems);
 
     if (linked.hrefs.length === 0) {
       return next(e);
@@ -928,7 +1057,7 @@ export const register: Register = (on) => {
     const s = await settingsNow($);
     const elements = $.ui.resolve(e);
     const { Box, Markdown } = elements;
-    const items = linkedItems(r.items, linked.hrefs);
+    const items = linkedItems(raisedItems, linked.hrefs);
     const boxes =
       s === null
         ? null
@@ -969,31 +1098,29 @@ export const register: Register = (on) => {
     const elements = $.ui.resolve(e);
     const { Box, Text } = elements;
     const s = await settingsNow($);
-    const { shown: r, sections, open, stops } = await paneNow($);
+    const { state, shown: r, sections, open, stops } = await paneNow($);
 
     if (s === null) {
       return <Text dimColor>{noItemsText(problemsOf(r))}</Text>;
     }
 
     const text = await read($, draft);
-    const isBusy =
-      (await read($, runningTurn)) !== "" || (await read($, submitting)) !== 0;
-    const problem = await read($, submitProblem);
+    const { isBusy, problem } = submitShown(state.submit);
     const ring = await read($, focused);
     const notingNow = await read($, noting);
-    const line = await read($, counts);
+    const line = state.counts;
     const openCount = stillOpen(r).length;
 
     return (
       <Box flexDirection="column">
         <Box
           key="header"
-          marginBottom={1}
-          columnGap={2}
+          marginBottom={LAYOUT.blockGap}
+          columnGap={LAYOUT.controlGap}
           flexWrap="wrap"
           justifyContent="space-between"
         >
-          <Box key="header-status" columnGap={2} flexWrap="wrap">
+          <Box key="header-status" columnGap={LAYOUT.controlGap} flexWrap="wrap">
             {kanbanLine(elements, s, [{ key: "counts", text: line }])}
             {openCount === 0 ? null : (
               <Text key="answered">
@@ -1001,10 +1128,10 @@ export const register: Register = (on) => {
               </Text>
             )}
           </Box>
-          <Box key="header-controls" columnGap={2}>
+          <Box key="header-controls" columnGap={LAYOUT.controlGap}>
             {control(elements, {
               key: STEPS.previous,
-              glyph: "↑",
+              glyph: s.marks.buttons.previous,
               label: "Previous",
               hotkey: s.keys.previous,
               isInert: steppedStop(stops, ring, -1) === undefined,
@@ -1012,7 +1139,7 @@ export const register: Register = (on) => {
             })}
             {control(elements, {
               key: STEPS.next,
-              glyph: "↓",
+              glyph: s.marks.buttons.next,
               label: "Next",
               hotkey: s.keys.next,
               isInert: steppedStop(stops, ring, 1) === undefined,
@@ -1020,14 +1147,14 @@ export const register: Register = (on) => {
             })}
             {control(elements, {
               key: "keys",
-              glyph: "?",
+              glyph: s.marks.buttons.help,
               label: "Keys",
               hotkey: s.keys.help,
               onPress: () => toggleKeys($),
             })}
             {control(elements, {
               key: "dismiss",
-              glyph: "✖",
+              glyph: s.marks.buttons.dismiss,
               glyphColor: s.colors.close,
               label: "Close",
               hotkey: s.keys.dismiss,
@@ -1038,6 +1165,13 @@ export const register: Register = (on) => {
         </Box>
         {(await read($, isKeysOpen)) ? keysPanel(elements, s) : null}
         {/* The filters will go here, a row under the header. */}
+        {/* What a Submit a reload overtook said as it ended, on a line of
+            its own, apart from what the pane says of the press since. */}
+        {state.aside.said ? (
+          <Text key="submit-overtaken" wrap="wrap">
+            {state.aside.said}
+          </Text>
+        ) : null}
         {problem ? (
           <Text key="submit-problem" wrap="wrap">
             {problem}
@@ -1057,7 +1191,7 @@ export const register: Register = (on) => {
           <Box
             key={`${section.turn}.section`}
             flexDirection="column"
-            marginTop={n === 0 && openCount > 0 ? 0 : 1}
+            marginTop={n === 0 && openCount > 0 ? 0 : LAYOUT.blockGap}
           >
             <Text key={`${section.turn}.turn`} dimColor>
               {section.header}
@@ -1073,32 +1207,34 @@ export const register: Register = (on) => {
         ))}
         <Box
           key="footer"
-          marginTop={1}
-          columnGap={2}
+          marginTop={LAYOUT.blockGap}
+          columnGap={LAYOUT.controlGap}
           flexWrap="wrap"
           justifyContent="space-between"
         >
           <Text key="draft-summary" wrap="wrap">
             {draftSummary(text)}
           </Text>
-          <Box key="footer-controls" columnGap={2}>
+          <Box key="footer-controls" columnGap={LAYOUT.controlGap}>
             {/* A toggle: it adds `reassess` as the draft's last line, for
                 Submit to send after any answers, or alone, and takes it out
-                again; its glyph is ✅ while the line is there. */}
+                again; its glyph is the chosen mark while the line is there. */}
             {control(elements, {
-              key: "reassess",
-              glyph: hasReassess(text) ? CHOSEN_MARK : "🔄",
-              label: "Reassess",
+              key: REASSESS,
+              glyph: hasReassess(text)
+                ? s.marks.chosen
+                : s.marks.buttons.reassess,
+              label: capitalized(REASSESS),
               hotkey: s.keys.reassess,
               onPress: () => toggleReassess($),
             })}
             {control(elements, {
               key: "submit",
-              glyph: "📤",
+              glyph: s.marks.buttons.submit,
               label: "Submit",
               hotkey: s.keys.submit,
               isInert: "skip" in submitStep(text, isBusy),
-              onPress: () => submitDraft($),
+              onPress: () => dispatch($, { type: "submit-pressed" }),
             })}
           </Box>
         </Box>
@@ -1202,6 +1338,8 @@ const control = (
  * `🖥️ Kanban`, the word in its colour, then each of `pieces` that isn't
  * empty after a faint ` · `: above the prompt each a button that runs
  * `onOpen`; atop the pane, which is already open, the same text unpressable.
+ * The line carries on the count line, so its pieces part by the count
+ * line's own separator, the spec's, and the two can't differ.
  */
 const kanbanLine = (
   elements: Pick<Elements, "Box" | "Button" | "Text">,
@@ -1221,8 +1359,8 @@ const kanbanLine = (
 
   return (
     <Box key="kanban-line">
-      {piece("kanban", "Open the Decide pane", [
-        "🖥️ ",
+      {piece("kanban", `Open the ${DECIDE.header} pane`, [
+        `${s.marks.buttons.kanban} `,
         <Text key="kanban-word" color={s.colors.kanban}>
           Kanban
         </Text>,
@@ -1231,16 +1369,13 @@ const kanbanLine = (
         .filter((p) => p.text !== "")
         .flatMap((p) => [
           <Text key={p.key === "counts" ? "divider" : `${p.key}-divider`} dimColor>
-            {" · "}
+            {SPEC["roll-up"]["count-separator"]}
           </Text>,
           piece(p.key, p.text, [p.text]),
         ])}
     </Box>
   );
 };
-
-/** The cells between a label and the text after it, on a title or a Done line. */
-const LABEL_GAP = 2;
 
 /**
  * A line with a lead, `🔘 A. `, `➕ ` or an item's label, whose wrapped rows
@@ -1277,12 +1412,16 @@ const hanging = (
  */
 const keysPanel = (elements: Pick<Elements, "Box" | "Text">, s: Settings) => {
   const { Box, Text } = elements;
-  const rows = keyRows(s.keys);
+  const rows = keyRows(s.keys, s.marks.buttons);
   const width =
-    Math.max(...rows.map((row) => cellWidth(row.key))) + LABEL_GAP;
+    Math.max(...rows.map((row) => cellWidth(row.key))) + LAYOUT.labelGap;
 
   return (
-    <Box key="keys-panel" flexDirection="column" marginBottom={1}>
+    <Box
+      key="keys-panel"
+      flexDirection="column"
+      marginBottom={LAYOUT.blockGap}
+    >
       {rows.map((row, n) =>
         hanging(
           elements,
@@ -1315,13 +1454,13 @@ const doneRow = (
   return (
     <Box key={`${refOf(item)}.row`}>
       <Text key={`${refOf(item)}.bar`} color={s.colors.settled}>
-        ▌
+        {s.marks["settled-bar"]}
       </Text>
       {hanging(
         elements,
         key,
         {
-          width: cellWidth(line.label) + LABEL_GAP,
+          width: cellWidth(line.label) + LAYOUT.labelGap,
           node: <Text dimColor>{line.label}</Text>,
         },
         <Button
@@ -1361,11 +1500,11 @@ const doneSection = (
     <Box key={`${key}-box`} flexDirection="column">
       <Button
         key={key}
-        label={`Done (${section.done.length})`}
+        label={`${DONE.header} (${section.done.length})`}
         plain
         onPress={() => toggleExpanded($, key)}
       >
-        {doneHeader(section.done.length, isOpen)}
+        {doneHeader(section.done.length, isOpen, s.marks)}
       </Button>
       {isOpen
         ? section.done.map((item) =>
@@ -1430,10 +1569,10 @@ const itemBoxes = (
           <Box
             key={refOf(item)}
             flexDirection="column"
-            borderStyle="round"
+            borderStyle={LAYOUT.border}
             borderColor={s.colors.border}
             borderDimColor={isDone}
-            paddingX={1}
+            paddingX={LAYOUT.boxPadding}
           >
             {itemView(elements, s, item, {
               title: itemTitle(item, isDone),
@@ -1461,9 +1600,10 @@ const itemBoxes = (
 };
 
 /**
- * One Decide item as the skill writes it: the title, the note, and each
- * option a plain button reading `glyph letter. name: consequence`, its ➕ and
- * ➖ lines indented under it, always in full.
+ * One Decide item as the skill writes it: the title, the note, each option
+ * a plain button reading `glyph letter. name: consequence`, its ➕ and ➖
+ * lines indented under it, always in full, and the `Frees:` line naming
+ * what it frees, where it frees anything.
  */
 const itemView = (
   elements: Elements,
@@ -1512,7 +1652,7 @@ const itemView = (
     key: string,
   ) =>
     (texts ?? []).map((line, n) => (
-      <Box key={`${key}-${n}`} marginLeft={INDENT}>
+      <Box key={`${key}-${n}`} marginLeft={LAYOUT.indent}>
         <Text
           dimColor={dim}
           {...(background ? { backgroundColor: background } : {})}
@@ -1555,7 +1695,7 @@ const itemView = (
       {hanging(
         elements,
         `${ref}.title`,
-        { width: cellWidth(view.title.label) + 1, node: label },
+        { width: cellWidth(view.title.label) + LAYOUT.titleGap, node: label },
         onTitle === undefined ? (
           summary
         ) : (
@@ -1571,7 +1711,7 @@ const itemView = (
         ),
       )}
       {view.settled ? (
-        <Box key="done-by" marginLeft={INDENT}>
+        <Box key="done-by" marginLeft={LAYOUT.indent}>
           <Text dimColor wrap="wrap">
             {view.settled}
           </Text>
@@ -1583,16 +1723,21 @@ const itemView = (
         // An option the answer that made the item Done picked: its own mark,
         // at full strength in the dimmed item, never underlined.
         const isSent = view.sent.includes(option.letter);
-        // A chosen option's line is underlined, its glyph turned to ✅;
-        // nothing of it, and none of its ➕ and ➖ lines, is highlighted.
+        // A chosen option's line is underlined, its glyph turned to the
+        // chosen mark; nothing of it, and none of its ➕ and ➖ lines, is
+        // highlighted.
         const pick = isChosen ? { underline: true } : {};
         const key = view.keyOf(option.letter);
         // A Button holds only text, so each of the option's lines is a button
         // of its own that picks it. They share a hover group, so the pointer
         // on any of them lights the gutter beside every one: a bar the
-        // option's height. A Done option's gutter stays lit in the
-        // settled colour instead, and never hovers.
-        const gutter = gutterStyle(dim, key, colors);
+        // option's height. A Done item's gutter stays lit in the settled
+        // colour instead beside an option its answer picked, is unlit
+        // beside the others, and never hovers.
+        const gutter = gutterStyle(
+          { isSettled: dim, answered: view.sent, letter: option.letter, scope: key },
+          colors,
+        );
         // Every option picks, a Done item's too, so none is dim.
         const press = {
           plain: true,
@@ -1613,13 +1758,15 @@ const itemView = (
                 { width: cellWidth(lead), node: <Text>{lead}</Text> },
                 body,
               );
-        // One line of the option: the gutter cell, then the line, which wraps
-        // beside it; the gutter's Box stretches to the line's rows.
+        // One line of the option: the gutter cell, a blank gap, then the
+        // line, which wraps beside them; the gutter's Box stretches to the
+        // line's rows.
         const row = (rowKey: string, content: RenderNode) => (
           <Box key={`${rowKey}-row`}>
             <Box
               key={`${rowKey}-gutter`}
-              width={GUTTER}
+              width={LAYOUT.gutter}
+              marginRight={LAYOUT.gutterGap}
               flexShrink={0}
               {...gutter}
             >
@@ -1636,7 +1783,7 @@ const itemView = (
           (texts ?? []).map((line, n) =>
             row(
               `${key}-${part}-${n}`,
-              <Box key={`${key}-${part}-${n}-box`} marginLeft={INDENT} flexGrow={1} flexShrink={1}>
+              <Box key={`${key}-${part}-${n}-box`} marginLeft={LAYOUT.indent} flexGrow={1} flexShrink={1}>
                 {led(
                   `${key}-${part}-${n}`,
                   prefix ? `${prefix} ` : "",
@@ -1652,13 +1799,13 @@ const itemView = (
           <Box
             key={`${key}-box`}
             flexDirection="column"
-            marginLeft={INDENT - GUTTER}
+            marginLeft={LAYOUT.indent - LAYOUT.gutter - LAYOUT.gutterGap}
           >
             {row(
               key,
               led(
                 key,
-                `${optionMark(item, option.letter, { chosen: isChosen, sent: isSent }, s.marks.sent)} ${option.letter}. `,
+                optionLead(item, option.letter, { chosen: isChosen, sent: isSent }, s.marks),
                 <Button key={key} label={option.name} {...press}>
                 {inline(option.name, `${option.letter}-name`, {
                   ...pick,
@@ -1677,22 +1824,23 @@ const itemView = (
           </Box>
         );
       })}
+      {lines("", freesLineOf(item.frees ?? []), undefined, "frees")}
       {view.notes === "none" ? null : view.notes === "button" ? (
-        <Box key={`${view.keyOf("add-note")}-box`} marginLeft={INDENT}>
+        <Box key={`${view.keyOf("add-note")}-box`} marginLeft={LAYOUT.indent}>
           <Button
             key={view.keyOf("add-note")}
             label="Add a note"
             plain
             onPress={() => view.onOpenNotes()}
           >
-            ✏️ Add a note
+            {`${s.marks.note} Add a note`}
           </Button>
         </Box>
       ) : (
-        <Box key={`${notesKey(item)}-box`} marginLeft={INDENT}>
+        <Box key={`${notesKey(item)}-box`} marginLeft={LAYOUT.indent}>
           <Input
             key={notesKey(item)}
-            label="✏️ "
+            label={`${s.marks.note} `}
             placeholder="Notes, or an answer in your own words"
             submitLabel="add to the draft"
             rows={noteRows(s.notes.rows)}

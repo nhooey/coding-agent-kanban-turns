@@ -7,6 +7,7 @@ export const SPEC = {
       "glyph": "✅",
       "aliases": [],
       "rolls-up": false,
+      "settled-by": "none",
       "settling-words": {}
     },
     "pending": {
@@ -17,6 +18,7 @@ export const SPEC = {
         "Open"
       ],
       "rolls-up": true,
+      "settled-by": "none",
       "settling-words": {}
     },
     "logged": {
@@ -24,6 +26,7 @@ export const SPEC = {
       "glyph": "📝",
       "aliases": [],
       "rolls-up": false,
+      "settled-by": "none",
       "settling-words": {}
     },
     "waiting": {
@@ -31,6 +34,7 @@ export const SPEC = {
       "glyph": "⏳",
       "aliases": [],
       "rolls-up": true,
+      "settled-by": "report",
       "settling-words": {}
     },
     "answers": {
@@ -40,6 +44,7 @@ export const SPEC = {
         "Questions"
       ],
       "rolls-up": false,
+      "settled-by": "none",
       "settling-words": {}
     },
     "authorizations": {
@@ -47,6 +52,7 @@ export const SPEC = {
       "glyph": "🔑",
       "aliases": [],
       "rolls-up": true,
+      "settled-by": "none",
       "settling-words": {}
     },
     "review": {
@@ -56,6 +62,7 @@ export const SPEC = {
         "To review"
       ],
       "rolls-up": true,
+      "settled-by": "merged-pull-request",
       "settling-words": {}
     },
     "todo": {
@@ -65,6 +72,7 @@ export const SPEC = {
         "To do"
       ],
       "rolls-up": true,
+      "settled-by": "none",
       "settling-words": {}
     },
     "decide": {
@@ -75,6 +83,7 @@ export const SPEC = {
         "Blocked"
       ],
       "rolls-up": true,
+      "settled-by": "answer",
       "settling-words": {}
     }
   },
@@ -85,12 +94,14 @@ export const SPEC = {
       "radio": {
         "picks": "one",
         "glyph": "🔘",
-        "letters": {}
+        "letters": {},
+        "taught": true
       },
       "checkbox": {
         "picks": "any",
         "glyph": "🔲",
-        "letters": {}
+        "letters": {},
+        "taught": true
       },
       "binary": {
         "picks": "one",
@@ -98,7 +109,8 @@ export const SPEC = {
         "letters": {
           "Y": "👍",
           "N": "👎"
-        }
+        },
+        "taught": false
       }
     }
   },
@@ -127,6 +139,9 @@ export const SPEC = {
       "reply-block"
     ]
   },
+  "skill": {
+    "name": "coding-agent-kanban-turn-responses"
+  },
   "reference": {
     "turn-id": {
       "length": 8,
@@ -142,6 +157,47 @@ export const SPEC = {
       "from"
     ]
   },
+  "frees": {
+    "label": "Frees",
+    "separator": ","
+  },
+  "subject": {
+    "alphabet": "0123456789abcdefghijklmnopqrstuvwxyz",
+    "words-kept": 3,
+    "stop-words": [
+      "a",
+      "an",
+      "and",
+      "at",
+      "by",
+      "for",
+      "from",
+      "in",
+      "is",
+      "its",
+      "of",
+      "on",
+      "the",
+      "to",
+      "with"
+    ],
+    "entry": {
+      "label": "entry",
+      "words": [
+        "entry",
+        "entries"
+      ],
+      "digits": {
+        "fewest": 3,
+        "most": 4
+      }
+    },
+    "branch": {
+      "label": "branch",
+      "separator": "-",
+      "fewest-words": 2
+    }
+  },
   "roll-up": {
     "glyph": "📌",
     "header": "Outstanding from previous turns",
@@ -149,7 +205,12 @@ export const SPEC = {
       "Still open from earlier"
     ],
     "count-label": "Outstanding",
-    "count-separator": " · "
+    "count-separator": " · ",
+    "interval": {
+      "most-minutes": 30,
+      "times": 5,
+      "turns": 5
+    }
   },
   "tag": {
     "glyph": "🔖",

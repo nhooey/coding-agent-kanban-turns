@@ -1,5 +1,13 @@
 import { expect, test } from "claude-code/testing";
-import type { On, Register } from "claude-code";
+import type { Engine } from "claude-code/testing";
+import type {
+  On,
+  PromptChangeInput,
+  PromptChangeResult,
+  PromptEditInput,
+  PromptEditResult,
+  Register,
+} from "claude-code";
 
 // The transcript's records, trimmed as test/fixtures/records.ts trims them for the
 // Node tests: the engine's test kit loads this file alone.
@@ -116,7 +124,23 @@ const DEFAULTS = JSON.stringify({
   keys: { dismiss: "q", next: "j", previous: "k", submit: "s", reassess: "r", help: "h" },
   pane: { "close-when-all-submitted": true },
   notes: { rows: 3 },
-  marks: { sent: "☑️" },
+  marks: {
+    sent: "✅",
+    chosen: "✅",
+    note: "✏️",
+    "settled-bar": "▌",
+    collapsed: "▸",
+    expanded: "▾",
+    buttons: {
+      dismiss: "✖",
+      next: "↓",
+      previous: "↑",
+      submit: "📤",
+      reassess: "🔄",
+      help: "?",
+      kanban: "🖥️",
+    },
+  },
   colors: {
     border: "promptBorder",
     "title-label": "inverseText",
@@ -127,6 +151,8 @@ const DEFAULTS = JSON.stringify({
     close: "error",
     kanban: "claude",
   },
+  "roll-up": { "summary-width": 100 },
+  lint: { "turn-end": true },
 });
 
 const ABOVE_PROMPT = {
@@ -253,6 +279,10 @@ const engine = (
     runs: [] as (readonly string[])[],
     isUnreadable: false,
     isFillRefused: false,
+    // What a fill of the box throws, as a box gone from under it would.
+    fillError: undefined as Error | undefined,
+    // Why a hook beneath the plugin refuses to close the pane; none closes it.
+    closeDenial: undefined as string | undefined,
     // The box takes no text added after a draft, as a dialog opening while
     // a submit is pending would leave it.
     isAppendRefused: false,
@@ -267,6 +297,10 @@ const engine = (
     registering: undefined as (() => Promise<void>) | undefined,
     // The user's settings files, by name, in their folder; none by default.
     userFiles: {} as Record<string, string>,
+    // Whether the plugin's own defaults file is gone from its folder.
+    isDefaultsMissing: false,
+    // Why a read of the plugin's own defaults file fails; none fails.
+    defaultsDenial: undefined as string | undefined,
     isRingMovable: false,
     focus: [] as string[],
   };
@@ -324,6 +358,9 @@ const engine = (
       : [],
   }));
   on("ui.close", () => {
+    if (state.closeDenial !== undefined) {
+      return { deny: state.closeDenial };
+    }
     state.isPaneOpen = false;
 
     return { value: undefined };
@@ -333,14 +370,20 @@ const engine = (
   on("session.start", (_, e) => ({ cwd: e.cwd }));
   on("env.get", () => ({ value: "/home/neil" }));
   // A user settings file is there only where `userFiles` holds it, so by
-  // default the shipped defaults are what's in effect.
+  // default the shipped defaults are what's in effect; the defaults file is
+  // there unless `isDefaultsMissing`.
   on("fs.exists", (_, e) => ({
-    value: e.path.startsWith(USER_FOLDER) ? userFile(e.path) !== undefined : true,
+    value: e.path.startsWith(USER_FOLDER)
+      ? userFile(e.path) !== undefined
+      : !(state.isDefaultsMissing && e.path.endsWith("/defaults/config.yaml")),
   }));
   // A test has no files, so the defaults file reads as this; the Node tests
-  // (test/unit/config/config.test.ts) hold the real one to the shape. The transcript is
+  // (test/unit/config/) hold the real one to the fixture's shape. The transcript is
   // read as bytes, by the range asked for.
   on("fs.read", async (_, e) => {
+    if (state.defaultsDenial !== undefined && e.path.endsWith("/defaults/config.yaml")) {
+      return { deny: state.defaultsDenial };
+    }
     if (e.path !== TRANSCRIPT) {
       return { value: userFile(e.path) ?? DEFAULTS };
     }
@@ -365,6 +408,9 @@ const engine = (
   }));
   // A box under a dialog takes no text.
   on("prompt.fill", (_, e) => {
+    if (state.fillError !== undefined) {
+      throw state.fillError;
+    }
     if (state.isFillRefused || (state.isAppendRefused && e.mode === "append")) {
       return { isFilled: false };
     }
@@ -559,7 +605,78 @@ test("a user's config.yaml is read", async ($, on) => {
   expect(shown).not.toContain("Not used");
 });
 
-test("a user's config.jsonc is not read: the defaults are in effect, with no warning", async ($, on) => {
+test("with no defaults file, no settings are used, and /answers, the pane and /answers-config say it's missing", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  state.isDefaultsMissing = true;
+  state.userFiles = { "config.yaml": "keys:\n  dismiss: x\n" };
+  const missing = "/defaults/config.yaml: is missing";
+
+  const answered = (await $.command.run(ANSWERS)).text ?? "";
+  expect(answered).toMatch(/^No open Decide items: .*\/defaults\/config\.yaml: is missing\.$/);
+  // The user's sound file gives no problem of its own.
+  expect(answered).not.toContain(USER_FOLDER);
+
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  const drawn = JSON.stringify(await ui.drawn());
+  expect(drawn).toContain(missing);
+  expect(drawn).not.toContain(USER_FOLDER);
+  await ui.unmount();
+
+  const config = (await $.command.run({ ...ANSWERS, command: "answers-config" })).text ?? "";
+  expect(config.split("\n")).toEqual([expect.stringMatching(/^Not used: .*\/defaults\/config\.yaml: is missing$/)]);
+});
+
+test("a defaults file whose read fails leaves no settings in use, and the pane and /answers-config say why", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  const why = "the defaults can't be read";
+  state.defaultsDenial = why;
+
+  const config = (await $.command.run({ ...ANSWERS, command: "answers-config" })).text ?? "";
+  expect(config).toMatch(/^Not used: /);
+  expect(config).toContain(why);
+
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  expect(await titles(ui)).toEqual([]);
+  expect(JSON.stringify(await ui.drawn())).toContain(why);
+  await ui.unmount();
+});
+
+test("a settings read whose answer can't be written is dropped: its refresh waits on nothing, and the next refresh reads as before", async ($, on) => {
+  engine(on, () => ITEMS);
+  type Written = Readonly<{ settings: Readonly<{ tag: string }>; refresh: Readonly<{ reads: readonly unknown[] }> }>;
+  const pane = { denied: 0, written: [] as Written[] };
+  // The first write of a settings read's answer fails, as a full store's
+  // would; every other write lands, and is kept.
+  on("state.set", (_, e, next) => {
+    const written = (e as unknown as { key: string; value: { value: Written } });
+
+    if (written.key !== "pane") {
+      return next(e);
+    }
+    if (pane.denied === 0 && written.value.value.settings.tag !== "unread") {
+      pane.denied += 1;
+
+      return { deny: "the store is full" };
+    }
+    pane.written.push(written.value.value);
+
+    return next(e);
+  });
+
+  await $.command.run(ANSWERS).catch(() => undefined);
+  expect(pane.denied).toBe(1);
+  expect(pane.written.at(-1)?.settings.tag).toBe("unread");
+  expect(pane.written.at(-1)?.refresh.reads).toEqual([]);
+
+  await $.command.run(ANSWERS);
+  expect(pane.written.at(-1)?.settings.tag).toBe("loaded");
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  expect(await titles(ui)).not.toEqual([]);
+  await ui.unmount();
+});
+
+test("a user's config.jsonc is not read: the defaults are in effect", async ($, on) => {
   const state = engine(on, () => []);
   state.userFiles = { "config.jsonc": '{"keys": {"dismiss": "z"}}' };
   const shown = await $.command.run({ ...ANSWERS, command: "answers-config" });
@@ -568,7 +685,6 @@ test("a user's config.jsonc is not read: the defaults are in effect, with no war
   expect(lines.find((line) => line.startsWith("keys.dismiss = "))).toMatch(
     /^keys\.dismiss = "q"  # defaults: /,
   );
-  expect(lines.filter((line) => line.startsWith("Warning"))).toEqual([]);
   expect(lines.filter((line) => line.startsWith("Not used"))).toEqual([]);
 
   // /answers's line for no open items, and the pane, name no settings problem.
@@ -628,14 +744,14 @@ test("the pane keeps every item raised, newest turn first, a Done one in its tur
   // A click on the line opens the item's full box, dimmed but for its
   // options, which pick as an open item's do: a click writes a fresh
   // reference into the draft and marks the option ✅, the sent answer
-  // keeping its ☑️, and the item stays in its Done section. A click on its
+  // keeping its sent mark, and the item stays in its Done section. A click on its
   // title closes it to its line again.
   await ui.press({ key: "9efb08a1.Decide.1.line" });
   expect(await titles(ui)).toContain("🧠 Decide.1 · Which cache to keep (done)");
   await ui.press({ key: "9efb08a1.Decide.1.B" });
   expect(state.box).toBe(`${HEADER}9efb08a1.Decide.1.B\n`);
   expect(await leadOf(ui, "9efb08a1.Decide.1.B")).toBe("✅ B. ");
-  expect(await leadOf(ui, "9efb08a1.Decide.1.A")).toBe("☑️ A. ");
+  expect(await leadOf(ui, "9efb08a1.Decide.1.A")).toBe("✅ A. ");
   expect((await ui.find({ type: "Button", key: "9efb08a1.Decide.1.B" }))?.props["dimColor"]).not.toBe(true);
   expect(await titles(ui)).toContain("🧠 Decide.1 · Which cache to keep (done)");
   await ui.press({ key: "9efb08a1.Decide.1.B" });
@@ -959,7 +1075,7 @@ test("an answer in a later prompt settles its item, in the pane and the count li
     expect(
       (await drawing.findAll({ type: "Text", text: /^Answered in / })).map((found) => found.text),
     ).toEqual(["Answered in b2c3d4e5: A", "Answered in b2c3d4e5: B"]);
-    expect(await leadOf(drawing, "9efb08a1.Decide.1.A")).toBe("☑️ A. ");
+    expect(await leadOf(drawing, "9efb08a1.Decide.1.A")).toBe("✅ A. ");
     const sent = await drawing.find({ type: "Button", key: "9efb08a1.Decide.1.A" });
     expect(sent?.text).toBe("Disk");
     expect(sent?.props["dimColor"]).not.toBe(true);
@@ -1346,12 +1462,18 @@ test("an option's pros and cons pick it too", async ($, on) => {
   expect(state.box).toBe(`${HEADER}9efb08a1.Decide.1.A\n`);
 
   // Under the pointer an option lights the gutter left of each of its
-  // lines, in the hover colour, and no longer inverts its text.
-  const drawn = JSON.stringify(await ui.drawn());
-  expect(drawn).toContain(
-    '"scope":"9efb08a1.Decide.1.A","backgroundColor":"suggestion"',
-  );
-  expect(drawn).not.toContain('"inverse":true');
+  // lines, its name, ➕ and ➖ lines alike, in the hover colour, and no
+  // longer inverts its text.
+  // The hover style rides on the gutter's cell, which the engine reports
+  // beside its props.
+  const gutter = async (key: string) =>
+    JSON.stringify(await ui.find({ type: "Box", key: `${key}-gutter` }));
+  for (const key of ["9efb08a1.Decide.1.A", "9efb08a1.Decide.1.A-pro-0", "9efb08a1.Decide.1.A-con-0"]) {
+    expect(await gutter(key)).toContain(
+      '"hover":{"scope":"9efb08a1.Decide.1.A","backgroundColor":"suggestion"}',
+    );
+  }
+  expect(JSON.stringify(await ui.drawn())).not.toContain('"inverse":true');
   await ui.unmount();
 });
 
@@ -1376,6 +1498,21 @@ const REPLY = {
     isFirstOfReply: true,
   },
 } as const;
+
+test("a Decide item's box draws the Frees: line naming what it frees, under its options, and none for an item that frees nothing", async ($, on) => {
+  const freeing = [{ ...ITEMS[0], frees: ["9efb08a1.Todo.1", "9efb08a1.Review.2"] }, ITEMS[2]];
+  engine(on, () => freeing);
+  await $.tool.call({ tool: TOOL, items: freeing } as never);
+  await $.turn.complete(replyDone("t0"));
+  const reply = await $.ui.mount(REPLY);
+
+  const drawn = JSON.stringify(await reply.drawn());
+  expect(drawn).toContain("Frees: 9efb08a1.Todo.1, 9efb08a1.Review.2");
+  expect(drawn.indexOf("Frees: ")).toBeGreaterThan(drawn.indexOf("Memory"));
+  expect(drawn.indexOf("Frees: ")).toBeLessThan(drawn.indexOf(" 🧠 Decide.3 "));
+  expect(drawn.split("Frees: ").length).toBe(2);
+  await reply.unmount();
+});
 
 test("a reply whose Decide list isn't found intact draws its items under its text, a Done one dimmed but live", async ($, on) => {
   const open: unknown[] = [...ITEMS];
@@ -1451,6 +1588,71 @@ test("a reply's Decide list found intact is cut out, its items' boxes drawn in i
   await reply.press({ key: "9efb08a1.Decide.2.B" });
   expect(state.box).toBe(`${HEADER}9efb08a1.Decide.2.B\n`);
   await reply.unmount();
+});
+
+/**
+ * The prompt box's own events, which the engine raises for the person's
+ * edits and the test kit's `$` carries, though its types list only the
+ * calls a plugin makes.
+ */
+type PromptEvents = Readonly<{
+  edit: (e: PromptEditInput) => Promise<PromptEditResult>;
+  change: (e: PromptChangeInput) => Promise<PromptChangeResult>;
+}>;
+
+const promptEvents = ($: Engine): PromptEvents => $.prompt as unknown as PromptEvents;
+
+test("a pick in a reply's box shows in the pane's, and one in the pane's in the reply's, both read from the draft, which the person's own edits change", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  // The engine's box takes the person's edit, as core splices it in, and
+  // echoes a change.
+  on("prompt.edit", (_, e) => {
+    state.box = `${e.text.slice(0, e.start)}${e.inputText}${e.text.slice(e.end)}`;
+
+    return { text: state.box, cursor: e.start + e.inputText.length };
+  });
+  on("prompt.change", (_, e) => {
+    state.box = e.text;
+
+    return { text: e.text };
+  });
+  await $.tool.call({ tool: TOOL, items: ITEMS } as never);
+  await $.turn.complete(replyDone("t0"));
+  const reply = await $.ui.mount(REPLY);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  const leads = async (key: string) => [await leadOf(reply, key), await leadOf(ui, key)];
+  expect(await leads("9efb08a1.Decide.1.B")).toEqual(["🔘 B. ", "🔘 B. "]);
+
+  await reply.press({ key: "9efb08a1.Decide.1.B" });
+  expect(await leads("9efb08a1.Decide.1.B")).toEqual(["✅ B. ", "✅ B. "]);
+  await ui.press({ key: "9efb08a1.Decide.3.N" });
+  expect(await leads("9efb08a1.Decide.3.N")).toEqual(["✅ N. ", "✅ N. "]);
+  const picked = `${HEADER}9efb08a1.Decide.1.B\n9efb08a1.Decide.3.N\n`;
+  expect(state.box).toBe(picked);
+
+  // The person deletes the second answer's line by hand: both copies unpick
+  // it. Taking the edit back puts it back in both.
+  const at = picked.indexOf("9efb08a1.Decide.3.N");
+  await promptEvents($).edit({
+    origin: { kind: "composer" },
+    text: picked,
+    cursor: picked.length,
+    start: at,
+    end: picked.length,
+    inputText: "",
+  });
+  expect(state.box).toBe(`${HEADER}9efb08a1.Decide.1.B\n`);
+  expect(await leads("9efb08a1.Decide.3.N")).toEqual(["👎 N. ", "👎 N. "]);
+  expect(await leads("9efb08a1.Decide.1.B")).toEqual(["✅ B. ", "✅ B. "]);
+  await promptEvents($).change({ text: picked, cursor: picked.length, origin: { kind: "undo" } });
+  expect(await leads("9efb08a1.Decide.3.N")).toEqual(["✅ N. ", "✅ N. "]);
+
+  // Unpicked in either, the option is unpicked in both.
+  await ui.press({ key: "9efb08a1.Decide.1.B" });
+  expect(await leads("9efb08a1.Decide.1.B")).toEqual(["🔘 B. ", "🔘 B. "]);
+  expect(state.sent).toEqual([]);
+  await reply.unmount();
+  await ui.unmount();
 });
 
 test("above the prompt, ✏️ n picked follows the count line while the draft answers open items", async ($, on) => {
@@ -1622,6 +1824,29 @@ test("a box that can't be emptied sends nothing and keeps the draft", async ($, 
   expect(await sendProblem(ui)).toContain(
     "couldn't be emptied",
   );
+  await ui.unmount();
+});
+
+test("a box that throws as Submit empties it sends nothing, names the draft, and frees Submit", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  await ui.press({ key: "9efb08a1.Decide.1.B" });
+  state.fillError = new Error("the box fell over");
+  await ui.press({ key: "submit" });
+
+  expect(state.sent).toEqual([]);
+  const problem = (await ui.findAll({ type: "Text", text: /^Submit failed/ }))[0]?.text;
+  // A hook that throws is skipped, and with nothing else to fill the box the
+  // engine's fill rejects: the pane says what it rejected with. The fill may
+  // have emptied the box before it failed, so the pane keeps the draft.
+  expect(problem).toContain("prompt.fill");
+  expect(problem).toContain("9efb08a1.Decide.1.B");
+
+  // Submit isn't left busy: the next press sends.
+  state.fillError = undefined;
+  await ui.press({ key: "submit" });
+  expect(state.sent).toEqual([`${HEADER}9efb08a1.Decide.1.B\n`]);
   await ui.unmount();
 });
 
@@ -1839,15 +2064,28 @@ test("a turn that starts while the session's start registers keeps Submit waitin
 
 test("raised items stored under an older shape are not drawn", async ($, on) => {
   engine(on, () => []);
-  // What the plugin kept before Raised gained settlements, as a reload
-  // finds it.
+  // What the plugin kept before the raised items moved into the pane's
+  // state, under the pane's earlier shape, as a reload finds it: the first
+  // read finds it, and the plugin's writes since, of the settings it reads,
+  // land over it.
   const stale = {
-    shape: "raised-2",
-    value: { session: "session-1", items: ITEMS, settledRefs: [], seenRefs: [], problem: "", warnings: [] },
+    shape: "pane-2",
+    value: {
+      presses: 0,
+      submit: { tag: "idle" },
+      overtaken: [],
+      raised: { session: "session-1", items: ITEMS, settledRefs: [], seenRefs: [], problem: "", warnings: [] },
+    },
   };
-  on("state.get", (_, e, next) =>
-    e.key === "raised" ? { value: { value: stale, version: 1 } } : next(e),
-  );
+  const reads = { pane: 0 };
+  on("state.get", (_, e, next) => {
+    if (e.key !== "pane") {
+      return next(e);
+    }
+    reads.pane += 1;
+
+    return reads.pane === 1 ? { value: { value: stale, version: 1 } } : next(e);
+  });
   await $.command.run({ ...ANSWERS, command: "answers-config" });
   const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
 
@@ -1856,27 +2094,76 @@ test("raised items stored under an older shape are not drawn", async ($, on) => 
   await ui.unmount();
 });
 
-test("settings stored under an older shape are not used", async ($, on) => {
+test("a pane stored under the shape from before the settings moved into it is not used", async ($, on) => {
   engine(on, () => ITEMS);
-  // What an earlier version of the plugin kept, before Settings gained
-  // notes and lost colors.expand, as a reload finds it: the store answers it
-  // whatever the plugin writes since.
+  // What the plugin kept under the pane-3 shape, while the settings were an
+  // atom of their own: no settings field, and a refresh's read out with no
+  // `on`, as a reload finds it. The store answers it whatever the plugin
+  // writes since.
   const stale = {
-    shape: "settings-2",
+    shape: "pane-3",
     value: {
-      settings: { ...JSON.parse(DEFAULTS), notes: undefined, colors: { expand: "claude" } },
-      effective: [],
-      problems: [],
+      presses: 1,
+      submit: { tag: "idle" },
+      overtaken: [],
+      aside: { said: "", presses: 0 },
+      refresh: { asked: 2, shown: 1, reads: [{ refresh: 2, releases: [] }] },
+      raised: { session: "session-1", items: ITEMS, settledRefs: [], seenRefs: [], problem: "", warnings: [] },
+      sent: [],
+      merged: [],
+      counts: "",
     },
   };
   on("state.get", (_, e, next) =>
-    e.key === "settings" ? { value: { value: stale, version: 1 } } : next(e),
+    e.key === "pane" ? { value: { value: stale, version: 1 } } : next(e),
   );
   await $.tool.call({ tool: TOOL, items: ITEMS } as never);
   const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
 
-  // Read as absent, the stale value draws nothing: no items drawn with
-  // settings that lack notes.rows.
+  // Read as absent, the stale value draws nothing: no items, and no
+  // settings it never held.
+  expect(await titles(ui)).toEqual([]);
+  expect(await ui.find({ type: "Text", text: /^No open Decide items/ })).toBeDefined();
+  await ui.unmount();
+});
+
+test("a pane stored under the shape from before each raised item held where it stands is not used", async ($, on) => {
+  engine(on, () => ITEMS);
+  // What the plugin kept under the pane-4 shape, while the raised items
+  // were bare and their settled refs, settlements and the settings'
+  // problems lists beside them: the first item settled, as a reload finds
+  // it. The store answers it whatever the plugin writes since.
+  const stale = {
+    shape: "pane-4",
+    value: {
+      presses: 1,
+      submit: { tag: "idle" },
+      overtaken: [],
+      aside: { said: "", presses: 0 },
+      refresh: { asked: 1, shown: 1, reads: [] },
+      raised: {
+        session: "session-1",
+        turns: [],
+        items: ITEMS,
+        settledRefs: [ITEMS[0]?.ref],
+        settlements: [],
+        seenRefs: [],
+        problem: "",
+        warnings: [],
+      },
+      sent: [],
+      merged: [],
+      counts: "",
+      settings: { tag: "unread", asked: 0 },
+    },
+  };
+  on("state.get", (_, e, next) =>
+    e.key === "pane" ? { value: { value: stale, version: 1 } } : next(e),
+  );
+  await $.tool.call({ tool: TOOL, items: ITEMS } as never);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+
+  // Read as absent, the stale value draws nothing: no items, open or Done.
   expect(await titles(ui)).toEqual([]);
   expect(await ui.find({ type: "Text", text: /^No open Decide items/ })).toBeDefined();
   await ui.unmount();
@@ -1990,6 +2277,23 @@ test("a Submit that answers every open item closes the pane", async ($, on) => {
   await ui.unmount();
 });
 
+test("a pane close refused after a Submit went through rejects the press, as the old handlers' did", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  await answerAll(ui);
+  state.closeDenial = "the pane stays";
+
+  await expect(ui.press({ key: "submit" })).rejects.toThrow("the pane stays");
+  expect(state.sent).toHaveLength(1);
+  // The press ended once the draft went through: Submit is free.
+  state.closeDenial = undefined;
+  state.box = "Ship it";
+  await ui.press({ key: "submit" });
+  expect(state.sent).toEqual([expect.any(String), "Ship it"]);
+  await ui.unmount();
+});
+
 test("a Submit that leaves an item open keeps the pane open, and a later one answering it closes it", async ($, on) => {
   const state = engine(on, () => ITEMS);
   await $.command.run(ANSWERS);
@@ -2021,6 +2325,86 @@ test("with pane.close-when-all-submitted off, a Submit answering every open item
   await ui.unmount();
 });
 
+// A user's file setting every mark to a character of its own, each one cell
+// wide where the kind glyphs take two.
+const OWN_MARKS = [
+  "marks:",
+  "  sent: S",
+  "  chosen: C",
+  "  note: N",
+  "  settled-bar: '|'",
+  "  collapsed: '+'",
+  "  expanded: '-'",
+  "  buttons:",
+  "    dismiss: X",
+  "    next: v",
+  "    previous: '^'",
+  "    submit: '>'",
+  "    reassess: R",
+  "    help: H",
+  "    kanban: K",
+  "",
+].join("\n");
+
+test("a user's marks draw every surface in their own glyphs, an option's lead padded to the widest of its item's", async ($, on) => {
+  const later: TranscriptRecord[] = [];
+  const state = engine(on, () => ITEMS, listsText, () => later);
+  state.userFiles = { "config.yaml": OWN_MARKS };
+  await $.turn.complete(replyDone("t1"));
+  later.push(human("b2c3d4e5", "9efb08a1.Decide.1.A"), replyRecord([LATER], listsText([LATER])));
+  await $.turn.complete(replyDone("t2"));
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  const line = await $.ui.mount({ ...ABOVE_PROMPT, surface: "terminal" });
+  const button = async (
+    drawing: { find: (q: { type: "Button"; key: string }) => Promise<{ text: string } | undefined> },
+    key: string,
+  ) => (await drawing.find({ type: "Button", key }))?.text;
+
+  // Each button, atop the pane, in the keys panel and above the prompt.
+  expect(await button(ui, "previous")).toBe("^ Previous");
+  expect(await button(ui, "next")).toBe("v Next");
+  expect(await button(ui, "keys")).toBe("H Keys");
+  expect(await button(ui, "dismiss")).toBe("X Close");
+  expect(await button(ui, "submit")).toBe("> Submit");
+  expect(await button(ui, "reassess")).toBe("R Reassess");
+  expect(await button(line, "kanban")).toBe("K Kanban");
+  await ui.press({ key: "keys" });
+  expect(await ui.find({ type: "Text", text: /^v Next: the next item/ })).toBeDefined();
+  expect(await ui.find({ type: "Text", text: /^X Close: close the pane$/ })).toBeDefined();
+
+  // A turn's Done header, closed and open, and the bar opening a Done line.
+  expect(await button(ui, "9efb08a1.done")).toBe("+ Done (1)");
+  await ui.press({ key: "9efb08a1.done" });
+  expect(await button(ui, "9efb08a1.done")).toBe("- Done (1)");
+  expect((await ui.find({ type: "Text", text: /^\|$/ }))?.props).toMatchObject({ color: "ide" });
+
+  // The Done item's sent option and the option the draft picks, each lead
+  // padded to the radio glyph's two cells, so its text stays put.
+  await ui.press({ key: "9efb08a1.Decide.1.line" });
+  expect(await leadOf(ui, "9efb08a1.Decide.1.A")).toBe("S  A. ");
+  expect(await leadOf(ui, "9efb08a1.Decide.1.B")).toBe("🔘 B. ");
+  await ui.press({ key: "9efb08a1.Decide.1.B" });
+  expect(await leadOf(ui, "9efb08a1.Decide.1.B")).toBe("C  B. ");
+  await ui.press({ key: "9efb08a1.Decide.1.B" });
+
+  // The note: the notes field's label, and the count of picks above the prompt.
+  expect((await ui.find({ type: "Input", key: "b2c3d4e5.Decide.1.notes" }))?.props).toMatchObject({ label: "N " });
+  await ui.press({ key: "b2c3d4e5.Decide.1.A" });
+  expect(await button(line, "picked")).toBe("N 1 picked");
+
+  // Reassess's glyph turns to the chosen mark while the draft ends on its line.
+  await ui.press({ key: "reassess" });
+  expect(state.box.endsWith("reassess\n")).toBe(true);
+  expect(await button(ui, "reassess")).toBe("C Reassess");
+  await line.unmount();
+  await ui.unmount();
+
+  // Under a reply, the note opens ✏️ Add a note's place.
+  const reply = await $.ui.mount(REPLY);
+  expect(await button(reply, "9efb08a1.Decide.3.add-note")).toBe("N Add a note");
+  await reply.unmount();
+});
+
 test("a Submit the engine refuses, or that throws, keeps the pane open though it answers every item", async ($, on) => {
   const state = engine(on, () => ITEMS);
   await $.command.run(ANSWERS);
@@ -2050,17 +2434,160 @@ test("a Submit the engine refuses moves nothing to Done", async ($, on) => {
   await ui.unmount();
 });
 
-test("a Done item's lines, opened to its box, have the settled bar beside them, and no hover bar", async ($, on) => {
-  const open: unknown[] = [
-    {
-      ...ITEMS[0],
-      options: [
-        { letter: "A", name: "Disk", pros: ["Survives restarts."], cons: ["Disk use."] },
-        { letter: "B", name: "Memory" },
-      ],
-    },
-    ITEMS[2],
-  ];
+test("a Submit the engine refuses puts back only its own answers: an earlier Submit's answer to the same item stays Done", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  await ui.press({ key: "9efb08a1.Decide.1.A" });
+  await ui.press({ key: "submit" });
+  expect(state.sent).toHaveLength(1);
+
+  // Before a turn starts, a second Submit answers the same item again, and
+  // the engine refuses it.
+  state.submitAnswer = { drop: "a hook refused it" };
+  state.box = `${HEADER}9efb08a1.Decide.1.B\n`;
+  await ui.press({ key: "submit" });
+  await openDone(ui);
+
+  expect(await doneLines(ui)).toEqual(["🧠 Decide.1  Which cache to keep · Sent: A"]);
+  expect(await titles(ui)).toEqual([
+    "🧠 Decide.2 · Cleanups to start",
+    "🧠 Decide.3 · Ship tonight?",
+  ]);
+  await ui.unmount();
+});
+
+test("a Submit a reload overtook keeps to itself: its refusal leaves a later Submit's answers Done, and what the pane says of it outlasts the later Submit", async ($, on) => {
+  const state = engine(on, () => ITEMS);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  const said = async () =>
+    (await ui.findAll({ type: "Text", text: /^Not sent/ })).map((found) => found.text);
+  const refusal = "Not sent, the draft put back in the prompt box: a hook refused it";
+
+  // The first Submit waits on the engine as the plugin reloads.
+  const first = gate();
+  state.holdSubmit = first.wait;
+  state.box = `${HEADER}9efb08a1.Decide.1.B\n`;
+  const overtaken = ui.press({ key: "submit" });
+  await first.reached;
+  await $.session.start({ cwd: "/work", surface: "terminal", isInteractive: true });
+  await $.command.run(ANSWERS);
+
+  // A later Submit answers the same item and another, and waits too.
+  const second = gate();
+  state.holdSubmit = second.wait;
+  state.box = `${HEADER}9efb08a1.Decide.1.A\n9efb08a1.Decide.2.B\n`;
+  const later = ui.press({ key: "submit" });
+  await second.reached;
+
+  // The engine refuses the first Submit's draft.
+  state.submitAnswer = { drop: "a hook refused it" };
+  first.release();
+  await overtaken;
+  await openDone(ui);
+
+  expect(await doneLines(ui)).toEqual([
+    "🧠 Decide.1  Which cache to keep · Sent: A",
+    "🧠 Decide.2  Cleanups to start · Sent: B",
+  ]);
+  expect(await said()).toEqual([refusal]);
+
+  // The later Submit goes through, and what the pane says of the first stays.
+  state.submitAnswer = undefined;
+  second.release();
+  await later;
+
+  expect(state.sent).toEqual([`${HEADER}9efb08a1.Decide.1.A\n9efb08a1.Decide.2.B\n`]);
+  expect(await said()).toEqual([refusal]);
+  await ui.unmount();
+});
+
+test("a refresh whose transcript read answers after a later refresh's leaves what the later one found", async ($, on) => {
+  const later: TranscriptRecord[] = [];
+  const state = engine(on, () => ITEMS, listsText, () => later);
+  await $.command.run(ANSWERS);
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+
+  // The first turn's end reads the transcript, and its read waits.
+  const held = gate();
+  state.holdRead = held.wait;
+  const first = $.turn.complete(replyDone("t1"));
+  await held.reached;
+
+  // A later turn answers an item, and its end's read answers first.
+  later.push(human("b2c3d4e5", "9efb08a1.Decide.1.A"), assistant("On it."));
+  await $.turn.complete(replyDone("t2"));
+  expect(await titles(ui)).toEqual([
+    "🧠 Decide.2 · Cleanups to start",
+    "🧠 Decide.3 · Ship tonight?",
+  ]);
+
+  // The first read answers last, with the transcript as it stood when it
+  // began, before the later turn.
+  later.length = 0;
+  held.release();
+  await first;
+
+  expect(await titles(ui)).toEqual([
+    "🧠 Decide.2 · Cleanups to start",
+    "🧠 Decide.3 · Ship tonight?",
+  ]);
+  await ui.unmount();
+});
+
+// Item 1 with ➕ and ➖ lines under each option, so a bar's every row shows.
+const WITH_LINES = {
+  ...ITEMS[0],
+  options: [
+    { letter: "A", name: "Disk", pros: ["Survives restarts."], cons: ["Disk use."] },
+    { letter: "B", name: "Memory", pros: ["Fast."], cons: ["Lost on restart."] },
+  ],
+} as const;
+
+const OPTION_LINES = {
+  A: ["9efb08a1.Decide.1.A", "9efb08a1.Decide.1.A-pro-0", "9efb08a1.Decide.1.A-con-0"],
+  B: ["9efb08a1.Decide.1.B", "9efb08a1.Decide.1.B-pro-0", "9efb08a1.Decide.1.B-con-0"],
+} as const;
+
+test("a Done item answered with A has the settled bar beside A's lines alone, a cell clear of their marks, in the pane and under the reply", async ($, on) => {
+  const later: TranscriptRecord[] = [];
+  engine(on, () => [WITH_LINES, ITEMS[2]], listsText, () => later);
+  await $.turn.complete(replyDone("t1"));
+  later.push(human("b2c3d4e5", "9efb08a1.Decide.1.A"), assistant("On it."));
+  await $.turn.complete(replyDone("t2"));
+  const pane = await $.ui.mount({ ...PANE, surface: "terminal" });
+  await openDone(pane);
+  await pane.press({ key: "9efb08a1.Decide.1.line" });
+
+  for (const ui of [pane, await $.ui.mount(REPLY)]) {
+    const gutter = async (key: string) =>
+      (await ui.find({ type: "Box", key: `${key}-gutter` }))?.props;
+    // A's every line, its name, ➕ and ➖, lit in the settled colour, and
+    // none hovering.
+    for (const key of OPTION_LINES.A) {
+      expect(await gutter(key)).toMatchObject({ backgroundColor: "ide" });
+      expect(await gutter(key)).not.toHaveProperty("hover");
+    }
+    // B, which the answer didn't pick, unlit, and hovering neither.
+    for (const key of OPTION_LINES.B) {
+      expect(await gutter(key)).toBeDefined();
+      expect(await gutter(key)).not.toHaveProperty("backgroundColor");
+      expect(await gutter(key)).not.toHaveProperty("hover");
+    }
+    // The bar sits a column left of where it did, one blank cell between it
+    // and the mark, and the option's text where it was: 1 + 1 + 1 cells of
+    // the 3-cell indent.
+    expect((await ui.find({ type: "Box", key: "9efb08a1.Decide.1.A-box" }))?.props).toMatchObject({
+      marginLeft: 1,
+    });
+    expect(await gutter("9efb08a1.Decide.1.A")).toMatchObject({ width: 1, marginRight: 1 });
+  }
+  await pane.unmount();
+});
+
+test("a Done item settled with no letters has no bar beside any option, and no hover bar", async ($, on) => {
+  const open: unknown[] = [WITH_LINES, ITEMS[2]];
   engine(on, () => open);
   await $.command.run(ANSWERS);
   open.splice(0, 1);
@@ -2072,13 +2599,9 @@ test("a Done item's lines, opened to its box, have the settled bar beside them, 
   const gutter = async (key: string) =>
     (await ui.find({ type: "Box", key: `${key}-gutter` }))?.props;
   // Every line of the settled item's options: each option, ➕ and ➖ line.
-  for (const key of [
-    "9efb08a1.Decide.1.A",
-    "9efb08a1.Decide.1.A-pro-0",
-    "9efb08a1.Decide.1.A-con-0",
-    "9efb08a1.Decide.1.B",
-  ]) {
-    expect(await gutter(key)).toMatchObject({ backgroundColor: "ide" });
+  for (const key of [...OPTION_LINES.A, ...OPTION_LINES.B]) {
+    expect(await gutter(key)).toBeDefined();
+    expect(await gutter(key)).not.toHaveProperty("backgroundColor");
     expect(await gutter(key)).not.toHaveProperty("hover");
   }
   // The open item's bar lights only under the pointer, and the settled
@@ -2284,6 +2807,44 @@ test("the context tells the agent about the plugin's tool, and keeps the rest", 
   expect(blocks.at(-1)?.text).toContain(`\`${TOOL}\``);
 });
 
+test("the context teaches the whole turn-response format, every list's header and the roll-up's among it", async ($, on) => {
+  engine(on, () => []);
+  on("prompt.context", (_, e) => ({ blocks: e.blocks }));
+  const { blocks } = await $.prompt.context({ blocks: [] });
+  const text = blocks.find((block) => block.name === "kanbanTurns")?.text ?? "";
+
+  [
+    "✅ **Done:**",
+    "🚧 **Pending:**",
+    "📝 **Logged:**",
+    "⏳ **Waiting:**",
+    "❓ **Answers:**",
+    "🔑 **Authorizations:**",
+    "🔍 **Review:**",
+    "👉 **Todo:**",
+    "🧠 **Decide:**",
+    "📌 **Outstanding from previous turns:**",
+    "📌 Outstanding: 🚧 1",
+    "## Progress updates",
+    "A question is never a choice.",
+  ].forEach((phrase) => expect(text).toContain(phrase));
+  expect(text).not.toContain("{{");
+});
+
+test("the context tells an item that blocks other work to end on the line naming the items it frees", async ($, on) => {
+  engine(on, () => []);
+  on("prompt.context", (_, e) => ({ blocks: e.blocks }));
+  const { blocks } = await $.prompt.context({ blocks: [] });
+  const text = blocks.find((block) => block.name === "kanbanTurns")?.text ?? "";
+
+  [
+    "## What an item frees",
+    "An item that blocks other work ends on a line naming, by reference, the items it frees",
+    "Frees: 0f311c94.Decide.2, 0f311c94.Review.1",
+    "- `frees`: the references the item's `Frees:` line names",
+  ].forEach((phrase) => expect(text).toContain(phrase));
+});
+
 const GO = { text: "go", wait: false, origin: { kind: "composer" } } as const;
 
 test(
@@ -2325,4 +2886,77 @@ test("where prompt.context reaches the plugin, the prompts' context gets no seco
 
   await $.prompt.submit(GO);
   expect(state.contexts).toEqual([[]]);
+});
+
+// The plugin's own skill, as Claude Code names a plugin's skill.
+const PLUGIN_SKILL = `${PLUGIN}:coding-agent-kanban-turn-responses`;
+
+/** The agent loading `skill` with the Skill tool, its use's id `id`, and the result it got, an error where `isError`. */
+const skillLoad = (
+  skill: string,
+  isError: boolean = false,
+  id: string = "toolu_skill",
+): readonly TranscriptRecord[] => [
+  {
+    isSidechain: false,
+    type: "assistant",
+    message: {
+      role: "assistant",
+      content: [{ type: "tool_use", id, name: "Skill", input: { skill } }],
+    },
+  },
+  {
+    isSidechain: false,
+    type: "user",
+    message: {
+      role: "user",
+      content: [
+        {
+          type: "tool_result",
+          tool_use_id: id,
+          content: isError ? "<tool_use_error>Unknown skill</tool_use_error>" : `Launching skill: ${skill}`,
+          ...(isError ? { is_error: true } : {}),
+        },
+      ],
+    },
+  },
+];
+
+/** The command record a user's slash command for `skill` leaves. */
+const skillCommandRecord = (skill: string): TranscriptRecord => ({
+  isSidechain: false,
+  type: "user",
+  message: {
+    role: "user",
+    content: `<command-message>${skill}</command-message>\n<command-name>/${skill}</command-name>\n<command-args></command-args>`,
+  },
+});
+
+test("where the transcript shows the agent loaded the plugin's skill, the hooks add no instructions", async ($, on) => {
+  const state = engine(on, () => [], listsText, () => skillLoad(PLUGIN_SKILL));
+  on("prompt.context", (_, e) => ({ blocks: e.blocks }));
+
+  const { blocks } = await $.prompt.context({ blocks: [] });
+  expect(blocks.map((block) => block.name)).toEqual([]);
+
+  await $.prompt.submit(GO);
+  expect(state.contexts).toEqual([[]]);
+});
+
+test("where the transcript shows the user's slash command for the plugin's skill, the prompts' context gets no instructions", async ($, on) => {
+  const state = engine(on, () => [], listsText, () => [skillCommandRecord(PLUGIN_SKILL)]);
+
+  await $.prompt.submit(GO);
+  expect(state.contexts).toEqual([[]]);
+});
+
+test("where the agent's load of the plugin's skill failed, or loaded another skill, the hooks still add the instructions", async ($, on) => {
+  const failed = engine(on, () => [], listsText, () => [
+    ...skillLoad(PLUGIN_SKILL, true, "toolu_failed"),
+    ...skillLoad("coding-agent-kanban-turn-responses", false, "toolu_bare"),
+  ]);
+
+  await $.prompt.submit(GO);
+  expect(failed.contexts).toHaveLength(1);
+  expect(failed.contexts[0]?.[0]).toContain(`\`${TOOL}\``);
 });

@@ -1,0 +1,77 @@
+title: >-
+  Two turns whose ids share their first 6 characters: a reference by that
+  prefix names the latest of them, at or before the item's own turn, that
+  holds the item, so it names the later turn's Todo item and the earlier
+  turn's Review item; and a Decide item whose reply writes no `Frees:` line
+  frees what the plugin's buttons were given for it
+turns:
+  - id: abcdef01
+    prompt: Where does the loader stand?
+    replies:
+      - text: "\
+          The loader's rework is up for review.\n\
+          \n\
+          🔍 **Review:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔\n\
+          1. **o/loader#8 The loader rework**\n\
+          \n\
+          👉 **Todo:**  \n\
+          ▔▔▔▔▔▔▔▔\n\
+          1. **Rotate the `loader-bot` key**\n"
+        lint: []
+  - id: abcdef02
+    prompt: And after the review?
+    replies:
+      - text: "\
+          The release follows the review.\n\
+          \n\
+          👉 **Todo:**  \n\
+          ▔▔▔▔▔▔▔▔\n\
+          1. **Paste the release prompt**  \n\
+          \   It is in `prompts/release.md`.\n\
+          \   Frees: abcdef.Review.1\n\
+          \n\
+          🧠 **Decide:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔\n\
+          1. **Release tonight or in the morning?**  \n\
+          \   🔘 A. **Release tonight**: tag `v2.0` and publish.\n\
+          \      ➕ Users get the rework a day sooner.\n\
+          \      ➖ Nobody watches the rollout overnight.\n\
+          \   🔘 B. **Release at 9**: tag and publish in the morning.\n\
+          \      ➕ The rollout is watched.\n\
+          \      ➖ The rework waits a day.\n"
+        lint: []
+    decide:
+      - number: 1
+        summary: Release tonight or in the morning?
+        kind: radio
+        frees: [abcdef02.Todo.1]
+        options:
+          - { letter: A, name: Release tonight }
+          - { letter: B, name: Release at 9 }
+  - id: 1234abcd
+    prompt: Then?
+    replies:
+      - text: "\
+          One more step of yours.\n\
+          \n\
+          👉 **Todo:**  \n\
+          ▔▔▔▔▔▔▔▔\n\
+          1. **Announce the release**  \n\
+          \   On the project's discussion board.\n\
+          \   Frees: abcdef.Todo.1\n"
+        lint: []
+expect:
+  open: [abcdef02.Decide.1]
+  outstanding:
+    - "Review: o/loader#8 The loader rework"
+    - "Todo: Rotate the `loader-bot` key"
+    - "Todo: Paste the release prompt"
+    - "Decide: Release tonight or in the morning?"
+    - "Todo: Announce the release"
+  counts: "📌 Outstanding: 🔍 1 · 👉 3 · 🧠 1"
+  frees:
+    abcdef02.Todo.1: [abcdef01.Review.1]
+    1234abcd.Todo.1: [abcdef02.Todo.1]
+  decide-frees:
+    abcdef02.Decide.1: [abcdef02.Todo.1]

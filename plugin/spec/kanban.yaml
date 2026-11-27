@@ -13,6 +13,19 @@
 #   glyph: what its header opens with, and what the count line counts it by;
 #   aliases: the names older replies in a transcript still carry;
 #   rolls-up: whether its items roll up under 📌 until something settles them;
+#   settled-by: what settles an item of it, besides a later `reassess` turn,
+#     which settles every list's; it decides which items the 📌 roll-up and
+#     the count line still carry, and is apart from settling-words, which a
+#     prompt writes after an item's reference:
+#     answer: the user's answer to its latest restatement, by an option
+#       letter or in words; only Decide's items take an answer;
+#     merged-pull-request: every pull request it names with its repository,
+#       as a GitHub URL or `owner/repo#N`, having merged; a bare `#N` is
+#       never looked up, so an item naming only that never settles;
+#     report: a report naming it, in a turn after the last that printed it
+#       in its own list;
+#     none: nothing; a list that doesn't roll up is settled by none, since
+#       none of its items stays open to settle;
 #   settling-words: each word that, after an item's reference, settles it,
 #     with what it does; a word settles every list it's on the same way.
 lists:
@@ -21,54 +34,63 @@ lists:
     glyph: ✅
     aliases: []
     rolls-up: false
+    settled-by: none
     settling-words: {}
   pending:
     header: Pending
     glyph: 🚧
     aliases: [Unfinished, Open]
     rolls-up: true
+    settled-by: none
     settling-words: {}
   logged:
     header: Logged
     glyph: 📝
     aliases: []
     rolls-up: false
+    settled-by: none
     settling-words: {}
   waiting:
     header: Waiting
     glyph: ⏳
     aliases: []
     rolls-up: true
+    settled-by: report
     settling-words: {}
   answers:
     header: Answers
     glyph: ❓
     aliases: [Questions]
     rolls-up: false
+    settled-by: none
     settling-words: {}
   authorizations:
     header: Authorizations
     glyph: 🔑
     aliases: []
     rolls-up: true
+    settled-by: none
     settling-words: {}
   review:
     header: Review
     glyph: 🔍
     aliases: [To review]
     rolls-up: true
+    settled-by: merged-pull-request
     settling-words: {}
   todo:
     header: Todo
     glyph: 👉
     aliases: [To do]
     rolls-up: true
+    settled-by: none
     settling-words: {}
   decide:
     header: Decide
     glyph: 🧠
     aliases: [Decisions, Blocked]
     rolls-up: true
+    settled-by: answer
     settling-words: {}
 
 # A Decide item's options.
@@ -80,7 +102,9 @@ lists:
 #     glyph: what each option is drawn with;
 #     letters: the letters the kind takes, each with its own glyph in place
 #       of `glyph`; none for a kind that takes any letter the reference
-#       grammar allows. `Y` and `N` are strings: YAML 1.2 types no letter.
+#       grammar allows. `Y` and `N` are strings: YAML 1.2 types no letter;
+#     taught: whether the agent's instructions teach the kind; one not
+#       taught is still read in the replies that hold it.
 options:
   pro: ➕
   con: ➖
@@ -89,16 +113,21 @@ options:
       picks: one
       glyph: 🔘
       letters: {}
+      taught: true
     checkbox:
       picks: any
       glyph: 🔲
       letters: {}
+      taught: true
+    # A yes-or-no question is taught as a radio item lettered A and B, so
+    # every answer names an option one way; older replies still hold this.
     binary:
       picks: one
       glyph: 👍
       letters:
         Y: 👍
         N: 👎
+      taught: false
 
 # The commands a prompt runs, by its first word, bare or after a skill
 # command.
@@ -122,6 +151,14 @@ commands:
   trailing-punctuation: ".,;:!"
   skill-commands: [coding-agent-kanban-turn-responses, reply-block]
 
+# The skill the plugin carries, derived from it.
+#   name: its folder's name, the name its frontmatter gives, and the slash
+#     command that loads it, bare or after the plugin's name and a colon,
+#     `/coding-agent-kanban-turns:coding-agent-kanban-turn-responses`,
+#     either of which a command may follow, as `skill-commands` may.
+skill:
+  name: coding-agent-kanban-turn-responses
+
 # An item's reference, `<turn>.<List>.<n>[.<letters>][: note]`, the list
 # being a list's header.
 #   turn-id: the turn's id: `length` characters of `alphabet`, the first of
@@ -140,19 +177,86 @@ reference:
     last: Z
   turn-after: [of, from]
 
+# The line an item that blocks other work ends on, naming the items it
+# frees: `Frees: 0f311c94.Decide.2, 0f311c94.Review.1`. Each is an item's
+# reference without letters or a note, `<turn>.<List>.<n>`, its turn always
+# named, by an id or a prefix of one `reference.turn-id.shortest`
+# characters long or more, the list being the header of a list that rolls
+# up into 📌. It names an item of the turn whose reply printed the line, or
+# of an earlier turn back to the latest `reassess` turn at or before it:
+# a `reassess` turn's lists replace every earlier item, so a reference to
+# an item one replaced frees nothing, and the line names the item that took
+# it in instead. A prefix names the latest of those turns whose id opens on
+# it and that holds the item. A reference to the item itself, or to no
+# item of those turns, frees nothing.
+#   label: the word the line opens with, before its colon;
+#   separator: what parts its references, a space after it.
+frees:
+  label: Frees
+  separator: ","
+
+# An item's subject key, which matches it across rewordings of its summary:
+# two items in one list with one key are one item, so a later item on a
+# Decide item's subject settles it, and an answer to one answers the other.
+# The first of these a summary holds gives its key: a backlog entry, then a
+# branch-shaped code span, then its first words, then, where it holds no
+# word, every letter and digit it holds, lowercased.
+#   alphabet: the characters a word is made of, read from the summary
+#     lowercased: a word is a run of them;
+#   words-kept: how many words a key made of words keeps, the first that
+#     aren't stop words, joined by a space: `Ship the release to users` is
+#     keyed `ship release users`;
+#   stop-words: the words a key made of words skips;
+#   entry: a backlog entry the summary names, `entries 0550 and 0455`,
+#     keyed `entry 0550`:
+#     label: what the key opens with, before a space and the digits;
+#     words: what names an entry, ignoring case, as a whole word;
+#     digits: how many digits follow, `fewest` to `most`, as a whole word;
+#   branch: the summary's first code span shaped like a branch name,
+#     `atomic-reload`, keyed `branch atomic-reload`; a report that names
+#     such a span of a Waiting item settles the item:
+#     label: what the key opens with, before a space and the span;
+#     separator: what joins a branch name's words; a name a report goes by
+#       is matched as a whole word that may hold it too;
+#     fewest-words: how many words, or more, a branch name joins.
+#   The labels only keep the kinds of key apart, so an entry's key and a
+#   branch's never match.
+subject:
+  alphabet: "0123456789abcdefghijklmnopqrstuvwxyz"
+  words-kept: 3
+  stop-words:
+    [a, an, and, at, by, for, from, in, is, its, of, on, the, to, with]
+  entry:
+    label: entry
+    words: [entry, entries]
+    digits:
+      fewest: 3
+      most: 4
+  branch:
+    label: branch
+    separator: "-"
+    fewest-words: 2
+
 # What earlier turns left open, which a final response closes on.
 #   glyph: what the roll-up's header and its count line open with;
 #   header: the full roll-up's header, `📌 **Outstanding from previous
 #     turns:**`;
 #   aliases: the headers older replies opened their roll-up with;
 #   count-label: the word the count line names it by, `📌 Outstanding: …`;
-#   count-separator: what parts the count line's lists.
+#   count-separator: what parts the count line's lists;
+#   interval: when the full roll-up is due, once min(`most-minutes` min,
+#     `times` × the average duration of the last `turns` completed turns)
+#     has passed since the last final response that printed it in full.
 roll-up:
   glyph: 📌
   header: Outstanding from previous turns
   aliases: [Still open from earlier]
   count-label: Outstanding
   count-separator: " · "
+  interval:
+    most-minutes: 30
+    times: 5
+    turns: 5
 
 # The 🔖 tag a 📌 item ends on, `🔖 0f311c94₋₃`: the glyph, then the turn id
 # and its index counting back from the latest turn, in subscript.

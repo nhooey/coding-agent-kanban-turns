@@ -2,30 +2,22 @@
 
 <!-- Written by plans.py overview; edit the nodes, not this file. -->
 
-## In progress (0)
+## In progress (1)
 
-None.
+- [The pane's state is one value that a pure step function moves, and the hooks only dispatch events and run the effects it returns](pane-every-list/open/pane-state-reducer.md) `pane-state-reducer`, part of [The pane and the boxes under replies hold every list's items, grouped by turn, list and state, filtered, and answered in grouped references](pane-every-list/open/pane-every-list.md), pane-state-reducer
 
-## Ready (6)
+## Ready (4)
 
 - [The pane's header row and footer stay in sight while its items scroll](open/pane-controls-stay-visible.md) `pane-controls-stay-visible`
 - [The pane and the boxes under replies hold every list's items, grouped by turn, list and state, filtered, and answered in grouped references](pane-every-list/open/pane-every-list.md) `pane-every-list`
-- [The pane's state is one value that a pure step function moves, and the hooks only dispatch events and run the effects it returns](pane-every-list/open/pane-state-reducer.md) `pane-state-reducer`, part of [The pane and the boxes under replies hold every list's items, grouped by turn, list and state, filtered, and answered in grouped references](pane-every-list/open/pane-every-list.md)
+- [The coding-agent-kanban-turn-responses skill is retired, and no repository or session installs it](plugin-sole-source/open/kanban-skill-retired.md) `kanban-skill-retired`, part of [The plugin is the only source of the kanban turn-response protocol, and carries a skill derived from it, built deterministically](plugin-sole-source/open/plugin-sole-source.md)
 - [The plugin is the only source of the kanban turn-response protocol, and carries a skill derived from it, built deterministically](plugin-sole-source/open/plugin-sole-source.md) `plugin-sole-source`
-- [Golden cases, as YAML, give transcripts with their expected open items, count line and lint findings](plugin-sole-source/open/protocol-golden-cases.md) `protocol-golden-cases`, part of [The plugin is the only source of the kanban turn-response protocol, and carries a skill derived from it, built deterministically](plugin-sole-source/open/plugin-sole-source.md)
-- [The protocol's prose rules are Markdown fragments, and the prompt.context instructions and a derived SKILL.md are assembled from them](plugin-sole-source/open/protocol-prose-fragments.md) `protocol-prose-fragments`, part of [The plugin is the only source of the kanban turn-response protocol, and carries a skill derived from it, built deterministically](plugin-sole-source/open/plugin-sole-source.md)
 
-## Blocked (17)
+## Blocked (10)
 
 - [The draft's answers are grouped by turn and list, with context in parentheses, and the plugin reads them back](pane-every-list/open/answers-grouped-by-turn-and-list.md) `answers-grouped-by-turn-and-list`, part of [The pane and the boxes under replies hold every list's items, grouped by turn, list and state, filtered, and answered in grouped references](pane-every-list/open/pane-every-list.md), waiting on `kanban-skill-list-answers`
-- [packages.plugin carries a skill derived from the plugin, its SKILL.md, examples and scripts, under skills/, and a flake check confirms it](plugin-sole-source/open/derived-skill-package.md) `derived-skill-package`, part of [The plugin is the only source of the kanban turn-response protocol, and carries a skill derived from it, built deterministically](plugin-sole-source/open/plugin-sole-source.md), waiting on `protocol-prose-fragments`, `protocol-golden-cases`, `kanban-cli-adapter`
-- [With the plugin's hooks and its skill both loaded, the agent gets the protocol's instructions once](plugin-sole-source/open/instructions-once-with-skill.md) `instructions-once-with-skill`, part of [The plugin is the only source of the kanban turn-response protocol, and carries a skill derived from it, built deterministically](plugin-sole-source/open/plugin-sole-source.md), waiting on `derived-skill-package`
 - [The plugin's core reads every list's items per turn, each with whether it's settled and by what answer](pane-every-list/open/items-of-every-list.md) `items-of-every-list`, part of [The pane and the boxes under replies hold every list's items, grouped by turn, list and state, filtered, and answered in grouped references](pane-every-list/open/pane-every-list.md), waiting on `kanban-skill-list-answers`, `pane-state-reducer`
-- [A reply's Decide items are answered by buttons drawn in its Decide list's place and in the pane, and by reference through the skill inside the plugin where the hooks don't load](kanban-answers-in-transcript/open/kanban-answers-in-transcript.md) `kanban-answers-in-transcript`, part of [The plugin is the only source of the kanban turn-response protocol, and carries a skill derived from it, built deterministically](plugin-sole-source/open/plugin-sole-source.md), waiting on `derived-skill-package`
-- [A CLI over the pure core, built by Nix as kanban.js and standalone binaries, is how the derived skill runs the protocol](plugin-sole-source/open/kanban-cli-adapter.md) `kanban-cli-adapter`, part of [The plugin is the only source of the kanban turn-response protocol, and carries a skill derived from it, built deterministically](plugin-sole-source/open/plugin-sole-source.md), waiting on `plugin-tools-replace-skill-scripts`
-- [Each item that blocks other work names the items it frees, by reference](kanban-next-chunk/open/kanban-items-name-what-they-free.md) `kanban-items-name-what-they-free`, part of [next-chunk shows the open items that free the most work, a chunk at a time, until none are open](kanban-next-chunk/open/kanban-next-chunk.md), waiting on `protocol-prose-fragments`
 - [The spec holds each list's settling words and the grouped answer syntax](pane-every-list/open/kanban-skill-list-answers.md) `kanban-skill-list-answers`, part of [The pane and the boxes under replies hold every list's items, grouped by turn, list and state, filtered, and answered in grouped references](pane-every-list/open/pane-every-list.md), waiting on `kanban-skill-retired`
-- [The coding-agent-kanban-turn-responses skill is retired, and no repository or session installs it](plugin-sole-source/open/kanban-skill-retired.md) `kanban-skill-retired`, part of [The plugin is the only source of the kanban turn-response protocol, and carries a skill derived from it, built deterministically](plugin-sole-source/open/plugin-sole-source.md), waiting on `protocol-prose-fragments`, `protocol-golden-cases`, `kanban-cli-adapter`, `plugin-tools-replace-skill-scripts`, `derived-skill-package`, `instructions-once-with-skill`
 - [Each item's box, in the pane and in its reply, carries its list's actions](pane-every-list/open/list-actions.md) `list-actions`, part of [The pane and the boxes under replies hold every list's items, grouped by turn, list and state, filtered, and answered in grouped references](pane-every-list/open/pane-every-list.md), waiting on `items-of-every-list`, `answers-grouped-by-turn-and-list`, `pane-state-reducer`
 - [A row under the pane's header row hides Decide items by state, answered, unanswered or Done](pane-every-list/open/pane-decide-filters.md) `pane-decide-filters`, part of [The pane and the boxes under replies hold every list's items, grouped by turn, list and state, filtered, and answered in grouped references](pane-every-list/open/pane-every-list.md), waiting on `pane-state-reducer`
 - [A row at the top of the pane filters its items by list and by state, and can show only one turn](pane-every-list/open/pane-list-filters.md) `pane-list-filters`, part of [The pane and the boxes under replies hold every list's items, grouped by turn, list and state, filtered, and answered in grouped references](pane-every-list/open/pane-every-list.md), waiting on `items-of-every-list`, `pane-state-reducer`, `pane-decide-filters`
@@ -33,7 +25,6 @@ None.
 - [◀ and ▶ jump the pane between turns with a visible item, and Only show this turn draws just the one they reached](pane-every-list/open/pane-turn-navigation.md) `pane-turn-navigation`, part of [The pane and the boxes under replies hold every list's items, grouped by turn, list and state, filtered, and answered in grouped references](pane-every-list/open/pane-every-list.md), waiting on `pane-turn-sections`, `pane-list-filters`, `pane-state-reducer`
 - [Each turn's section in the pane holds every list's items, grouped by list under headers, each list with its own Done section](pane-every-list/open/pane-turn-sections.md) `pane-turn-sections`, part of [The pane and the boxes under replies hold every list's items, grouped by turn, list and state, filtered, and answered in grouped references](pane-every-list/open/pane-every-list.md), waiting on `items-of-every-list`, `pane-list-filters`, `pane-state-reducer`
 - [The pane draws only the items in or near its scroll window, from cached item heights](pane-every-list/open/pane-windowed-render.md) `pane-windowed-render`, part of [The pane and the boxes under replies hold every list's items, grouped by turn, list and state, filtered, and answered in grouped references](pane-every-list/open/pane-every-list.md), waiting on `pane-turn-sections`, `pane-turn-navigation`, `pane-state-reducer`
-- [The plugin's kanban_outstanding and kanban_lint tools, and its turn.complete reply lint, do what the skill's scripts did](plugin-sole-source/open/plugin-tools-replace-skill-scripts.md) `plugin-tools-replace-skill-scripts`, part of [The plugin is the only source of the kanban turn-response protocol, and carries a skill derived from it, built deterministically](plugin-sole-source/open/plugin-sole-source.md), waiting on `protocol-golden-cases`
 
 ## Proposed (5)
 
@@ -45,4 +36,4 @@ None.
 
 ## Closed
 
-28 in [closed/](closed/): 16 implemented, 1 rejected, 1 abandoned, 10 superseded.
+35 in [closed/](closed/): 23 implemented, 1 rejected, 1 abandoned, 10 superseded.

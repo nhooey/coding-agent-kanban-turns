@@ -7,7 +7,7 @@
 
 import type { EngineInterface } from "claude-code";
 
-import { DEFAULTS_FILE, loaded, userConfigPaths } from "../src/config/config.ts";
+import { DEFAULTS_FILE, loaded, userConfigPath } from "../src/config/config.ts";
 import type { ConfigFile } from "../src/config/config.ts";
 import type { Loaded } from "../types/index.d.ts";
 
@@ -21,28 +21,16 @@ async function textOf(
     : undefined;
 }
 
-/** The first of the files that's there, or none. */
-async function firstOf(
-  $: EngineInterface,
-  paths: readonly string[],
-): Promise<ConfigFile | undefined> {
-  const [path, ...rest] = paths;
-
-  return path === undefined
-    ? undefined
-    : ((await textOf($, path)) ?? (await firstOf($, rest)));
-}
-
 /** The settings in effect now, read from both files afresh. */
 export async function loadSettings($: EngineInterface): Promise<Loaded> {
   const defaultsPath = `${$.plugin.root}/${DEFAULTS_FILE}`;
-  const userPaths = userConfigPaths({
+  const userPath = userConfigPath({
     xdgConfigHome: await $.env.get("XDG_CONFIG_HOME"),
     home: await $.env.get("HOME"),
   });
 
   return loaded(
-    (await textOf($, defaultsPath)) ?? { path: defaultsPath, text: "" },
-    await firstOf($, userPaths),
+    (await textOf($, defaultsPath)) ?? { path: defaultsPath, text: undefined },
+    await textOf($, userPath),
   );
 }

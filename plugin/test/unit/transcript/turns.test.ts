@@ -11,14 +11,17 @@ import {
   commandOf,
   isOwn,
   isReassessLine,
-  isTopicRule,
+  isReassessTurn,
   reassessStart,
-  sectionsOf,
+  reassessStarts,
   textOfChunks,
   wholeEnd,
   withoutDraftHeader,
 } from "../../../src/transcript/turns.ts";
+import { PLUGIN } from "../../../src/protocol/instructions.ts";
+import { SPEC } from "../../../src/protocol/spec.ts";
 import type { Owner } from "../../../types/index.d.ts";
+import { sectionsOf } from "../../fixtures/sections.ts";
 import { turnOf } from "../../fixtures/turns.ts";
 
 /** The user's turns, one a prompt, each its place as its id. */
@@ -162,12 +165,6 @@ describe("sectionsOf", () => {
       "Authorizations",
     ]);
   });
-
-  test("a topic rule is a line of ═ alone", () => {
-    expect(isTopicRule("  ═══  ")).toBe(true);
-    expect(isTopicRule("══ x")).toBe(false);
-    expect(isTopicRule("   ")).toBe(false);
-  });
 });
 
 describe("commandOf", () => {
@@ -228,6 +225,41 @@ describe("commandOf", () => {
     expect(commandOf(sent("coding-agent-kanban-turn-responses", "pending"))).toBe("open");
     expect(commandOf(sent("coding-agent-kanban-turn-responses", "re"))).toBeUndefined();
     expect(commandOf(sent("other-skill", "reassess"))).toBeUndefined();
+  });
+
+  test("the plugin's skill by its own slash command, the plugin's name before the skill's, typed and as a command-name record", () => {
+    const own = `${PLUGIN}:${SPEC.skill.name}`;
+    const sent = (name: string, args: string) =>
+      `<command-message>${name}</command-message>\n<command-name>/${name}</command-name>\n<command-args>${args}</command-args>`;
+
+    expect(own).toBe("coding-agent-kanban-turns:coding-agent-kanban-turn-responses");
+    expect(commandOf(`/${own} reassess`)).toBe("reassess");
+    expect(commandOf(`/${own} restate`)).toBe("open");
+    expect(commandOf(sent(own, "recalc"))).toBe("reassess");
+    expect(commandOf(sent(own, "pending"))).toBe("open");
+    expect(commandOf(`/other-plugin:${SPEC.skill.name} reassess`)).toBeUndefined();
+    expect(commandOf(sent(`${PLUGIN}:other-skill`, "reassess"))).toBeUndefined();
+  });
+});
+
+describe("reassessStarts", () => {
+  test("gives each turn the latest reassess turn at or before it, else the first", () => {
+    expect(reassessStarts(prompted("go", "recheck", "more", "regen", "open"))).toEqual([0, 1, 1, 3, 3]);
+    expect(reassessStarts(prompted("go", "open"))).toEqual([0, 0]);
+    expect(reassessStarts([])).toEqual([]);
+  });
+
+  test("ends on what reassessStart gives for all the turns", () => {
+    const turns = prompted("go", "recheck", "more");
+    expect(reassessStarts(turns).at(-1)).toBe(reassessStart(turns));
+  });
+});
+
+describe("isReassessTurn", () => {
+  test("is a turn whose prompt, the user's own, runs reassess", () => {
+    expect(isReassessTurn(turnOf("00000001", "recheck"))).toBe(true);
+    expect(isReassessTurn(turnOf("00000001", "recheck", { owner: "peer" }))).toBe(false);
+    expect(isReassessTurn(turnOf("00000001", "open"))).toBe(false);
   });
 });
 
@@ -306,5 +338,22 @@ describe("a command on the last line", () => {
     expect(isReassessLine("RECHECK.")).toBe(true);
     expect(isReassessLine("res")).toBe(false);
     expect(isReassessLine("")).toBe(false);
+  });
+});
+
+describe("sectionsOf, as parseReply reads a reply", () => {
+  test("the 📌 roll-up's header closes the section above it", () => {
+    const text = "🧠 **Decide:**  \n1. **Which cache**\n\n📌 **Outstanding from previous turns:**  \n━━━━━\n🧠 **Decide:**  \n- **Old** 🔖 b2c3d4e5₋₁";
+
+    expect(sectionsOf(text)).toEqual([
+      { name: "Decide", text: "🧠 **Decide:**  \n1. **Which cache**" },
+      { name: "Decide", text: "🧠 **Decide:**  \n- **Old** 🔖 b2c3d4e5₋₁" },
+    ]);
+  });
+
+  test("a header or a topic rule inside a code block is code", () => {
+    const text = "👉 **Todo:**  \n1. **Run it**\n   ```\n🧠 **Decide:**\n═══\n   ```\n2. **Then this**";
+
+    expect(sectionsOf(text)).toEqual([{ name: "Todo", text }]);
   });
 });

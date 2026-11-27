@@ -30,15 +30,34 @@
 // inputs among their tool uses. A message sent while it ran is a `queued_command`
 // attachment: the user's, a peer's or a task's. A prompt record the file
 // repeats, as a continuation does, folds its replies into the first.
+//
+// A turn has a final response where its last assistant record ended it
+// with an answer, as the engine's turn end calls one: every record of a
+// response carries the response's `stop_reason`, and an answer's is
+// `end_turn`, `stop_sequence` or `max_tokens`. Any other turn is
+// unanswered:
+//
+// - one still running, or interrupted while a tool ran: its last record
+//   stopped to call a tool, `tool_use`;
+// - one interrupted while it wrote: its last record, cut off mid-stream,
+//   says no stop reason, and a `[Request interrupted by user]` record
+//   follows, which opens no turn;
+// - one an API error ended: its last record is the engine's own, its model
+//   `<synthetic>`, whatever stop reason it gives;
+// - one the model refused, `refusal`, which the engine's turn end tells
+//   from an answer;
+// - one with no assistant record yet.
 
 import { itemsOf } from "../items/items.ts";
 import { PLUGIN, TOOL_CALLED } from "../protocol/instructions.ts";
 import { elements } from "./reports.ts";
+import { field, isObject, parsedJson } from "../json/fields.ts";
+import type { Fields } from "../json/fields.ts";
 import { SPEC } from "../protocol/spec.ts";
 import type { DecideItem, Message, Owner, Turn } from "../../types/index.d.ts";
 
 /** One record of the transcript, a JSON object; only what the plugin reads is looked at. */
-export type TranscriptRecord = Readonly<Record<string, unknown>>;
+export type TranscriptRecord = Fields;
 
 // Who wrote a prompt no plugin sent, by the record's `turnOrigin`.
 const ORIGIN_OWNERS: ReadonlyMap<unknown, Owner> = new Map([
@@ -74,17 +93,6 @@ const STILL_WAITING = "is waiting on its own background work";
 const MONITOR_ENDED = "[Monitor expired";
 const QUOTED = /"([^"]+)"/g;
 
-const isObject = (value: unknown): value is TranscriptRecord =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
-const parsed = (line: string): unknown => {
-  try {
-    return JSON.parse(line) as unknown;
-  } catch {
-    return undefined;
-  }
-};
-
 /**
  * The records of a transcript's text, in order: one JSON object a line. A
  * line that is no JSON object is skipped, such as the last one, cut short
@@ -92,13 +100,10 @@ const parsed = (line: string): unknown => {
  */
 export const recordsOf = (text: string): readonly TranscriptRecord[] =>
   text.split("\n").flatMap((line) => {
-    const value = line.trim() === "" ? undefined : parsed(line);
+    const value = line.trim() === "" ? undefined : parsedJson(line);
 
     return isObject(value) ? [value] : [];
   });
-
-const field = (value: unknown, key: string): unknown =>
-  isObject(value) ? value[key] : undefined;
 
 /** A message's text: the string it is, or its text blocks joined by newlines. */
 const textOf = (content: unknown): string =>
@@ -220,6 +225,17 @@ export const queuedOf = (record: TranscriptRecord): Message | undefined => {
 const isReply = (record: TranscriptRecord): boolean =>
   record.type === "assistant" && record.isSidechain !== true;
 
+// The stop reasons of a response that answers, ending its turn with a
+// final response, and the model the engine names on a record it writes
+// itself, such as an API error's.
+const ANSWER_STOPS: readonly unknown[] = ["end_turn", "stop_sequence", "max_tokens"];
+const SYNTHETIC_MODEL = "<synthetic>";
+
+/** Whether an assistant record's response answers, ending its turn with a final response. */
+const answers = (record: TranscriptRecord): boolean =>
+  ANSWER_STOPS.includes(field(record.message, "stop_reason")) &&
+  field(record.message, "model") !== SYNTHETIC_MODEL;
+
 /** The Decide items of the `kanban_options` inputs among an assistant record's tool uses. */
 export const decideOf = (record: TranscriptRecord): readonly DecideItem[] => {
   const content = contentOf(record);
@@ -235,34 +251,49 @@ export const decideOf = (record: TranscriptRecord): readonly DecideItem[] => {
     : [];
 };
 
-/** A turn as it's read, with the whole `promptId` a repeat is matched by. */
-type Opened = Readonly<{ promptId: string; turn: Turn }>;
+/**
+ * A turn as it's read, with the whole `promptId` a repeat is matched by,
+ * and whether its last assistant record answers; undefined before any.
+ */
+type Opened = Readonly<{ promptId: string; turn: Turn; answered: boolean | undefined }>;
+
+/** A record's time as a turn's field `key` holds it: its `timestamp`, where that is text; none where it's unknown. */
+const timed = <K extends "promptedAt" | "answeredAt">(
+  key: K,
+  record: TranscriptRecord,
+): Partial<Record<K, string>> =>
+  typeof record.timestamp === "string" && record.timestamp !== ""
+    ? ({ [key]: record.timestamp } as Record<K, string>)
+    : {};
+
+/** A turn without its answer's time, for one later to give it, or leave it unknown. */
+const unanswered = ({ answeredAt: _answeredAt, ...turn }: Turn): Turn => turn;
 
 const opened = (record: TranscriptRecord, owner: Owner): Opened => {
   const promptId = typeof record.promptId === "string" ? record.promptId : "";
 
   return {
     promptId,
+    answered: undefined,
     turn: {
       id: promptId.slice(0, ID_LENGTH),
       prompt: messageOf(owner, promptOf(record)),
       replies: [],
       decide: [],
       messages: [],
+      ...timed("promptedAt", record),
     },
   };
 };
 
-/** The turns read so far with the last one's turn changed by `change`. */
+/** The turns read so far with the last one changed by `change`. */
 const withLast = (
   turns: readonly Opened[],
-  change: (turn: Turn) => Turn,
+  change: (last: Opened) => Opened,
 ): readonly Opened[] => {
   const last = turns.at(-1);
 
-  return last === undefined
-    ? turns
-    : [...turns.slice(0, -1), { ...last, turn: change(last.turn) }];
+  return last === undefined ? turns : [...turns.slice(0, -1), change(last)];
 };
 
 const step = (
@@ -276,23 +307,31 @@ const step = (
   return owner !== undefined
     ? [...turns, opened(record, owner)]
     : isReply(record)
-      ? withLast(turns, (turn) => ({
-          ...turn,
-          replies: text.trim() === "" ? turn.replies : [...turn.replies, text],
-          decide: [...turn.decide, ...decideOf(record)],
+      ? withLast(turns, ({ promptId, turn }) => ({
+          promptId,
+          answered: answers(record),
+          turn: {
+            ...unanswered(turn),
+            replies: text.trim() === "" ? turn.replies : [...turn.replies, text],
+            decide: [...turn.decide, ...decideOf(record)],
+            ...timed("answeredAt", record),
+          },
         }))
       : queued === undefined
         ? turns
-        : withLast(turns, (turn) => ({
-            ...turn,
-            messages: [...turn.messages, queued],
+        : withLast(turns, (last) => ({
+            ...last,
+            turn: { ...last.turn, messages: [...last.turn.messages, queued] },
           }));
 };
 
 /**
  * One turn per prompt id: a prompt record the file repeats, as a
  * continuation does, folds its replies, Decide items and messages into the
- * first's.
+ * first's, keeps the first's prompt time, and is answered, and given its
+ * answer's time, as the last repeat with an assistant record is, so a
+ * repeat with none yet, such as one after a compaction, leaves it as it
+ * was.
  */
 const mergeRepeats = (turns: readonly Opened[]): readonly Turn[] => {
   // Built from the last turn back, so each id keeps its first place.
@@ -302,14 +341,18 @@ const mergeRepeats = (turns: readonly Opened[]): readonly Turn[] => {
 
   return turns
     .filter((opened, n) => first.get(opened.promptId) === n)
-    .map(({ promptId, turn }) => {
+    .map(({ promptId, turn }): Turn => {
       const repeats = turns.filter((other) => other.promptId === promptId);
+      const last = repeats.findLast((other) => other.answered !== undefined);
+      const answered = last?.answered;
 
       return {
-        ...turn,
+        ...unanswered(turn),
+        ...(last?.turn.answeredAt === undefined ? {} : { answeredAt: last.turn.answeredAt }),
         replies: repeats.flatMap((other) => other.turn.replies),
         decide: repeats.flatMap((other) => other.turn.decide),
         messages: repeats.flatMap((other) => other.turn.messages),
+        ...(answered === true ? {} : { unanswered: true }),
       };
     });
 };
@@ -332,9 +375,42 @@ export const projectSlug = (cwd: string): string =>
     .replace(/\/(?:\.worktrees|\.claude\/worktrees)\/.*$/, "")
     .replace(/[/.]/g, "-");
 
+/**
+ * The folder that holds a project folder for each project's sessions:
+ * `projects` in Claude Code's own folder, which `CLAUDE_CONFIG_DIR`
+ * names, `configDir` here, where it's set, and the home's `.claude`
+ * otherwise.
+ */
+export const projectsFolder = (home: string, configDir?: string): string =>
+  `${configDir === undefined || configDir === "" ? `${home}/.claude` : configDir}/projects`;
+
+/** The file a session's transcript is, in a project folder. */
+export const transcriptFile = (session: string): string => `${session}.jsonl`;
+
 /** Where a session's transcript lies, when the engine doesn't say: under the home's `.claude/projects`. */
 export const transcriptPathFor = (
   home: string,
   cwd: string,
   session: string,
-): string => `${home}/.claude/projects/${projectSlug(cwd)}/${session}.jsonl`;
+): string => `${projectsFolder(home)}/${projectSlug(cwd)}/${transcriptFile(session)}`;
+
+/**
+ * Where a session's transcript lies, given the projects folder and the
+ * project folders in it that hold it: the working directory's where it's
+ * among them, else the one that holds it, else the working directory's,
+ * for the read to find missing. A session id names one transcript, so run
+ * from another directory, such as a skill's own, it's found in whichever
+ * project holds it, as the kanban skill's reply_turns.py found it.
+ */
+export const sessionTranscriptPath = (
+  projects: string,
+  cwd: string,
+  session: string,
+  holding: readonly string[],
+): string => {
+  const own = projectSlug(cwd);
+  const [only, ...others] = holding;
+  const folder = only !== undefined && others.length === 0 && only !== own ? only : own;
+
+  return `${projects}/${folder}/${transcriptFile(session)}`;
+};

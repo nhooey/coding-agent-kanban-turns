@@ -1,9 +1,11 @@
 // The Decide items themselves: the reference an answer names one by, the
-// glyph an option is drawn with, and the items read out of whatever input a
-// `kanban_options` call handed over.
+// glyph or mark an option is drawn with, and the items read out of whatever
+// input a `kanban_options` call handed over.
 
-import { DECIDE } from "../protocol/rules.ts";
+import { uniqueRefs } from "./frees.ts";
+import { DECIDE, DEFAULT_KIND } from "../protocol/rules.ts";
 import { SPEC } from "../protocol/spec.ts";
+import { isObject } from "../json/fields.ts";
 import type { DecideItem, DecideKind } from "../../types/index.d.ts";
 
 /** The reference an answer names the item by, without its letters. */
@@ -18,65 +20,67 @@ const kindGlyph = (kind: DecideKind, letter: string): string => {
   return Object.hasOwn(lettered, letter) ? (lettered[letter] ?? spec.glyph) : spec.glyph;
 };
 
-/** The mark a chosen option is drawn with, in place of its glyph. */
-export const CHOSEN_MARK = "✅";
-
 /** The glyph an option is drawn with: its own, else its item kind's. */
 export const glyphOf = (item: DecideItem, letter: string): string =>
   item.options.find((o) => o.letter === letter)?.glyph ||
   kindGlyph(item.kind, letter);
 
-/** What an option is drawn with: ✅ while the draft chooses it, else its glyph. */
+/** What an option is drawn with: `chosenMark`, the `marks.chosen` setting, while the draft chooses it, else its glyph. */
 export const markOf = (
   item: DecideItem,
   letter: string,
   isChosen: boolean,
-): string => (isChosen ? CHOSEN_MARK : glyphOf(item, letter));
+  chosenMark: string,
+): string => (isChosen ? chosenMark : glyphOf(item, letter));
 
 /**
- * What an option is drawn with in its item, open or Done: ✅ while the draft
- * chooses it, else `sentMark` where the answer that made the item Done
- * picked it, else its glyph.
+ * What an option is drawn with in its item, open or Done, by the `marks`
+ * settings: `chosen` while the draft chooses it, else `sent` where the
+ * answer that made the item Done picked it, else its glyph.
  */
 export const optionMark = (
   item: DecideItem,
   letter: string,
   is: Readonly<{ chosen: boolean; sent: boolean }>,
-  sentMark: string,
+  marks: Readonly<{ chosen: string; sent: string }>,
 ): string =>
-  is.sent && !is.chosen ? sentMark : markOf(item, letter, is.chosen);
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
+  is.sent && !is.chosen
+    ? marks.sent
+    : markOf(item, letter, is.chosen, marks.chosen);
 
 const isOption = (value: unknown): boolean =>
-  isRecord(value) &&
+  isObject(value) &&
   typeof value.letter === "string" &&
   typeof value.name === "string";
 
 const isItem = (value: unknown): value is DecideItem =>
-  isRecord(value) &&
+  isObject(value) &&
   typeof value.turn === "string" &&
   typeof value.number === "number" &&
   typeof value.summary === "string" &&
   Array.isArray(value.options) &&
   value.options.every(isOption);
 
-/** An item's kind: the one it names, where the spec has it, else radio. */
+/** An item's kind: the one it names, where the spec has it, else the default, radio. */
 const kindOf = (kind: unknown): DecideKind =>
   typeof kind === "string" && Object.hasOwn(SPEC.options.kinds, kind)
     ? (kind as DecideKind)
-    : "radio";
+    : DEFAULT_KIND;
 
-const withRef = (item: DecideItem): DecideItem => ({
+/** What an item frees, where the call gave it as an array: its strings that are references, each once; none otherwise. */
+const freesField = (frees: unknown): Pick<DecideItem, "frees"> =>
+  Array.isArray(frees) ? { frees: uniqueRefs(frees) } : {};
+
+const withRef = ({ frees, ...item }: DecideItem): DecideItem => ({
   ...item,
   list: DECIDE.header,
   kind: kindOf(item.kind),
   ref: refOf(item),
+  ...freesField(frees),
 });
 
 const itemsField = (value: unknown): unknown =>
-  isRecord(value) && "items" in value ? value.items : [];
+  isObject(value) && "items" in value ? value.items : [];
 
 /** The items a `kanban_options` call handed over, whatever else its input held. */
 export const itemsOf = (value: unknown): readonly DecideItem[] => {

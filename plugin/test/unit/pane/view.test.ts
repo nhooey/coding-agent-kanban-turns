@@ -19,8 +19,11 @@ import {
   itemTitle,
   noItemsText,
   needsEnter,
+  markCells,
   noteRows,
   notPutBackText,
+  optionLead,
+  failedText,
   notSentText,
   notesKey,
   putBackText,
@@ -30,7 +33,10 @@ import {
   settledText,
   submitStep,
 } from "../../../src/pane/view.ts";
-import type { DecideItem, Raised } from "../../../types/index.d.ts";
+import type { SettledTexts } from "../../../src/pane/view.ts";
+import type { DecideItem, Raised, Settlement } from "../../../types/index.d.ts";
+import { SETTINGS } from "../../fixtures/settings.ts";
+import { openItems } from "../../fixtures/raised.ts";
 
 const radio: DecideItem = {
   turn: "9efb08a1",
@@ -54,7 +60,9 @@ const binary: DecideItem = {
     { letter: "N", name: "Hold" },
   ],
 };
-const raised: Raised = { ...emptyRaised, items: [radio, binary] };
+const raised: Raised = { ...emptyRaised, items: openItems([radio, binary]) };
+const SETTLED = { tag: "settled" } as const;
+const OPEN = { tag: "open" } as const;
 
 describe("the text with no open items", () => {
   test("says why when the reason is known", () => {
@@ -66,7 +74,9 @@ describe("the text with no open items", () => {
 describe("/answers's reply", () => {
   test("counts the open items the pane opened over, the settled left out", () => {
     expect(answersText(raised)).toBe("Decide pane opened: 2 open Decide items.");
-    expect(answersText({ ...raised, settledRefs: ["9efb08a1.Decide.1"] })).toBe(
+    expect(
+      answersText({ ...raised, items: [{ item: radio, state: SETTLED }, { item: binary, state: OPEN }] }),
+    ).toBe(
       "Decide pane opened: 1 open Decide items.",
     );
   });
@@ -76,26 +86,25 @@ describe("/answers's reply", () => {
       "No open Decide items: it broke.",
     );
     expect(
-      answersText({ ...raised, settledRefs: ["9efb08a1.Decide.1", "9efb08a1.Decide.2"] }),
+      answersText({ ...raised, items: [{ item: radio, state: SETTLED }, { item: binary, state: SETTLED }] }),
     ).toBe("No open Decide items.");
   });
 });
 
 describe("/answers-config's reply", () => {
-  test("lists the settings in effect, then what wasn't used, then the warnings", () => {
+  test("lists the settings in effect, then what wasn't used", () => {
     expect(
       configText(
         ["keys.dismiss = q", "colors.title = claude"],
         ["bad.yaml: parse error"],
-        ["mine.yaml: a warning"],
       ),
     ).toBe(
-      "keys.dismiss = q\ncolors.title = claude\nNot used: bad.yaml: parse error\nWarning: mine.yaml: a warning",
+      "keys.dismiss = q\ncolors.title = claude\nNot used: bad.yaml: parse error",
     );
   });
 
   test("is empty with nothing to list", () => {
-    expect(configText([], [], [])).toBe("");
+    expect(configText([], [])).toBe("");
   });
 });
 
@@ -144,6 +153,34 @@ describe("what made an item Done", () => {
     expect(settledText(sent)).toBe("Sent: B");
     expect(settledText({ ...sent, note: "only the loader" })).toBe("Sent: B · only the loader");
     expect(sentLetters(sent)).toEqual(["B"]);
+  });
+
+  test("has a text for every way an item settles, which the type checker holds it to", () => {
+    // `npm run typecheck` checks this: a table of texts missing a `how` is
+    // refused, so a `how` added to `Settlement` without its text is a
+    // compile error, not a line that says something else.
+    const lacking: Omit<SettledTexts, "restated"> = {
+      answered: () => "",
+      sent: () => "",
+      reassessed: () => "",
+    };
+    // @ts-expect-error `restated` has no text.
+    const missing: SettledTexts = lacking;
+    const every: Record<Settlement["how"], true> = {
+      answered: true,
+      sent: true,
+      reassessed: true,
+      restated: true,
+    };
+    const hows = Object.keys(every) as readonly Settlement["how"][];
+
+    expect(missing).toBe(lacking);
+    expect(hows.map((how) => settledText({ ref: "r", how, turn: "4a2206b0", letters: [], note: "" } as Settlement))).toEqual([
+      "Answered in 4a2206b0: ",
+      "Sent: ",
+      "Done: reassessed",
+      "Done: asked again",
+    ]);
   });
 });
 
@@ -214,6 +251,13 @@ describe("the pane's Submit", () => {
   test("gives the draft itself when the box couldn't take it back", () => {
     expect(notPutBackText("a hook refused it", "9efb08a1.Decide.1.B\n")).toBe(
       "Not sent, and the prompt box couldn't take the draft back: a hook refused it\nThe draft, to copy:\n9efb08a1.Decide.1.B\n",
+    );
+  });
+
+  test("says why Submit failed, with the draft once it has one, as the box may have lost it", () => {
+    expect(failedText("boom")).toBe("Submit failed: boom");
+    expect(failedText("boom", "9efb08a1.Decide.1.B\n")).toBe(
+      "Submit failed, the draft perhaps not sent and the prompt box perhaps emptied: boom\nThe draft, to copy:\n9efb08a1.Decide.1.B\n",
     );
   });
 
@@ -294,16 +338,40 @@ describe("the notes field's rows", () => {
 describe("the column left of an option", () => {
   const colors = { hover: "suggestion", settled: "ide" };
 
-  test("lights in the hover colour under the pointer while the item is open", () => {
-    expect(gutterStyle(false, "9efb08a1.Decide.1.A", colors)).toEqual({
+  const settled = (answered: readonly string[], letter: string) =>
+    gutterStyle(
+      { isSettled: true, answered, letter, scope: `9efb08a1.Decide.1.${letter}` },
+      colors,
+    );
+
+  test("lights in the hover colour under the pointer while the item is open, each option in its own scope", () => {
+    expect(
+      gutterStyle({ isSettled: false, answered: [], letter: "A", scope: "9efb08a1.Decide.1.A" }, colors),
+    ).toEqual({
       hover: { scope: "9efb08a1.Decide.1.A", backgroundColor: "suggestion" },
+    });
+    expect(
+      gutterStyle({ isSettled: false, answered: ["A"], letter: "B", scope: "9efb08a1.Decide.1.B" }, colors),
+    ).toEqual({
+      hover: { scope: "9efb08a1.Decide.1.B", backgroundColor: "suggestion" },
     });
   });
 
-  test("stays lit in the settled colour, and never hovers, once the item is settled", () => {
-    expect(gutterStyle(true, "9efb08a1.Decide.1.A", colors)).toEqual({
-      backgroundColor: "ide",
-    });
+  test("stays lit in the settled colour beside the one answered option, and never hovers", () => {
+    expect(settled(["A"], "A")).toEqual({ backgroundColor: "ide" });
+    expect(settled(["A"], "B")).toEqual({});
+    expect(settled(["A"], "C")).toEqual({});
+  });
+
+  test("stays lit beside each of a checkbox item's answered letters, and no other", () => {
+    expect(settled(["A", "C"], "A")).toEqual({ backgroundColor: "ide" });
+    expect(settled(["A", "C"], "B")).toEqual({});
+    expect(settled(["A", "C"], "C")).toEqual({ backgroundColor: "ide" });
+  });
+
+  test("lights beside no option of an item settled with no letters", () => {
+    expect(settled([], "A")).toEqual({});
+    expect(settled([], "B")).toEqual({});
   });
 });
 
@@ -334,8 +402,57 @@ describe("how much of what's open the draft answers", () => {
   });
 
   test("above the prompt: how many it picks, none while it picks nothing", () => {
-    expect(pickedText(2)).toBe("✏️ 2 picked");
-    expect(pickedText(0)).toBe("");
+    expect(pickedText(2, SETTINGS.marks.note)).toBe("✏️ 2 picked");
+    expect(pickedText(0, SETTINGS.marks.note)).toBe("");
+  });
+
+  test("above the prompt: opened by the note mark it's given", () => {
+    expect(pickedText(2, "N")).toBe("N 2 picked");
+    expect(pickedText(0, "N")).toBe("");
+  });
+});
+
+describe("an option's lead", () => {
+  const item: DecideItem = {
+    turn: "9efb08a1",
+    list: "Decide",
+    number: 1,
+    summary: "Which cache to keep",
+    kind: "radio",
+    ref: "9efb08a1.Decide.1",
+    options: [
+      { letter: "A", name: "Disk" },
+      { letter: "B", name: "Memory" },
+    ],
+  };
+  const not = { chosen: false, sent: false };
+
+  test("is its mark and its letter, the marks as wide as the kind glyph needing no padding", () => {
+    expect(optionLead(item, "A", not, SETTINGS.marks)).toBe("🔘 A. ");
+    expect(optionLead(item, "A", { chosen: true, sent: false }, SETTINGS.marks)).toBe("✅ A. ");
+    expect(optionLead(item, "A", { chosen: false, sent: true }, SETTINGS.marks)).toBe("✅ A. ");
+  });
+
+  test("pads a narrower mark to the item's widest, so a pick moves no text", () => {
+    const marks = { chosen: "C", sent: "S" };
+    expect(markCells(item, marks)).toBe(2);
+    expect(optionLead(item, "A", { chosen: true, sent: false }, marks)).toBe("C  A. ");
+    expect(optionLead(item, "A", { chosen: false, sent: true }, marks)).toBe("S  A. ");
+    expect(optionLead(item, "A", not, marks)).toBe("🔘 A. ");
+  });
+
+  test("pads every option to a wider mark, so the options line up", () => {
+    const marks = { chosen: "[x]", sent: "S" };
+    expect(markCells(item, marks)).toBe(3);
+    expect(optionLead(item, "A", { chosen: true, sent: false }, marks)).toBe("[x] A. ");
+    expect(optionLead(item, "B", not, marks)).toBe("🔘  B. ");
+    expect(optionLead(item, "A", { chosen: false, sent: true }, marks)).toBe("S   A. ");
+  });
+
+  test("counts an option's own glyph among the item's", () => {
+    const wide = { ...item, options: [{ letter: "A", name: "Disk", glyph: "[ ]" }, { letter: "B", name: "Memory" }] };
+    expect(markCells(wide, SETTINGS.marks)).toBe(3);
+    expect(optionLead(wide, "B", not, SETTINGS.marks)).toBe("🔘  B. ");
   });
 });
 
@@ -343,7 +460,7 @@ describe("the keys panel", () => {
   const keys = { dismiss: "q", next: "j", previous: "k", submit: "s", reassess: "r", help: "?" };
 
   test("lists each key the pane takes and what it does, then the engine's", () => {
-    expect(keyRows(keys)).toEqual([
+    expect(keyRows(keys, SETTINGS.marks.buttons)).toEqual([
       { key: "j", does: "↓ Next: the next item, or Done header" },
       { key: "k", does: "↑ Previous: the item before" },
       { key: "s", does: "📤 Submit: send the draft" },
@@ -357,6 +474,18 @@ describe("the keys panel", () => {
   });
 
   test("shows a rebound key as rebound", () => {
-    expect(keyRows({ ...keys, submit: "x" })[2]).toEqual({ key: "x", does: "📤 Submit: send the draft" });
+    expect(keyRows({ ...keys, submit: "x" }, SETTINGS.marks.buttons)[2]).toEqual({ key: "x", does: "📤 Submit: send the draft" });
+  });
+
+  test("draws each button's glyph as it's given", () => {
+    const glyphs = { dismiss: "X", next: "v", previous: "^", submit: ">", reassess: "R", help: "H", kanban: "K" };
+    expect(keyRows(keys, glyphs).slice(0, 6)).toEqual([
+      { key: "j", does: "v Next: the next item, or Done header" },
+      { key: "k", does: "^ Previous: the item before" },
+      { key: "s", does: "> Submit: send the draft" },
+      { key: "r", does: "R Reassess: add or take out the reassess line" },
+      { key: "?", does: "H Keys: open or close this panel" },
+      { key: "q", does: "X Close: close the pane" },
+    ]);
   });
 });

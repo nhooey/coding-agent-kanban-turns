@@ -1,0 +1,1 @@
+This block is the `{{plugin}}:{{skill.name}}` skill's format, which the {{plugin}} plugin's hooks send with the plugin's tools in place of the skill's scripts, and without its worked examples or its preferences files, so that skill needn't be loaded while this block is in the conversation.

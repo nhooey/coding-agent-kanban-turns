@@ -1,0 +1,50 @@
+title: >-
+  A `reassess` turn's lists replace every earlier item, so a `Frees:` line
+  after it frees only the items of the `reassess` turn and later ones: a
+  reference to an item it replaced frees nothing, and the item that took it
+  in is named instead
+turns:
+  - id: e5f6a7b8
+    prompt: What does the fix wait on?
+    replies:
+      - text: "\
+          The fix waits on two things of yours.\n\
+          \n\
+          👉 **Todo:**  \n\
+          ▔▔▔▔▔▔▔▔\n\
+          1. **Rotate the `deploy-bot` key**\n\
+          2. **Merge the retry fix**\n"
+        lint: []
+  - id: f6a7b8c9
+    prompt: reassess
+    runs: reassess
+    replies:
+      - text: "\
+          The key is rotated; the fix is still yours to merge.\n\
+          \n\
+          👉 **Todo:**  \n\
+          ▔▔▔▔▔▔▔▔\n\
+          1. **Merge the retry fix**  \n\
+          \   Its checks pass on the rotated key.\n\
+          \   Frees: e5f6a7b8.Todo.1\n"
+        lint: []
+  - id: a7b8c9d0
+    prompt: And the deploy?
+    replies:
+      - text: "\
+          The deploy goes out once the fix merges.\n\
+          \n\
+          👉 **Todo:**  \n\
+          ▔▔▔▔▔▔▔▔\n\
+          1. **Deploy the retry fix**  \n\
+          \   From the release session, with `prompts/deploy.md`.\n\
+          \   Frees: e5f6a7b8.Todo.2, f6a7b8c9.Todo.1\n"
+        lint: []
+expect:
+  open: []
+  outstanding:
+    - "Todo: Merge the retry fix"
+    - "Todo: Deploy the retry fix"
+  counts: "📌 Outstanding: 👉 2"
+  frees:
+    a7b8c9d0.Todo.1: [f6a7b8c9.Todo.1]

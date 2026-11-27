@@ -1,20 +1,23 @@
 // What the hooks draw, worked out apart from drawing it: the text of the
-// commands, the tool's result and an item's title, what Submit does with
-// the draft and what the footer says it will send, how much of what's open
-// the draft answers, the keys panel's rows, how an item's notes are drawn, and
-// whether the tool's row is plain enough to be drawn as nothing, the
-// buttons going under the reply instead.
+// commands, the tool's result, an item's title and an option's lead, what
+// Submit does with the draft and what the footer says it will send, how
+// much of what's open the draft answers, the keys panel's rows, how an
+// item's notes are drawn, and whether the tool's row is plain enough to be
+// drawn as nothing, the buttons going under the reply instead.
 
 import type { DecideItem, Raised, Settings, Settlement } from "../../types/index.d.ts";
 import { answersIn, hasReassess } from "../items/answers.ts";
-import { refOf } from "../items/items.ts";
-import { REASSESS, itemLabel } from "../protocol/rules.ts";
+import { glyphOf, optionMark, refOf } from "../items/items.ts";
+import { DECIDE, DONE, REASSESS, itemLabel } from "../protocol/rules.ts";
 import { problemsOf, stillOpen } from "../items/raised.ts";
+import { padToCells, widestCells } from "../text/cells.ts";
+import { capitalized } from "../text/words.ts";
 import { isReassessLine, withoutDraftHeader } from "../transcript/turns.ts";
+import { LAYOUT } from "./layout.ts";
 
 /** What the pane and /answers say when there are no open items, with why when it's known. */
 export const noItemsText = (problem: string): string =>
-  `No open Decide items${problem ? `: ${problem}` : ""}.`;
+  `No open ${DECIDE.header} items${problem ? `: ${problem}` : ""}.`;
 
 /** /answers's reply: the pane opened over the open items, or why there are none. */
 export const answersText = (raised: Raised): string => {
@@ -22,24 +25,21 @@ export const answersText = (raised: Raised): string => {
 
   return open === 0
     ? noItemsText(problemsOf(raised))
-    : `Decide pane opened: ${open} open Decide items.`;
+    : `${DECIDE.header} pane opened: ${open} open ${DECIDE.header} items.`;
 };
 
-/** /answers-config's reply: each setting in effect, then each file or value not used and why, then what to change in a file that's used. */
+/** /answers-config's reply: each setting in effect, then each file or value not used and why. */
 export const configText = (
   effective: readonly string[],
   problems: readonly string[],
-  warnings: readonly string[],
 ): string =>
-  [
-    ...effective,
-    ...problems.map((problem) => `Not used: ${problem}`),
-    ...warnings.map((warning) => `Warning: ${warning}`),
-  ].join("\n");
+  [...effective, ...problems.map((problem) => `Not used: ${problem}`)].join(
+    "\n",
+  );
 
 /** The `kanban_options` tool's result: how many items it drew buttons for, by reference. */
 export const drewText = (items: readonly DecideItem[]): string =>
-  `Drew buttons for ${items.length} Decide items under the final response and in the Decide pane: ${items
+  `Drew buttons for ${items.length} ${DECIDE.header} items under the final response and in the ${DECIDE.header} pane: ${items
     .map(refOf)
     .join(", ")}.`;
 
@@ -58,6 +58,16 @@ export const notSentText = (why: string, isAfterTyped = false): string =>
 /** What the pane says when the engine didn't take the prompt and the box couldn't take the draft back either: the draft itself, so it isn't lost. */
 export const notPutBackText = (why: string, draft: string): string =>
   `Not sent, and the prompt box couldn't take the draft back: ${why}\nThe draft, to copy:\n${draft}`;
+
+/**
+ * What the pane says when a step of Submit failed with `why`: once it has
+ * read a `draft`, the draft itself, since the failed step may have emptied
+ * the box, and may or may not have sent it.
+ */
+export const failedText = (why: string, draft?: string): string =>
+  draft === undefined
+    ? `Submit failed: ${why}`
+    : `Submit failed, the draft perhaps not sent and the prompt box perhaps emptied: ${why}\nThe draft, to copy:\n${draft}`;
 
 /**
  * What a refused draft goes back into the box with, by `append`: the draft
@@ -136,25 +146,37 @@ export const notesMode = (
         ? "focused"
         : "field";
 
-/** How many lines tall the notes field is drawn: the setting, a whole number of at least 1. */
+/** How many lines tall the notes field is drawn: the setting, a whole number of at least `LAYOUT.fewestNoteRows`. */
 export const noteRows = (rows: number): number =>
-  Number.isFinite(rows) ? Math.max(1, Math.floor(rows)) : 1;
+  Number.isFinite(rows)
+    ? Math.max(LAYOUT.fewestNoteRows, Math.floor(rows))
+    : LAYOUT.fewestNoteRows;
 
 /**
- * The style of the column left of an option's lines: a settled item's
- * stays lit in the settled colour, and an open one's lights in the hover
- * colour while the pointer is over any line of the option `scope` names.
+ * The style of the column left of an option's lines: an open item's lights
+ * in the hover colour while the pointer is over any line of the option
+ * `scope` names; a settled item's stays lit in the settled colour beside an
+ * option its answer picked, one of the `answered` letters the settlement or
+ * the sent answer gives, and is unlit beside the others, never hovering. An
+ * item settled with no letters lights none.
  */
 export const gutterStyle = (
-  isSettled: boolean,
-  scope: string,
+  option: Readonly<{
+    isSettled: boolean;
+    answered: readonly string[];
+    letter: string;
+    scope: string;
+  }>,
   colors: Readonly<{ hover: string; settled: string }>,
 ):
   | Readonly<{ backgroundColor: string }>
-  | Readonly<{ hover: Readonly<{ scope: string; backgroundColor: string }> }> =>
-  isSettled
-    ? { backgroundColor: colors.settled }
-    : { hover: { scope, backgroundColor: colors.hover } };
+  | Readonly<{ hover: Readonly<{ scope: string; backgroundColor: string }> }>
+  | Readonly<Record<never, never>> =>
+  !option.isSettled
+    ? { hover: { scope: option.scope, backgroundColor: colors.hover } }
+    : option.answered.includes(option.letter)
+      ? { backgroundColor: colors.settled }
+      : {};
 
 /**
  * An item's title line in its box: the label, its list and number, drawn
@@ -169,27 +191,66 @@ export const itemTitle = (
   summary: `${item.summary}${isDone ? " (done)" : ""}`,
 });
 
+/**
+ * The cells every option's mark takes in an item: the widest of the chosen
+ * and sent marks and each option's glyph, so the item's options line up and
+ * a pick moves no option's text.
+ */
+export const markCells = (
+  item: DecideItem,
+  marks: Pick<Settings["marks"], "chosen" | "sent">,
+): number =>
+  widestCells([
+    marks.chosen,
+    marks.sent,
+    ...item.options.map((option) => glyphOf(item, option.letter)),
+  ]);
+
+/** An option's lead, `🔘 A. `: its mark, as `optionMark` says, padded to the item's `markCells`, then its letter. */
+export const optionLead = (
+  item: DecideItem,
+  letter: string,
+  is: Readonly<{ chosen: boolean; sent: boolean }>,
+  marks: Pick<Settings["marks"], "chosen" | "sent">,
+): string =>
+  `${padToCells(optionMark(item, letter, is, marks), markCells(item, marks))} ${letter}. `;
+
 /** An answer's letters, then its note after ` · ` or in their place. */
 const lettersAndNote = (letters: readonly string[], note: string): string =>
-  [letters.join(","), note].filter((part) => part !== "").join(" · ");
+  [letters.join(","), note]
+    .filter((part) => part !== "")
+    .join(LAYOUT.divider);
+
+/** The text for each way an item settles, saying a settlement of that way: one for every `how`, so a new one can't go unsaid. */
+export type SettledTexts = {
+  readonly [How in Settlement["how"]]: (
+    settlement: Extract<Settlement, { how: How }>,
+  ) => string;
+};
 
 /**
- * The line under a Done item's title saying what made it Done: the answer,
- * `Answered in <turn>: <letters>`, its note after ` · ` or in place of the
- * letters; the answer Submit sent, `Sent: <letters>`, until the turn's end
- * reads it; else `Done: reassessed`, `Done: asked again`, or `Done` where
- * the transcript doesn't say.
+ * What made a Done item Done, by how: the answer, `Answered in <turn>:
+ * <letters>`, its note after ` · ` or in place of the letters; the answer
+ * Submit sent, `Sent: <letters>`, until the turn's end reads it; a later
+ * `reassess`, `Done: reassessed`; or a later item on its subject, `Done:
+ * asked again`. The pane's word for a settled item is the Done list's name,
+ * so it follows the spec's header.
  */
+const SETTLED_TEXTS: SettledTexts = {
+  answered: (s) => `Answered in ${s.turn}: ${lettersAndNote(s.letters, s.note)}`,
+  sent: (s) => `Sent: ${lettersAndNote(s.letters, s.note)}`,
+  reassessed: () => `${DONE.header}: ${REASSESS}ed`,
+  restated: () => `${DONE.header}: asked again`,
+};
+
+/** What the settlement's `how` says of it. */
+const textOf = <How extends Settlement["how"]>(
+  settlement: Extract<Settlement, { how: How }>,
+): string => SETTLED_TEXTS[settlement.how](settlement);
+
+/** The line under a Done item's title saying what made it Done, as `SETTLED_TEXTS` says, or `Done` where the transcript doesn't say. */
 export const settledText = (settlement: Settlement | undefined): string =>
-  settlement === undefined
-    ? "Done"
-    : settlement.how === "answered"
-      ? `Answered in ${settlement.turn}: ${lettersAndNote(settlement.letters, settlement.note)}`
-      : settlement.how === "sent"
-        ? `Sent: ${lettersAndNote(settlement.letters, settlement.note)}`
-        : settlement.how === "reassessed"
-          ? "Done: reassessed"
-          : "Done: asked again";
+  settlement === undefined ? DONE.header : textOf(settlement);
 
 /** The letters the answer that made an item Done picked, sent or read; none when something else did. */
 export const sentLetters = (
@@ -229,16 +290,16 @@ export const draftSummary = (draft: string): string => {
     ...(ownLines(body).length > 0 ? ["your words"] : []),
   ];
 
-  return `Draft: ${parts.length > 0 ? parts.join(" · ") : "empty"}`;
+  return `Draft: ${parts.length > 0 ? parts.join(LAYOUT.divider) : "empty"}`;
 };
 
 /** The pane header's count: the open items the draft answers, out of every open item. */
 export const answeredText = (answered: number, open: number): string =>
   `${answered} of ${open} answered`;
 
-/** What the line above the prompt adds while the draft answers open items: `✏️ 2 picked`; empty while it answers none. */
-export const pickedText = (picked: number): string =>
-  picked > 0 ? `✏️ ${picked} picked` : "";
+/** What the line above the prompt adds while the draft answers open items: `✏️ 2 picked`, opened by `noteMark`, the `marks.note` setting; empty while it answers none. */
+export const pickedText = (picked: number, noteMark: string): string =>
+  picked > 0 ? `${noteMark} ${picked} picked` : "";
 
 /** One row of the pane's keys panel: a key, and what it does. */
 export type KeyRow = Readonly<{ key: string; does: string }>;
@@ -246,16 +307,26 @@ export type KeyRow = Readonly<{ key: string; does: string }>;
 /**
  * The pane's keys panel, opened by `? Keys`: each key the pane takes while
  * it holds the keyboard and what it does, the pane's own read from the
- * `keys` settings, so a rebound key shows as rebound, then the keys
- * Claude Code moves the focus ring and the keyboard with.
+ * `keys` settings, so a rebound key shows as rebound, each beside its
+ * button's glyph from the `marks.buttons` settings, then the keys Claude
+ * Code moves the focus ring and the keyboard with.
  */
-export const keyRows = (keys: Settings["keys"]): readonly KeyRow[] => [
-  { key: keys.next, does: "↓ Next: the next item, or Done header" },
-  { key: keys.previous, does: "↑ Previous: the item before" },
-  { key: keys.submit, does: "📤 Submit: send the draft" },
-  { key: keys.reassess, does: "🔄 Reassess: add or take out the reassess line" },
-  { key: keys.help, does: "? Keys: open or close this panel" },
-  { key: keys.dismiss, does: "✖ Close: close the pane" },
+export const keyRows = (
+  keys: Settings["keys"],
+  glyphs: Settings["marks"]["buttons"],
+): readonly KeyRow[] => [
+  {
+    key: keys.next,
+    does: `${glyphs.next} Next: the next item, or ${DONE.header} header`,
+  },
+  { key: keys.previous, does: `${glyphs.previous} Previous: the item before` },
+  { key: keys.submit, does: `${glyphs.submit} Submit: send the draft` },
+  {
+    key: keys.reassess,
+    does: `${glyphs.reassess} ${capitalized(REASSESS)}: add or take out the ${REASSESS} line`,
+  },
+  { key: keys.help, does: `${glyphs.help} Keys: open or close this panel` },
+  { key: keys.dismiss, does: `${glyphs.dismiss} Close: close the pane` },
   { key: "↑ ↓ tab", does: "move between options and fields" },
   { key: "enter", does: "pick the option the ring is on" },
   { key: "esc", does: "give the keyboard back to the prompt" },

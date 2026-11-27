@@ -1,0 +1,76 @@
+title: >-
+  Older replies' names for the lists still read as the lists they name,
+  each name pinned by an item only it reads, and an item restated under
+  another of its list's names counts once; the replies use names no reply
+  writes today, so the case is no worked example
+example: false
+turns:
+  - id: 1f2e3d4c
+    prompt: Where does the release stand?
+    replies:
+      - text: "\
+          The release branch builds.\n\
+          \n\
+          🚧 **Unfinished:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n\
+          1. **Rework the loader**  \n\
+          \   It reads the cache twice.\n\
+          \n\
+          ❓ **Questions:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔▔▔▔\n\
+          1. **Why the build took 9 minutes**  \n\
+          \   The cache missed after the lock bump.\n\
+          \n\
+          🔍 **To review:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔▔▔▔\n\
+          1. **#14 The README**\n\
+          \n\
+          👉 **To do:**  \n\
+          ▔▔▔▔▔▔▔▔▔\n\
+          1. **Rotate the `deploy-bot` key in the cloud console**\n\
+          \n\
+          🧠 **Decisions:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔▔▔▔\n\
+          1. **Ship the release tonight?**  \n\
+          \   👍 Y. **Ship it**: it goes out.\n\
+          \   👎 N. **Hold it**: it waits.\n"
+        lint:
+          - { line: 24, rule: untaught-option }
+          - { line: 25, rule: untaught-option }
+  - id: 2a3b4c5d
+    prompt: Keep going on the loader.
+    replies:
+      - text: "\
+          🚧 **Open:**  \n\
+          ▔▔▔▔▔▔▔▔\n\
+          1. **Prune the store's snapshots**  \n\
+          \   A month of them fills the disk.\n\
+          \n\
+          🧠 **Blocked:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔▔\n\
+          1. **Ship the release tonight?**  \n\
+          \   👍 Y. **Ship it**: it goes out.\n\
+          \   👎 N. **Hold it**: it waits.\n\
+          \n\
+          📌 **Still open from earlier:**  \n\
+          ━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\
+          🚧 **Unfinished:**  \n\
+          - **Rework the loader** 🔖 1f2e3d4c₋₁\n\
+          \n\
+          🔍 **To review:**  \n\
+          - **#14 The README** 🔖 1f2e3d4c₋₁\n\
+          \n\
+          👉 **To do:**  \n\
+          - **Rotate the `deploy-bot` key in the cloud console** 🔖 1f2e3d4c₋₁\n"
+        lint:
+          - { line: 9, rule: untaught-option }
+          - { line: 10, rule: untaught-option }
+expect:
+  open: []
+  outstanding:
+    - "Pending: Rework the loader"
+    - "Review: #14 The README"
+    - "Todo: Rotate the `deploy-bot` key in the cloud console"
+    - "Decide: Ship the release tonight?"
+    - "Pending: Prune the store's snapshots"
+  counts: "📌 Outstanding: 🚧 2 · 🔍 1 · 👉 1 · 🧠 1"

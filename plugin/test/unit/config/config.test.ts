@@ -9,16 +9,16 @@ import type { YAMLMap } from "yaml";
 
 import {
   DEFAULTS_FILE,
-  SETTINGS_SHAPE,
   leaves,
   loaded,
   mergedOver,
   parseYaml,
   problemsIn,
   retiredIn,
-  userConfigPaths,
+  userConfigPath,
   withoutRetired,
 } from "../../../src/config/config.ts";
+import { SETTINGS_SHAPE } from "../../fixtures/settings-shape.ts";
 
 const defaultsText = readFileSync(
   new URL(`../../../${DEFAULTS_FILE}`, import.meta.url),
@@ -223,6 +223,23 @@ describe("the user's file over the defaults", () => {
     ]);
   });
 
+  test("whether the turn's end lints the final response is a boolean setting, on by default", () => {
+    const got = loaded(defaults, undefined);
+    expect(got.settings?.lint["turn-end"]).toBe(true);
+    expect(got.effective).toContain("lint.turn-end = true  # defaults: defaults/config.yaml");
+    const off = loaded(defaults, user("lint:\n  turn-end: false\n"));
+    expect(off.problems).toEqual([]);
+    expect(off.settings?.lint["turn-end"]).toBe(false);
+  });
+
+  test("how wide a summary in the roll-up's draft may be is a number setting, 100 by default", () => {
+    const got = loaded(defaults, undefined);
+    expect(got.settings?.["roll-up"]["summary-width"]).toBe(100);
+    expect(loaded(defaults, user("roll-up:\n  summary-width: 60\n")).settings?.["roll-up"]).toEqual({
+      "summary-width": 60,
+    });
+  });
+
   test("colors.close-x, which no ✖ background is drawn for, is left out with a warning", () => {
     const got = loaded(defaults, user('{"colors": {"close-x": "inverseText", "close": "warning"}}'));
     expect(got.settings?.colors.close).toBe("warning");
@@ -381,9 +398,83 @@ describe("the user's file over the defaults", () => {
   });
 
   test("a broken defaults file leaves no settings at all", () => {
-    const got = loaded({ path: "d", text: '{"keys": {}}' }, undefined);
+    const got = loaded({ path: "d", text: '{"keys": {}, "marks": {"m": "x"}}' }, undefined);
     expect(got.settings).toBeNull();
-    expect(got.problems).toContain("d: counts is missing");
+    expect(got.problems).toEqual(["d: keys holds no settings"]);
+  });
+
+  test("a defaults file with a null default leaves no settings, and the user's file unchecked", () => {
+    const got = loaded({ path: "d", text: '{"keys": {"dismiss": "q"}, "marks": {"m": "x"}, "counts": {"turns": null}}' }, user('{"keys": {"x": "y"}}'));
+    expect(got.settings).toBeNull();
+    expect(got.problems).toEqual([
+      "d: counts.turns is null, so its default gives it no type; write a string, a number, or true or false, or name its section's type in KINDS in src/config/config.ts",
+    ]);
+  });
+});
+
+describe("a config.yaml written as JSON", () => {
+  test("reads with tabs inside a multi-line flow mapping", () => {
+    const nested = '{\n\t"keys": {\n\t\t"dismiss": "x",\n\t\t"next": "n"\n\t},\n\t"colors": {\n\t\t"kanban": "red"\n\t}\n}\n';
+    const got = loaded(defaults, user(nested));
+    expect(got.problems).toEqual([]);
+    expect(got.settings).toMatchObject({
+      keys: { dismiss: "x", next: "n" },
+      colors: { kanban: "red" },
+    });
+  });
+
+  test("reads minified onto one line past YAML's 1024 characters for an implicit key", () => {
+    const everything = loaded(defaults, undefined).settings;
+    const long = { ...everything, marks: { ...everything?.marks, sent: "☑".repeat(2000) } };
+    const minified = JSON.stringify(long);
+    expect(minified.length).toBeGreaterThan(2000);
+    expect(minified).not.toContain("\n");
+    const got = loaded(defaults, user(minified));
+    expect(got.problems).toEqual([]);
+    expect(got.settings).toEqual(long);
+  });
+
+  test("reads with a trailing comma in a flow map and in a flow list", () => {
+    const map = loaded(defaults, user('{"keys": {"dismiss": "x",}, "notes": {"rows": 5,},}'));
+    expect(map.problems).toEqual([]);
+    expect(map.settings?.keys.dismiss).toBe("x");
+    expect(map.settings?.notes.rows).toBe(5);
+    // The list parses, so the one problem is that no setting takes a list.
+    expect(loaded(defaults, user('{"marks": {"sent": ["a", "b",]}}')).problems).toEqual([
+      "~/.config/x/config.yaml: marks.sent is a list, not a string",
+    ]);
+    // The trailing comma ends the list: it adds no null after the last item.
+    expect(parseYaml("[1, 2,]")).toEqual({ value: [1, 2] });
+  });
+
+  test("keeps # and : inside a double-quoted string", () => {
+    const got = loaded(defaults, user('{"marks": {"sent": "# not: a comment"}} # but this'));
+    expect(got.problems).toEqual([]);
+    expect(got.settings?.marks.sent).toBe("# not: a comment");
+  });
+
+  test("reads # comment lines inside a flow mapping", () => {
+    const got = loaded(defaults, user('{\n  "keys": {"dismiss": "x"},\n  # mine\n  "notes": {"rows": 5}\n}'));
+    expect(got.problems).toEqual([]);
+    expect(got.settings?.keys.dismiss).toBe("x");
+    expect(got.settings?.notes.rows).toBe(5);
+  });
+
+  test("refuses a key written twice in a flow mapping, placed by line and column", () => {
+    expect(loaded(defaults, user('{"keys": {"dismiss": "x", "dismiss": "y"}}')).problems).toEqual([
+      "~/.config/x/config.yaml: Map keys must be unique at line 1, column 27",
+    ]);
+    expect(loaded(defaults, user('{\n  "keys": {"dismiss": "x"},\n  "keys": {}\n}')).problems).toEqual([
+      "~/.config/x/config.yaml: Map keys must be unique at line 3, column 3",
+    ]);
+  });
+
+  test("refuses a comment with no whitespace before it", () => {
+    const got = loaded(defaults, user('{"keys": {"dismiss": "x"},# mine\n}'));
+    expect(got.settings?.keys.dismiss).toBe("q");
+    expect(got.problems).toEqual([
+      "~/.config/x/config.yaml: Comments must be separated from other tokens by white space characters at line 1, column 27",
+    ]);
   });
 });
 
@@ -425,12 +516,12 @@ describe("the pieces", () => {
   });
 
   test("the user's file is config.yaml under XDG_CONFIG_HOME, else ~/.config, and no other", () => {
-    expect(userConfigPaths({ xdgConfigHome: "/x", home: "/h" })).toEqual([
+    expect(userConfigPath({ xdgConfigHome: "/x", home: "/h" })).toBe(
       "/x/coding-agent-kanban-turns/config.yaml",
-    ]);
-    expect(userConfigPaths({ home: "/h" })).toEqual([
+    );
+    expect(userConfigPath({ home: "/h" })).toBe(
       "/h/.config/coding-agent-kanban-turns/config.yaml",
-    ]);
-    expect(userConfigPaths({})).toEqual([]);
+    );
+    expect(userConfigPath({})).toBeUndefined();
   });
 });

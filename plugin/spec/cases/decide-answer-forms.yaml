@@ -1,0 +1,112 @@
+title: >-
+  Answers name their turn after the item, with `of` or `from`, or name none
+  and answer the turn before; they pick by a letter, give a note after it, or
+  answer in words; and a line asking a question answers nothing. The reply
+  answers the question in prose and doesn't restate its item, as the
+  protocol asks, so the item stays open under the turn that raised it and
+  shows the question answered nothing; the case is no worked example
+example: false
+turns:
+  - id: 0f311c94
+    prompt: What's left before the release?
+    replies:
+      - text: "\
+          Five choices hold up the release.\n\
+          \n\
+          🧠 **Decide:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔\n\
+          1. **Merge order for the two branches**  \n\
+          \   🔘 A. **Loader first**: the pane rebases onto it.\n\
+          \      ➕ The smaller branch lands first.\n\
+          \      ➖ The pane waits a day.\n\
+          \   🔘 B. **Pane first**: the loader rebases onto it.\n\
+          \      ➕ The pane ships this week.\n\
+          \      ➖ A harder rebase.\n\
+          \   ⠀\n\
+          2. **Snapshot retention for the store**  \n\
+          \   🔘 A. **A week**: 7 snapshots.\n\
+          \      ➕ Little disk.\n\
+          \      ➖ A short history.\n\
+          \   🔘 B. **A month**: 30 snapshots.\n\
+          \      ➕ A long history.\n\
+          \      ➖ 4 times the disk.\n\
+          \   ⠀\n\
+          3. **Where the release notes live**  \n\
+          \   🔘 A. **In the README**: one file.\n\
+          \      ➕ Readers find them.\n\
+          \      ➖ The README grows.\n\
+          \   🔘 B. **In a CHANGELOG**: a file of their own.\n\
+          \      ➕ The usual place.\n\
+          \      ➖ One more file.\n\
+          \   ⠀\n\
+          4. **The lock bump this week**  \n\
+          \   🔘 A. **Bump now**: before the release.\n\
+          \      ➕ The release ships today's libraries.\n\
+          \      ➖ A risk the release didn't test.\n\
+          \   🔘 B. **Wait for the release**: bump after it.\n\
+          \      ➕ The release is what was tested.\n\
+          \      ➖ A week on old libraries.\n\
+          \   ⠀\n\
+          5. **The test runner for the hooks**  \n\
+          \   🔘 A. **The engine's**: `claude plugin test`.\n\
+          \      ➕ It drives the real engine.\n\
+          \      ➖ It needs the `claude` CLI.\n\
+          \   🔘 B. **Node's**: `node --test`.\n\
+          \      ➕ It runs anywhere.\n\
+          \      ➖ A stub in place of the engine.\n"
+        lint: []
+    decide:
+      - number: 1
+        summary: Merge order for the two branches
+        kind: radio
+        options:
+          - { letter: A, name: Loader first }
+          - { letter: B, name: Pane first }
+      - number: 2
+        summary: Snapshot retention for the store
+        kind: radio
+        options:
+          - { letter: A, name: A week }
+          - { letter: B, name: A month }
+      - number: 3
+        summary: Where the release notes live
+        kind: radio
+        options:
+          - { letter: A, name: In the README }
+          - { letter: B, name: In a CHANGELOG }
+      - number: 4
+        summary: The lock bump this week
+        kind: radio
+        options:
+          - { letter: A, name: Bump now }
+          - { letter: B, name: Wait for the release }
+      - number: 5
+        summary: The test runner for the hooks
+        kind: radio
+        options:
+          - { letter: A, name: "The engine's" }
+          - { letter: B, name: "Node's" }
+  - id: 18e77cb3
+    prompt: |-
+      Decide.1.B of 0f311c94
+      Decide.2: A from 0f311c94
+      Decide.3: I'd rather keep both for now
+      Decide.4.B: not before the release
+      0f311c94.Decide.5.A? how would the engine's runner see the hooks
+    replies:
+      - text: "\
+          The engine's runner loads the plugin the way a session does, so it sees every hook.\n\
+          \n\
+          ✅ **Done:**  \n\
+          ▔▔▔▔▔▔▔▔\n\
+          1. **The pane's branch merges first**\n\
+          2. **The store keeps a week of snapshots**\n\
+          3. **Both release-notes files stay**\n\
+          4. **The lock bump waits for the release**\n\
+          \n\
+          📌 Outstanding: 🧠 1\n"
+        lint: []
+expect:
+  open: [0f311c94.Decide.5]
+  outstanding: ["Decide: The test runner for the hooks"]
+  counts: "📌 Outstanding: 🧠 1"

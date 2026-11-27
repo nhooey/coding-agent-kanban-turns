@@ -4,15 +4,21 @@
 
 import { describe, test } from "node:test";
 import { expect } from "expect";
+import { readFileSync } from "node:fs";
 
 import {
+  LIST_KEYS,
+  SETTLERS,
   allItems,
   answeredSubjects,
   answersOfLine,
   countLine,
   decideItemsOfText,
   decideStates,
+  factsOf,
+  isMergeKnown,
   itemsOfText,
+  listItemRef,
   mergedOfResponse,
   mergedQuery,
   openDecideItems,
@@ -23,12 +29,19 @@ import {
   rollUp,
   settlementsIn,
   settlementsOf,
+  settlerOf,
+  settlingOf,
   subjectKey,
   summaryOf,
   unsettled,
   windowStart,
+  withRepliedFrees,
+  withResolvedFrees,
 } from "../../../src/items/outstanding.ts";
+import type { ListItem, ListKey, Settling } from "../../../src/items/outstanding.ts";
 import { itemsOf } from "../../../src/items/items.ts";
+import { parseYaml } from "../../../src/config/config.ts";
+import { field } from "../../../src/json/fields.ts";
 import type { Owner, Turn } from "../../../types/index.d.ts";
 import { numbered, said, turnOf } from "../../fixtures/turns.ts";
 
@@ -497,19 +510,23 @@ ${RULE}
 `;
 
 describe("itemsOfText", () => {
-  test("the items of the rolled-up lists and of the 📌 roll-up, the roll-up's tag cut off", () => {
+  test("the items of the rolled-up lists and of the 📌 roll-up, the roll-up's tag cut off and the turn it names kept", () => {
     expect(itemsOfText(ITEMS_REPLY)).toEqual([
-      { list: "pending", number: 1, isPinned: false, line: "**Rework the loader** It still reads twice." },
-      { list: "pending", number: 2, isPinned: false, line: "**Another one**: with its text beside it" },
-      { list: "todo", number: undefined, isPinned: true, line: "**Paste the prompt**" },
+      { list: "pending", number: 1, isPinned: false, line: "**Rework the loader** It still reads twice.", frees: [] },
+      { list: "pending", number: 2, isPinned: false, line: "**Another one**: with its text beside it", frees: [] },
+      { list: "todo", number: undefined, isPinned: true, line: "**Paste the prompt**", frees: [], tagged: "b2c3d4e5" },
     ]);
+  });
+
+  test("an item with no 🔖 tag has no tagged turn", () => {
+    expect(itemsOfText(ITEMS_REPLY)[0]).not.toHaveProperty("tagged");
   });
 
   test("a topic header is no part of the item above", () => {
     const text =
       "**First topic**  \n═══════════\n👉 **Todo:**  \n▔▔▔▔▔▔▔▔\n1. **Run the benchmark**\n\n**Second topic**  \n════════════\n";
     expect(itemsOfText(text)).toEqual([
-      { list: "todo", number: 1, isPinned: false, line: "**Run the benchmark**" },
+      { list: "todo", number: 1, isPinned: false, line: "**Run the benchmark**", frees: [] },
     ]);
   });
 
@@ -521,6 +538,243 @@ describe("itemsOfText", () => {
   test("every turn's items carry the turn's place", () => {
     const found = allItems(numbered([turn("", "go", ITEMS_REPLY), turn("", "more", ITEMS_REPLY)]));
     expect(found.map((item) => item.at)).toEqual([0, 0, 0, 1, 1, 1]);
+  });
+});
+
+const FREES_REPLY = `Prose.
+
+👉 **Todo:**${BR}
+▔▔▔▔▔▔▔▔
+1. **Paste the release prompt**${BR}
+   Frees: ${FIRST}.Decide.1, ${FIRST}.Review.1
+   ${SEP}
+2. **Run the benchmark**${BR}
+   Frees: ${FIRST}.Todo.1
+   It takes 4 minutes.
+   ${SEP}
+3. **Mark up the plan**
+
+🧠 **Decide:**${BR}
+▔▔▔▔▔▔▔▔▔▔
+1. **Which cache to keep**${BR}
+   🔘 A. **Keep it**: nothing moves.
+      ➕ Cheap.
+      ➖ Slow.
+   Frees: ${FIRST}.Todo.3
+`;
+
+describe("what an item frees", () => {
+  test("is its last line's references, as written", () => {
+    expect(
+      itemsOfText(FREES_REPLY).map(({ list, number, frees }) => ({ list, number, frees })),
+    ).toEqual([
+      { list: "todo", number: 1, frees: [`${FIRST}.Decide.1`, `${FIRST}.Review.1`] },
+      { list: "todo", number: 2, frees: [] },
+      { list: "todo", number: 3, frees: [] },
+      { list: "decide", number: 1, frees: [`${FIRST}.Todo.3`] },
+    ]);
+  });
+
+  test("is a line no summary alone on its line takes as its body", () => {
+    expect(itemsOfText(FREES_REPLY).map((item) => item.line).slice(0, 2)).toEqual([
+      "**Paste the release prompt**",
+      "**Run the benchmark**",
+    ]);
+  });
+
+  test("is nothing for a line after a blank line or a separator, which ends the item", () => {
+    const text = `👉 **Todo:**${BR}\n1. **Run it**${BR}\n   ${SEP}\n   Frees: ${FIRST}.Todo.2\n2. **Then this**\n\n   Frees: ${FIRST}.Todo.1\n`;
+    expect(itemsOfText(text).map((item) => item.frees)).toEqual([[], []]);
+  });
+
+  test("is resolved against the items of its turn and earlier ones, by each turn's whole id", () => {
+    const next = `👉 **Todo:**${BR}\n1. **Merge the branch**${BR}\n   Frees: ${FIRST.slice(0, 6)}.Todo.3, ${SECOND}.Todo.9, ${THIRD}.Todo.2\n   ${SEP}\n2. **Tag it**\n`;
+    const found = allItems([
+      turn(FIRST, "go", FREES_REPLY),
+      turn(SECOND, "more", next),
+      turn(THIRD, "later", next),
+    ]);
+
+    expect(found.map((item) => item.frees)).toEqual([
+      // Review.1 names no item: the reply printed no Review list.
+      [`${FIRST}.Decide.1`],
+      [],
+      [],
+      [`${FIRST}.Todo.3`],
+      // Todo.9 is no item, and the third turn is later than the second.
+      [`${FIRST}.Todo.3`],
+      [],
+      [`${FIRST}.Todo.3`, `${THIRD}.Todo.2`],
+      [],
+    ]);
+  });
+
+  test("never names the item itself", () => {
+    const text = `👉 **Todo:**${BR}\n1. **Merge the branch**${BR}\n   Frees: ${FIRST}.Todo.1, ${FIRST}.Todo.2\n   ${SEP}\n2. **Tag it**\n`;
+    expect(allItems([turn(FIRST, "go", text)]).map((item) => item.frees)).toEqual([
+      [`${FIRST}.Todo.2`],
+      [],
+    ]);
+  });
+
+  test("is read past a blank line inside a code block in the item, its fence closed", () => {
+    const text = [
+      `👉 **Todo:**${BR}`,
+      `1. **Paste the release prompt**${BR}`,
+      "   ```text",
+      "   Tag the release.",
+      "",
+      "   Then publish it.",
+      "   ```",
+      `   Frees: ${FIRST}.Todo.2`,
+      `   ${SEP}`,
+      "2. **Tag it**",
+      "",
+      `   Frees: ${FIRST}.Todo.1`,
+      "",
+    ].join("\n");
+
+    expect(itemsOfText(text).map(({ number, line, frees }) => ({ number, line, frees }))).toEqual([
+      { number: 1, line: "**Paste the release prompt** ```text", frees: [`${FIRST}.Todo.2`] },
+      { number: 2, line: "**Tag it**", frees: [] },
+    ]);
+  });
+
+  test("is nothing where a code block left open runs to the reply's end", () => {
+    const text = `👉 **Todo:**${BR}\n1. **Paste it**${BR}\n   \`\`\`text\n   Frees: ${FIRST}.Todo.2\n\n   two\n`;
+    expect(itemsOfText(text).map((item) => item.frees)).toEqual([[]]);
+  });
+
+  test("is resolved only against a reassess turn and the turns after it, which replaced every earlier item", () => {
+    const first = `👉 **Todo:**${BR}\n1. **Rotate the key**\n2. **Merge the fix**\n`;
+    const after = `👉 **Todo:**${BR}\n1. **Deploy the fix**${BR}\n   Frees: ${FIRST}.Todo.2, ${SECOND}.Todo.1\n`;
+    const found = allItems([
+      turn(FIRST, "go", first),
+      turn(SECOND, "reassess", `👉 **Todo:**${BR}\n1. **Merge the fix**\n`),
+      turn(THIRD, "and then?", after),
+    ]);
+
+    expect(found.map((item) => item.frees)).toEqual([[], [], [], [`${SECOND}.Todo.1`]]);
+  });
+
+  test("may name a Decide item a kanban_options call raised", () => {
+    const text = `👉 **Todo:**${BR}\n1. **Read the notes**${BR}\n   Frees: ${FIRST}.Decide.4\n`;
+    const raised = turnOf(FIRST, "go", {
+      replies: [text],
+      decide: itemsOf({
+        items: [{ turn: FIRST, number: 4, summary: "S", options: [{ letter: "A", name: "a" }] }],
+      }),
+    });
+
+    expect(allItems([raised]).map((item) => item.frees)).toEqual([[`${FIRST}.Decide.4`]]);
+  });
+});
+
+/** A numbered item of a reply's own list, or a 📌 bullet, at the turn's place `at`. */
+const listed = (
+  list: "todo" | "decide",
+  at: number,
+  number: number | undefined,
+  frees: readonly string[] = [],
+  isPinned = false,
+) => ({ list, at, number, isPinned, line: `**Item ${number ?? "pinned"}**`, frees });
+
+describe("listItemRef", () => {
+  const turns = [turnOf(FIRST, "go"), turnOf(SECOND, "more")];
+
+  test("is a numbered item's reference, by its turn's id and its list's header", () => {
+    expect(listItemRef(turns, listed("todo", 1, 3))).toBe(`${SECOND}.Todo.3`);
+    expect(listItemRef(turns, listed("decide", 0, 1))).toBe(`${FIRST}.Decide.1`);
+  });
+
+  test("is none for a 📌 bullet, numbered or not, or an item with no number", () => {
+    expect(listItemRef(turns, listed("todo", 1, 3, [], true))).toBeUndefined();
+    expect(listItemRef(turns, listed("todo", 1, undefined, [], true))).toBeUndefined();
+    expect(listItemRef(turns, listed("todo", 1, undefined))).toBeUndefined();
+  });
+});
+
+describe("withResolvedFrees", () => {
+  const turns = [turnOf(FIRST, "go"), turnOf(SECOND, "more"), turnOf(THIRD, "later")];
+
+  test("resolves each item's references from the reassess turn its span starts at through its own", () => {
+    const items = [
+      listed("todo", 0, 1),
+      listed("todo", 1, 1),
+      listed("todo", 2, 1, [`${FIRST}.Todo.1`, `${SECOND}.Todo.1`, `${THIRD}.Todo.1`]),
+    ];
+
+    expect(withResolvedFrees(turns, [0, 0, 0], items).map((item) => item.frees)).toEqual([
+      [],
+      [],
+      [`${FIRST}.Todo.1`, `${SECOND}.Todo.1`],
+    ]);
+    expect(withResolvedFrees(turns, [0, 1, 1], items).map((item) => item.frees)).toEqual([
+      [],
+      [],
+      [`${SECOND}.Todo.1`],
+    ]);
+  });
+
+  test("knows a Decide item a call raised, and never a 📌 bullet", () => {
+    const raised = turnOf(FIRST, "go", {
+      decide: itemsOf({
+        items: [{ turn: FIRST, number: 2, summary: "S", options: [{ letter: "A", name: "a" }] }],
+      }),
+    });
+    const items = [listed("todo", 0, 4, [], true), listed("todo", 0, 1, [`${FIRST}.Decide.2`, `${FIRST}.Todo.4`])];
+
+    expect(withResolvedFrees([raised], [0], items).map((item) => item.frees)).toEqual([
+      [],
+      [`${FIRST}.Decide.2`],
+    ]);
+  });
+});
+
+describe("what a Decide item a call raised frees", () => {
+  const call = (frees: readonly string[]) =>
+    itemsOf({
+      items: [{ turn: FIRST, number: 1, summary: "Which cache to keep", options: [{ letter: "A", name: "Keep it" }], frees }],
+    });
+  const reply = (line: string) =>
+    `🧠 **Decide:**${BR}\n▔▔▔▔▔▔▔▔▔▔\n1. **Which cache to keep**${BR}\n   🔘 A. **Keep it**: nothing moves.\n${line}\n👉 **Todo:**${BR}\n1. **Paste it**\n2. **Run it**\n`;
+  const freesOf = (text: string, frees: readonly string[]) =>
+    decideStates([turnOf(FIRST, "go", { replies: [text], decide: call(frees) })]).map(
+      (state) => state.item.frees,
+    );
+
+  test("is the reply's `Frees:` line where it names an item, over the call's", () => {
+    expect(freesOf(reply(`   Frees: ${FIRST}.Todo.2\n`), [`${FIRST}.Todo.1`])).toEqual([[`${FIRST}.Todo.2`]]);
+  });
+
+  test("is the call's where the reply writes no line, or one naming no item", () => {
+    expect(freesOf(reply(""), [`${FIRST}.Todo.1`])).toEqual([[`${FIRST}.Todo.1`]]);
+    expect(freesOf(reply(`   Frees: ${FIRST}.Todo.9\n`), [`${FIRST}.Todo.1`])).toEqual([[`${FIRST}.Todo.1`]]);
+  });
+
+  test("withRepliedFrees matches the reply's item to the call's by turn and number", () => {
+    const [item] = call([]);
+    const raised = item === undefined ? [] : [{ item, at: 1 }];
+    const items = [listed("decide", 1, 1, [`${SECOND}.Todo.1`]), listed("decide", 0, 1, [`${FIRST}.Todo.1`])];
+
+    expect(
+      withRepliedFrees([turnOf(FIRST, "go"), turnOf(SECOND, "more")], items, raised).map(
+        (entry) => entry.item.frees,
+      ),
+    ).toEqual([[`${SECOND}.Todo.1`]]);
+  });
+});
+
+describe("the roll-up keeps what an item frees", () => {
+  test("a 📌 bullet that names nothing keeps what its own list's printing freed", () => {
+    const first = `👉 **Todo:**${BR}\n▔▔▔▔▔▔▔▔\n1. **Paste the prompt**${BR}\n   Frees: ${FIRST}.Todo.2\n   ${SEP}\n2. **Run it**\n`;
+    const pinned = `Later.\n\n📌 **Outstanding from previous turns:**${BR}\n${RULE}\n👉 **Todo:**${BR}\n- **Paste the prompt** 🔖 ${FIRST}₋₁\n- **Run it** 🔖 ${FIRST}₋₁\n`;
+    const rolled = rollUp([turn(FIRST, "go", first), turn(SECOND, "more", pinned)], WINDOW);
+
+    expect(rolled.map(({ isPinned, frees }) => ({ isPinned, frees }))).toEqual([
+      { isPinned: true, frees: [`${FIRST}.Todo.2`] },
+      { isPinned: true, frees: [] },
+    ]);
   });
 });
 
@@ -545,8 +799,20 @@ describe("subjectKey", () => {
     expect(subjectKey("Entries 0550 and 0455, dead code")).toBe("entry 0550");
   });
 
+  test("a backlog entry's words are matched ignoring case by ASCII alone, as the long s and the Kelvin sign are no letter of them", () => {
+    expect(subjectKey("entrieſ 0550")).toBe("entrie 0550");
+    expect(subjectKey("Fix ſentry 0550 now")).toBe("entry 0550");
+    expect(subjectKey("Fix Kentry 0550 now")).toBe("entry 0550");
+  });
+
   test("else a branch-shaped code span", () => {
     expect(subjectKey("Merge `README.md` and `atomic-reload` today")).toBe("branch atomic-reload");
+  });
+
+  test("a branch name may hold every lowercase letter and digit", () => {
+    expect(subjectKey("Merge `abcdefghijklm-nopqrstuvwxyz-0123456789`")).toBe(
+      "branch abcdefghijklm-nopqrstuvwxyz-0123456789",
+    );
   });
 
   test("else the first three words that are not articles or prepositions", () => {
@@ -711,6 +977,23 @@ describe("a settled Review item", () => {
     for (const broken of ["", "not json", "[]", '{"data": null}']) {
       expect([...mergedOfResponse(ordered, broken)]).toEqual([]);
     }
+  });
+
+  test("the merges are known only where the response's data answers for every pull request asked", () => {
+    const ordered = ["nhooey/kanban#21", "nhooey/kanban#22"];
+    const answered = {
+      pr0: { pullRequest: { state: "MERGED" } },
+      pr1: { pullRequest: { state: "OPEN" } },
+    };
+    expect(isMergeKnown(ordered, JSON.stringify({ data: answered }))).toBe(true);
+    expect(isMergeKnown(ordered, JSON.stringify({ data: { pr0: answered.pr0, pr1: null } }))).toBe(false);
+    expect(
+      isMergeKnown(ordered, JSON.stringify({ errors: [{ message: "Bad credentials" }] })),
+    ).toBe(false);
+    for (const broken of ["", "not json", "[]", '{"data": null}']) {
+      expect(isMergeKnown(ordered, broken)).toBe(false);
+    }
+    expect(isMergeKnown([], "")).toBe(true);
   });
 
   test("GitHub is asked about the Review items' pull requests, in one gh call", () => {
@@ -926,6 +1209,121 @@ describe("the lists nothing but a reassess settles", () => {
   });
 });
 
+/** An item of `list` on `line`, printed by its own list in the turn at `at`. */
+const listItem = (list: ListKey, line: string, at = 0): ListItem => ({
+  list,
+  at,
+  number: 1,
+  isPinned: false,
+  line,
+  frees: [],
+});
+
+/** The key an item's last printing goes by in `lastOwn`: its list and its subject. */
+const ownKey = (item: ListItem): string => `${item.list}\t${subjectKey(summaryOf(item.line))}`;
+
+/** What settles nothing: no merges, answers, reports or printings. */
+const NOTHING: Settling = {
+  merged: new Set(),
+  decided: new Set(),
+  reports: [],
+  lastOwn: new Map(),
+};
+
+describe("the settlers, by the way a list is settled", () => {
+  test("each list that rolls up is settled the way its settled-by names", () => {
+    expect(
+      Object.fromEntries(
+        LIST_KEYS.map((key) => [
+          key,
+          Object.entries(SETTLERS).find(
+            ([, settler]) => settler === settlerOf({ list: key }),
+          )?.[0],
+        ]),
+      ),
+    ).toEqual({
+      pending: "none",
+      waiting: "report",
+      authorizations: "none",
+      review: "merged-pull-request",
+      todo: "none",
+      decide: "answer",
+    });
+  });
+
+  test("cover every way the spec's schema allows, and nothing else", () => {
+    const schema = parseYaml(
+      readFileSync(new URL("../../../spec/kanban.schema.yaml", import.meta.url), "utf8"),
+    );
+    const ways = ["value", "definitions", "list", "properties", "settled-by", "enum"].reduce(
+      field,
+      schema as unknown,
+    );
+    expect(Object.keys(SETTLERS).toSorted()).toEqual(
+      (Array.isArray(ways) ? ways : []).toSorted(),
+    );
+  });
+
+  test("merged-pull-request settles an item once every pull request it names with its repository merged", () => {
+    const { settles, pullRequests } = SETTLERS["merged-pull-request"];
+    const both = listItem("review", "**example/kanban#22 Bump** on example/other#7");
+    const merged = (refs: readonly string[]) => ({ ...NOTHING, merged: new Set(refs) });
+    expect(settles(both, merged(["example/kanban#22", "example/other#7"]))).toBe(true);
+    expect(settles(both, merged(["example/kanban#22"]))).toBe(false);
+    expect(settles(listItem("review", "**#23 The README**"), merged(["example/kanban#23"]))).toBe(false);
+    expect(pullRequests(both)).toEqual(["example/kanban#22", "example/other#7"]);
+  });
+
+  test("answer settles an item whose subject the user answered", () => {
+    const { settles, pullRequests } = SETTLERS.answer;
+    const item = listItem("decide", "**Which cache to keep for the loader**");
+    expect(settles(item, { ...NOTHING, decided: new Set([subjectKey(summaryOf(item.line))]) })).toBe(true);
+    expect(settles(item, NOTHING)).toBe(false);
+    expect(pullRequests(listItem("decide", "**example/kanban#22 Bump**"))).toEqual([]);
+  });
+
+  test("report settles an item a report names after the last turn its own list printed it in", () => {
+    const { settles, pullRequests } = SETTLERS.report;
+    const item = listItem("waiting", "**Watcher (`b8a83gfv0`)**", 1);
+    const reported = (n: number) => ({
+      ...NOTHING,
+      reports: [{ n, names: ["b8a83gfv0"], report: "Done." }],
+      lastOwn: new Map([[ownKey(item), 1]]),
+    });
+    expect(settles(item, reported(2))).toBe(true);
+    expect(settles(item, reported(1))).toBe(false);
+    expect(settles(item, NOTHING)).toBe(false);
+    expect(pullRequests(listItem("waiting", "**example/kanban#22 Bump**"))).toEqual([]);
+  });
+
+  test("none settles nothing and asks about no pull request", () => {
+    const { settles, pullRequests } = SETTLERS.none;
+    const item = listItem("todo", "**example/kanban#22 Bump**");
+    expect(settles(item, { ...NOTHING, merged: new Set(["example/kanban#22"]) })).toBe(false);
+    expect(pullRequests(item)).toEqual([]);
+  });
+
+  test("settlingOf reads the merges, the answered subjects, the reports others sent and each item's last printing since reassess", () => {
+    const found = [
+      turn(FIRST, "go", waiting("Watcher (`b8a83gfv0`)"), DECIDE_REPLY),
+      turnOf(SECOND, "1. A", {
+        replies: [waiting("Watcher (`b8a83gfv0`)")],
+        messages: [said("Done.", "notification", ["b8a83gfv0"]), said("Mine.", "user", ["x"])],
+      }),
+      report(THIRD, "Pushed.", ["a48bb"]),
+    ];
+    const settling = settlingOf(found, new Set(["example/kanban#22"]));
+    expect(settling.merged).toEqual(new Set(["example/kanban#22"]));
+    expect(settling.decided).toEqual(answeredSubjects(found));
+    expect(settling.decided.size).toBeGreaterThan(0);
+    expect(settling.reports).toEqual([
+      { n: 1, names: ["b8a83gfv0"], report: "Done." },
+      { n: 2, names: ["a48bb"], report: "Pushed." },
+    ]);
+    expect(settling.lastOwn.get(ownKey(listItem("waiting", "**Watcher (`b8a83gfv0`)**")))).toBe(1);
+  });
+});
+
 describe("openOf", () => {
   test("gives the open Decide items and the count line, nothing wrong", () => {
     const open = openOf([decided(FIRST)], WINDOW);
@@ -948,6 +1346,85 @@ describe("openOf", () => {
     expect(open.items).toEqual(openDecideItems(found));
     expect(open.settlements).toEqual(settlementsOf(found));
   });
+
+  test("reads each turn's replies at most twice: once for every item, once for the Decide items its lists print", () => {
+    const reads = FACTS_TURNS.map(() => 0);
+    const watched = FACTS_TURNS.map(
+      (found, at) =>
+        new Proxy(found, {
+          get: (target, field, receiver) => {
+            reads[at] = (reads[at] ?? 0) + (field === "replies" ? 1 : 0);
+
+            return Reflect.get(target, field, receiver);
+          },
+        }),
+    );
+    openOf(watched, WINDOW, new Set(["example/kanban#22"]));
+    expect(reads.every((count) => count >= 1 && count <= 2)).toBe(true);
+  });
+});
+
+/** Turns that reassess, answer and report, each printing Decide and Waiting items. */
+const FACTS_TURNS: readonly Turn[] = [
+  turn(FIRST, "go", waiting("Watcher (`b8a83gfv0`)"), DECIDE_REPLY),
+  turnOf(SECOND, "reassess", {
+    replies: [DECIDE_REPLY, waiting("Watcher (`b8a83gfv0`)")],
+    messages: [said("Done.", "notification", ["b8a83gfv0"])],
+  }),
+  turn(THIRD, "1. A", DECIDE_REPLY.replace("**Ship", "**Hold")),
+];
+
+/** An item as a line: its list, its turn's place, its number or `-`, a pin where a roll-up held it, and its summary. */
+const itemLine = (item: ListItem): string =>
+  [item.list, item.at, item.number ?? "-", item.isPinned ? "📌" : "", summaryOf(item.line)].join(" ");
+
+describe("factsOf", () => {
+  test("holds the turns, the latest reassess, the answers and every item", () => {
+    const facts = factsOf(FACTS_TURNS);
+    expect(facts.turns).toBe(FACTS_TURNS);
+    expect(facts.start).toBe(1);
+    expect(facts.answers).toEqual([
+      { turn: "", number: 1, letters: ["A"], note: "", at: 1, sent: THIRD },
+    ]);
+    expect(facts.items.map(itemLine)).toEqual([
+      "waiting 0 1  Watcher (`b8a83gfv0`)",
+      "decide 0 1  Which cache to keep for the loader",
+      "decide 0 2  Backlog cleanups to start",
+      "decide 0 3  Ship the release tonight?",
+      "decide 0 - 📌 An older decision",
+      "decide 1 1  Which cache to keep for the loader",
+      "decide 1 2  Backlog cleanups to start",
+      "decide 1 3  Ship the release tonight?",
+      "decide 1 - 📌 An older decision",
+      "waiting 1 1  Watcher (`b8a83gfv0`)",
+      "decide 2 1  Which cache to keep for the loader",
+      "decide 2 2  Backlog cleanups to start",
+      "decide 2 3  Hold the release tonight?",
+      "decide 2 - 📌 An older decision",
+    ]);
+  });
+
+  test("holds each item's latest printing in its own list since the latest reassess, by its key", () => {
+    expect(
+      [...factsOf(FACTS_TURNS).latestOwn].map(([key, item]) => [key, itemLine(item)]),
+    ).toEqual([
+      ["decide\twhich cache keep", "decide 2 1  Which cache to keep for the loader"],
+      ["decide\tbacklog cleanups start", "decide 2 2  Backlog cleanups to start"],
+      ["decide\tship release tonight", "decide 1 3  Ship the release tonight?"],
+      ["waiting\twatcher b8a83gfv0", "waiting 1 1  Watcher (`b8a83gfv0`)"],
+      ["decide\thold release tonight", "decide 2 3  Hold the release tonight?"],
+    ]);
+  });
+
+  test("of no turns, holds nothing and starts at the first turn", () => {
+    expect(factsOf([])).toEqual({
+      turns: [],
+      start: 0,
+      answers: [],
+      items: [],
+      latestOwn: new Map(),
+    });
+  });
 });
 
 describe("openItemsIn and settlementsIn", () => {
@@ -962,5 +1439,99 @@ describe("openItemsIn and settlementsIn", () => {
   test("are empty for no states", () => {
     expect(openItemsIn([])).toEqual([]);
     expect(settlementsIn([])).toEqual([]);
+  });
+});
+
+describe("itemsOfText, as parseReply reads a reply", () => {
+  test("an older roll-up header bare pins nothing: only the 📌 glyph and bold do", () => {
+    for (const older of ["Still open from earlier", "Still open from earlier:", "Still open from earlier, the README."]) {
+      const text = `👉 **Todo:**${BR}\n1. **Run it**\n\n${older}\n📋 **To review:**${BR}\n- **The README** 🔖 b2c3d4e5₋₁\n`;
+
+      expect(itemsOfText(text).map((item) => item.isPinned)).toEqual([false, false]);
+    }
+  });
+
+  test("a fence less indented than an item's text ends the item, and is no line beneath its summary", () => {
+    const text = `👉 **Todo:**${BR}\n 2) **Run it**${BR}\n   \`\`\`text\n   \`\`\`\n`;
+
+    expect(itemsOfText(text).map((item) => item.line)).toEqual(["**Run it**"]);
+  });
+
+  test("a code block holds code wherever it is: outside a list, or under an item of a list that doesn't roll up", () => {
+    const outside = `Some work.\n\n\`\`\`text\n👉 **Todo:**\n1. **Not an item**\n\`\`\`\n`;
+    const underDone = `✅ **Done:**${BR}\n1. **Fixed it**\n   \`\`\`\n📌 **Outstanding from previous turns:**\n   \`\`\`\n👉 **Todo:**${BR}\n1. **Run it**\n`;
+
+    expect(itemsOfText(outside)).toEqual([]);
+    expect(itemsOfText(underDone).map((item) => item.isPinned)).toEqual([false]);
+  });
+
+  test("a topic's title, the line above its rule, is no part of the item above it", () => {
+    const text = `👉 **Todo:**${BR}\n1. **Run the benchmark**${BR}\nThe loader\n═══════════\n`;
+
+    expect(itemsOfText(text).map((item) => item.line)).toEqual(["**Run the benchmark**"]);
+  });
+
+  test("a line after a separator is no body of the summary alone above it", () => {
+    const text = `👉 **Todo:**${BR}\n1. **Run it**${BR}\n   ${SEP}\n   Its sentence.\n`;
+
+    expect(itemsOfText(text).map((item) => item.line)).toEqual(["**Run it**"]);
+  });
+
+  test("a CRLF reply's items are its LF form's", () => {
+    expect(itemsOfText(ITEMS_REPLY.replaceAll("\n", "\r\n"))).toEqual(itemsOfText(ITEMS_REPLY));
+  });
+});
+
+describe("decideItemsOfText, as parseReply reads a reply", () => {
+  const OPTIONED = `1. **Which cache to keep**${BR}\n   🔘 A. **Disk**`;
+
+  test("a numbered line 3 spaces in is under the item above, no item of its own", () => {
+    expect(decideItemsOfText(`🧠 **Decide:**${BR}\n${OPTIONED}\n   2. **Nested**\n      🔘 A. **Disk**`)).toEqual([
+      { number: 1, summary: "Which cache to keep" },
+    ]);
+  });
+
+  test("an item's options are read up to the next item: after blank lines, under a later bullet or a later plain item", () => {
+    for (const text of [
+      `🧠 **Decide:**${BR}\n1. **Which cache to keep**${BR}\n\n   🔘 A. **Disk**`,
+      `🧠 **Decide:**${BR}\n1. **Which cache to keep**${BR}\n\n\n   It still reads twice.\n\n   🔘 A. **Disk**`,
+      `🧠 **Decide:**${BR}\n1. **Which cache to keep**${BR}\n- **A bullet**\n   🔘 A. **Disk**`,
+      `🧠 **Decide:**${BR}\n1. **Which cache to keep**${BR}\n\n- **A bullet**\n\n   🔘 A. **Disk**`,
+      `🧠 **Decide:**${BR}\n1. **Which cache to keep**${BR}\n2. Plain words\n   🔘 A. **Disk**`,
+    ]) {
+      expect(decideItemsOfText(text)).toEqual([{ number: 1, summary: "Which cache to keep" }]);
+    }
+  });
+
+  test("an option goes to the nearest item above it, and an item with none below it before the next is none", () => {
+    expect(
+      decideItemsOfText(`🧠 **Decide:**${BR}\n1. **Which cache to keep**${BR}\n\n2. **Ship it**${BR}\n\n   🔘 A. **Disk**`),
+    ).toEqual([{ number: 2, summary: "Ship it" }]);
+  });
+
+  test("a number alone on its line opens an item, its bold summary on the next line not blank", () => {
+    for (const text of [
+      `🧠 **Decide:**${BR}\n1.\n**Which cache to keep**\n   🔘 A. **Disk**`,
+      `🧠 **Decide:**${BR}\n1. \n\n   **Which cache to keep**\n   🔘 A. **Disk**`,
+      `🧠 **Decide:**${BR}\n1)\n**Which cache to keep**: why\n\n   🔘 A. **Disk**`,
+    ]) {
+      expect(decideItemsOfText(text)).toEqual([{ number: 1, summary: "Which cache to keep" }]);
+    }
+    expect(decideItemsOfText(`🧠 **Decide:**${BR}\n1.\nPlain **bold**\n   🔘 A. **Disk**`)).toEqual([]);
+  });
+
+  test("an option or an item inside code is none, and an older roll-up header bare ends the list", () => {
+    for (const text of [
+      `🧠 **Decide:**${BR}\n1. **Which cache to keep**${BR}\n   \`\`\`\n   🔘 A. **Disk**\n   \`\`\``,
+      `🧠 **Decide:**${BR}\n1. **Which cache to keep**${BR}\n\n\`\`\`\n   🔘 A. **Disk**\n\`\`\``,
+      `🧠 **Decide:**${BR}\n\`\`\`\n1. **Which cache to keep**${BR}\n\`\`\`\n   🔘 A. **Disk**`,
+      `🧠 **Decide:**${BR}\n1. **Which cache to keep**${BR}\nStill open from earlier\n   🔘 A. **Disk**`,
+    ]) {
+      expect(decideItemsOfText(text)).toEqual([]);
+    }
+  });
+
+  test("a Decide list inside a code block is code", () => {
+    expect(decideItemsOfText(`\`\`\`\n🧠 **Decide:**${BR}\n${OPTIONED}\n\`\`\``)).toEqual([]);
   });
 });

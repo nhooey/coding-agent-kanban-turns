@@ -4,40 +4,47 @@
 // raised. No `$`, no I/O, and nothing of where the turns came from: the hooks
 // build the turns, ask GitHub which pull requests merged, and hand both here.
 //
-// What settles an item is a rule this plugin shares with the skill:
+// What settles an item is a rule this plugin shares with the skill, stated
+// once, in spec/kanban.yaml: each list's `settled-by` names its way, the
+// comment there says what each way does, and SETTLERS below holds each
+// way's code. What the code adds to the rule:
 //
-// - Review: every pull request it names with its repository, as a GitHub
-//   URL or `owner/repo#N`, has merged; a bare `#N` is never looked up.
-// - Decide: a later prompt or a message sent while a turn ran answers its
-//   latest restatement, by an option letter or in words,
-//   `9efb08a1.Decide.2.B`, `Decide.2: B of 9efb08a1`, `Decide.2: <words>`,
-//   or a line of numbered answers to the turn before, `2. B` or
-//   `1. A / 3. B`; a line holding a question mark answers nothing. Only the
-//   user's own text answers.
-// - Waiting: a report, the prompt of a turn or a message sent while a turn
-//   ran, names it in a turn after the last that printed it in its own list.
-// - Every list: a later `reassess` turn, whose lists replace every item.
+// - `answer`: the user's answer comes in a later prompt or a message sent
+//   while a turn ran, as `9efb08a1.Decide.2.B`, `Decide.2: B of 9efb08a1`,
+//   `Decide.2: <words>`, or a line of numbered answers to the turn before,
+//   `2. B` or `1. A / 3. B`; a line holding a question mark answers
+//   nothing, and only the user's own text answers.
+// - `report`: a report is the prompt of a turn, or a message sent while a
+//   turn ran, that goes by names; no text of the user's own is one.
 //
 // A 📌 roll-up's restatement of a settled item reopens nothing.
 
 import { answersOfLine } from "./answer-lines.ts";
 import type { LineAnswer } from "./answer-lines.ts";
+import { freesOfLine, isFreesLine, refText, resolvedRefs } from "./frees.ts";
 import { refOf } from "./items.ts";
-import { reportNamesItem } from "../transcript/reports.ts";
+import { branchSpans, reportNamesItem } from "../transcript/reports.ts";
+import { isObject, parsedJson } from "../json/fields.ts";
+import { escaped } from "../text/patterns.ts";
 import {
-  DECISIONS,
-  HEADER,
   isOwn,
-  isTopicRule,
   reassessStart,
-  sectionsOf,
+  reassessStarts,
   withoutDraftHeader,
 } from "../transcript/turns.ts";
+import { parseReply, sectionsIn } from "../transcript/reply.ts";
+import type {
+  Block,
+  BodyLine,
+  ItemHead,
+  LineFacts,
+} from "../transcript/reply.ts";
 import {
-  LETTER,
+  DECIDE,
+  DECISIONS,
   SUBSCRIPT_CHAR,
+  SUBJECT_WORD,
   TURN_ID,
-  escaped,
   namesOf,
 } from "../protocol/rules.ts";
 import { SPEC } from "../protocol/spec.ts";
@@ -63,13 +70,6 @@ const keyOfName = (name: string): ListKey | undefined =>
 
 const ROLL_UP = SPEC["roll-up"];
 
-/** The 📌 roll-up's header, under which the lists' headers repeat. */
-export const PIN = new RegExp(
-  String.raw`^\s*${escaped(ROLL_UP.glyph)}\s+\*\*(${namesOf(ROLL_UP).map(escaped).join("|")}):\*\*`,
-  "u",
-);
-// A top-level bullet or numbered line, the number kept.
-const ITEM = /^ {0,2}(?:[-*]|(\d+)[.)])\s+(.*)$/;
 // An older roll-up's tag before the item, and the 🔖 tag after it.
 const TAG = escaped(SPEC.tag.glyph);
 const PREFIX = new RegExp(String.raw`^${TAG}\s*\w+${SUBSCRIPT_CHAR}*:\s*`, "u");
@@ -82,8 +82,12 @@ const BOLD = /\*\*(.+?)\*\*/;
 /**
  * One item of a list that rolls up into 📌: its list, the turn whose reply
  * printed it (its place among the turns), its number in a numbered list,
- * whether it sat in a 📌 roll-up, and its line, the line beneath joined to a
- * summary alone on its own, with any 🔖 tag cut off.
+ * whether it sat in a 📌 roll-up, its line, the line beneath joined to a
+ * summary alone on its own, with any 🔖 tag cut off, and the items it frees,
+ * by reference: those its last line, a `Frees:` line, names. Read from one
+ * reply's text, they are the references as written; read from the turns,
+ * each names an item of its turn or an earlier one, by the turn's whole id.
+ * `tagged` is the turn id its 🔖 tag named, where it had one.
  */
 export type ListItem = Readonly<{
   list: ListKey;
@@ -91,6 +95,8 @@ export type ListItem = Readonly<{
   number: number | undefined;
   isPinned: boolean;
   line: string;
+  frees: readonly string[];
+  tagged?: string;
 }>;
 
 /** The item's summary: its bold text without a trailing colon, else its line. */
@@ -100,126 +106,222 @@ export const summaryOf = (line: string): string => {
   return (BOLD.exec(text)?.[1] ?? text).trim().replace(/:$/, "").trim();
 };
 
-const ENTRY = /\bentr(?:y|ies)\s+(\d{3,4})\b/i;
-const SPAN = /`([^`]+)`/g;
-const BRANCH = /^[a-z0-9]+(?:-[a-z0-9]+)+$/;
-const STOP_WORDS: readonly string[] =
-  "a an and at by for from in is its of on the to with".split(" ");
-const KEY_WORDS = 3;
+const SUBJECT = SPEC.subject;
+const ENTRY_DIGITS = SUBJECT.entry.digits;
+// A backlog entry, as the spec words it: `\b(?:entry|entries)\s+(\d{3,4})\b`,
+// ignoring case. No `u` flag: with `i`, it would fold the long s, `ſ`, into
+// `s` and the Kelvin sign, U+212A, into `k`, and count both as word
+// characters at `\b`, so `entrieſ 0550` would name an entry and
+// `ſentry 0550` would not.
+const ENTRY = new RegExp(
+  String.raw`\b(?:${SUBJECT.entry.words.map(escaped).join("|")})\s+(\d{${ENTRY_DIGITS.fewest},${ENTRY_DIGITS.most}})\b`,
+  "i",
+);
+const KEY_WORD = new RegExp(SUBJECT_WORD, "g");
+const STOP_WORDS: readonly string[] = SUBJECT["stop-words"];
 
 /** The text with everything but letters and digits gone, lowercased. */
 const normal = (text: string): string =>
   text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
 
 /**
- * The key that matches an item across rewordings of its summary: `entry 1411`
- * where the summary names a backlog entry, else `branch atomic-reload` for its
- * first code span shaped like a branch name, else its first 3 words that are
- * not articles or prepositions, lowercased.
+ * The key that matches an item across rewordings of its summary, by the
+ * spec's `subject` rule: `entry 1411` where the summary names a backlog
+ * entry, else `branch atomic-reload` for its first code span shaped like a
+ * branch name, else its first `words-kept` words that aren't stop words,
+ * lowercased, `ship release users`.
  */
 export const subjectKey = (summary: string): string => {
   const entry = ENTRY.exec(summary)?.[1];
-  const branch = [...summary.matchAll(SPAN)]
-    .map((m) => m[1] ?? "")
-    .find((span) => BRANCH.test(span));
-  const words = (summary.toLowerCase().match(/[a-z0-9]+/g) ?? []).filter(
+  const branch = branchSpans(summary)[0];
+  const words = (summary.toLowerCase().match(KEY_WORD) ?? []).filter(
     (word) => !STOP_WORDS.includes(word),
   );
 
   return entry !== undefined
-    ? `entry ${entry}`
+    ? `${SUBJECT.entry.label} ${entry}`
     : branch !== undefined
-      ? `branch ${branch}`
+      ? `${SUBJECT.branch.label} ${branch}`
       : words.length > 0
-        ? words.slice(0, KEY_WORDS).join(" ")
+        ? words.slice(0, SUBJECT["words-kept"]).join(" ")
         : normal(summary);
 };
 
-/** Whether an item line is its bold summary alone, its sentence on the line beneath. */
-const awaitsBody = (text: string): boolean => {
-  const bold = /^\*\*(.+?)\*\*/.exec(text);
+/**
+ * An item of a list that rolls up, read from its block: its own line, and,
+ * where that line is its bold summary alone, the line beneath joined to it,
+ * unless that's the `Frees:` line, which is no body; with any 🔖 tag cut off,
+ * and what its last line, a `Frees:` line, frees, as written.
+ */
+const listItemOf = (
+  list: ListKey,
+  isPinned: boolean,
+  head: ItemHead,
+  body: readonly BodyLine[],
+): Omit<ListItem, "at"> => {
+  const own = head.text.trim();
+  const beneath = body[0]?.line.trim();
+  const line =
+    head.isAlone && beneath !== undefined && !isFreesLine(beneath)
+      ? `${own} ${beneath}`
+      : own;
+  const tagged = SUFFIX.exec(line)?.[1];
 
-  return bold !== null && text.slice(bold[0].length).trim() === "";
+  return {
+    list,
+    number: head.number,
+    isPinned,
+    line: line.replace(SUFFIX, ""),
+    frees: freesOfLine(body.at(-1)?.line ?? "") ?? [],
+    ...(tagged === undefined ? {} : { tagged }),
+  };
 };
 
-type Found = Readonly<{
-  list: ListKey;
-  number: number | undefined;
-  isPinned: boolean;
-  line: string;
-}>;
-
-type Scan = Readonly<{
+/** Where the reading of a reply's blocks is: the list it's in, whether in a 📌 roll-up, and the items found. */
+type Reading = Readonly<{
   list: ListKey | undefined;
   isPinned: boolean;
-  found: readonly Found[];
-  isAwaiting: boolean;
+  found: readonly Omit<ListItem, "at">[];
 }>;
 
-const scan = (state: Scan, line: string): Scan => {
-  const header = HEADER.exec(line)?.[1];
-  const item = ITEM.exec(line);
-  const body = line.trim();
-  const last = state.found.at(-1);
+/**
+ * The reading once one more block is read: a header opens its list, the 📌
+ * roll-up's start leaves every list and pins what follows, a topic header
+ * leaves the list above it, and an item of a list that rolls up is found.
+ */
+const readBlock = (state: Reading, block: Block): Reading =>
+  block.kind === "header"
+    ? { ...state, list: keyOfName(block.name) }
+    : block.kind === "roll-up"
+      ? { ...state, list: undefined, isPinned: true }
+      : block.kind === "topic"
+        ? { ...state, list: undefined }
+        : block.kind === "item" && state.list !== undefined
+          ? {
+              ...state,
+              found: [
+                ...state.found,
+                listItemOf(state.list, state.isPinned, block.head, block.body),
+              ],
+            }
+          : state;
 
-  return header !== undefined
-    ? { ...state, list: keyOfName(header), isAwaiting: false }
-    : PIN.test(line)
-      ? { ...state, list: undefined, isPinned: true, isAwaiting: false }
-      : // A topic header's rule ends the list above it, and a blank line ends
-        // any list, so neither the topic header nor prose after a list is read
-        // as an item's body.
-        isTopicRule(line)
-        ? { ...state, list: undefined, isAwaiting: false }
-        : body === ""
-          ? { ...state, isAwaiting: false }
-          : state.list !== undefined && item !== null
-            ? {
-                ...state,
-                found: [
-                  ...state.found,
-                  {
-                    list: state.list,
-                    number: item[1] === undefined ? undefined : Number(item[1]),
-                    isPinned: state.isPinned,
-                    line: (item[2] ?? "").trim(),
-                  },
-                ],
-                isAwaiting: awaitsBody((item[2] ?? "").trim()),
-              }
-            : // The summary's own line holds no sentence, so the line beneath
-              // it is the item's body.
-              state.isAwaiting && last !== undefined && body !== SEPARATOR
-              ? {
-                  ...state,
-                  found: [
-                    ...state.found.slice(0, -1),
-                    { ...last, line: `${last.line} ${body}` },
-                  ],
-                  isAwaiting: false,
-                }
-              : state;
+/** The items of one reply text's lists that roll up, and of its 📌 roll-up, in order, each freeing the references its last line names as written. */
+export const itemsOfText = (text: string): readonly Omit<ListItem, "at">[] =>
+  parseReply(text).reduce(readBlock, {
+    list: undefined,
+    isPinned: false,
+    found: [],
+  }).found;
+
+/** The reference an item of a reply's own list goes by, `9efb08a1.Todo.2`, by its turn's id; none for a 📌 roll-up's bullet or an item with no number. */
+export const listItemRef = (
+  turns: readonly Pick<Turn, "id">[],
+  item: ListItem,
+): string | undefined =>
+  item.isPinned || item.number === undefined
+    ? undefined
+    : refText({
+        turn: turns[item.at]?.id ?? "",
+        list: SPEC.lists[item.list].header,
+        number: item.number,
+      });
+
+/**
+ * The items with what each frees resolved against the items the turns
+ * hold, each numbered item of a reply's own list and each Decide item a
+ * `kanban_options` call raised, by its turn's whole id: only those of its
+ * own turn and the turns before it back to `starts[at]`, the latest
+ * `reassess` turn at or before its own, whose lists replaced every earlier
+ * item; and never the item itself.
+ */
+export const withResolvedFrees = (
+  turns: readonly Pick<Turn, "id" | "decide">[],
+  starts: readonly number[],
+  items: readonly ListItem[],
+): readonly ListItem[] => {
+  const ids = turns.map((turn) => turn.id);
+  const known = new Set([
+    ...items.flatMap((item) => listItemRef(turns, item) ?? []),
+    ...turns.flatMap((turn) =>
+      turn.decide.map((raised) =>
+        refText({ turn: turn.id, list: DECIDE.header, number: raised.number }),
+      ),
+    ),
+  ]);
+
+  return items.map((item) => {
+    const own = listItemRef(turns, item);
+    const span = { from: starts[item.at] ?? 0, at: item.at };
+
+    return {
+      ...item,
+      frees: resolvedRefs(item.frees, ids, span, known).filter(
+        (ref) => ref !== own,
+      ),
+    };
+  });
 };
 
-/** The items of one reply text's lists that roll up, and of its 📌 roll-up, in order. */
-export const itemsOfText = (text: string): readonly Omit<ListItem, "at">[] =>
-  text
-    .split("\n")
-    .reduce(scan, {
-      list: undefined,
-      isPinned: false,
-      found: [],
-      isAwaiting: false,
-    } as Scan)
-    .found.map((found) => ({ ...found, line: found.line.replace(SUFFIX, "") }));
-
-/** Every item of every turn's replies, oldest first. */
+/** Every item of every turn's replies, oldest first, each freeing the items its `Frees:` line names, as withResolvedFrees resolves them. */
 export const allItems = (turns: readonly Turn[]): readonly ListItem[] =>
-  turns.flatMap((turn, at) =>
-    turn.replies.flatMap((text) =>
-      itemsOfText(text).map((item) => ({ ...item, at })),
+  itemsIn(turns, reassessStarts(turns));
+
+/** allItems, given each turn's latest `reassess` turn, `starts`, as reassessStarts gives them. */
+const itemsIn = (
+  turns: readonly Turn[],
+  starts: readonly number[],
+): readonly ListItem[] =>
+  withResolvedFrees(
+    turns,
+    starts,
+    turns.flatMap((turn, at) =>
+      turn.replies.flatMap((text) =>
+        itemsOfText(text).map((item) => ({ ...item, at })),
+      ),
     ),
   );
+
+/** A Decide item a `kanban_options` call raised, and the place of the turn it raised it in. */
+export type Raising = Readonly<{ item: DecideItem; at: number }>;
+
+/**
+ * The Decide items `kanban_options` calls raised, each at its turn's place
+ * `at`, with what it frees as the reply's own Decide list writes it: where
+ * that turn's reply prints the item, by its number, with a `Frees:` line
+ * naming an item `items` resolves, the reply's line wins over the call's
+ * `frees`, since the reply is what the user reads and the call came before
+ * it; else the call's stands.
+ */
+export const withRepliedFrees = (
+  turns: readonly Pick<Turn, "id">[],
+  items: readonly ListItem[],
+  raised: readonly Raising[],
+): readonly Raising[] => {
+  const replied = new Map(
+    items
+      .filter((item) => item.list === "decide" && item.frees.length > 0)
+      .flatMap((item) => {
+        const ref = listItemRef(turns, item);
+
+        return ref === undefined ? [] : [[ref, item.frees] as const];
+      }),
+  );
+
+  return raised.map((entry) => {
+    const frees = replied.get(
+      refText({
+        turn: turns[entry.at]?.id ?? "",
+        list: DECIDE.header,
+        number: entry.item.number,
+      }),
+    );
+
+    return frees === undefined
+      ? entry
+      : { ...entry, item: { ...entry.item, frees } };
+  });
+};
 
 // --- answers --------------------------------------------------------------
 
@@ -275,45 +377,131 @@ export const isAnswered = (
 
 // --- Decide items a reply's own list prints --------------------------------
 
-const DECIDE_ITEM = /^ {0,3}(\d+)[.)]\s+\*\*(.+?)\*\*/gm;
-// Every glyph an option is drawn with: each kind's, and each its letters have.
-const OPTION_GLYPHS: readonly string[] = [
-  ...new Set(
-    Object.values(SPEC.options.kinds).flatMap((kind) => [
-      kind.glyph,
-      ...Object.values<string>(kind.letters),
-    ]),
-  ),
-];
-const DECIDE_OPTION = new RegExp(
-  String.raw`^\s*(?:${OPTION_GLYPHS.map(escaped).join("|")})\s+${LETTER}\.\s+\*\*.+?\*\*`,
-  "mu",
-);
+/** A Decide item a reply's list prints: its number and its summary. */
+type PrintedItem = Readonly<{ number: number; summary: string }>;
+
+/**
+ * One line of a Decide list as its items are read from it: a numbered
+ * item's own line, its number and the bold summary it opens on; the number
+ * a line holds alone, `1.`, or a numbered item's own line holds with no
+ * text; the bold text a line opens on, its indent aside; whether it's
+ * blank; and whether it writes an option outside code.
+ */
+type DecideLine = Readonly<{
+  number: number | undefined;
+  summary: string | undefined;
+  bare: number | undefined;
+  bold: string | undefined;
+  isBlank: boolean;
+  isOption: boolean;
+}>;
+
+/** A line that opens no item and writes no option: code, a separator, an underline, a bullet. */
+const OTHER: DecideLine = {
+  number: undefined,
+  summary: undefined,
+  bare: undefined,
+  bold: undefined,
+  isBlank: false,
+  isOption: false,
+};
+
+/** A line of prose, by what it's read as besides. */
+const proseLine = (facts: LineFacts): DecideLine => ({
+  ...OTHER,
+  bare: facts.bare,
+  bold: facts.bold,
+  isOption: facts.option !== undefined,
+});
+
+/** An item's own line. */
+const headLine = (head: ItemHead): DecideLine =>
+  head.number === undefined
+    ? OTHER
+    : head.summary !== undefined
+      ? { ...OTHER, number: head.number, summary: head.summary }
+      : head.text.trim() === ""
+        ? { ...OTHER, bare: head.number }
+        : OTHER;
+
+/** A block's lines, as a Decide list's items are read from them; a header's none. */
+const decideLinesOf = (block: Block): readonly DecideLine[] =>
+  block.kind === "item"
+    ? [
+        headLine(block.head),
+        ...block.body.map((under) => (under.isCode ? OTHER : proseLine(under))),
+      ]
+    : block.kind === "text"
+      ? [proseLine(block)]
+      : block.kind === "blank"
+        ? [{ ...OTHER, isBlank: true }]
+        : block.kind === "header"
+          ? []
+          : block.lines.map(() => OTHER);
+
+/**
+ * The item the line at `n` opens: a numbered item's own line opening on its
+ * bold summary, or a number alone, `1.`, where the next line not blank opens
+ * on the bold summary.
+ */
+const headAt = (
+  lines: readonly DecideLine[],
+  n: number,
+): PrintedItem | undefined => {
+  const line = lines[n];
+  const next = lines.slice(n + 1).find((later) => !later.isBlank);
+
+  return line?.number !== undefined && line.summary !== undefined
+    ? { number: line.number, summary: line.summary }
+    : line?.bare !== undefined && next?.bold !== undefined
+      ? { number: line.bare, summary: next.bold }
+      : undefined;
+};
+
+/**
+ * The items of one Decide list's lines that carry an option: each item's
+ * chunk runs from its line to the next item's, across blank lines, bullets
+ * and prose, as the kanban skill's `decide_items_of_text` reads it, and
+ * holds an option outside code.
+ */
+const printedIn = (lines: readonly DecideLine[]): readonly PrintedItem[] => {
+  const heads = lines.flatMap((_, n) => {
+    const head = headAt(lines, n);
+
+    return head === undefined ? [] : [{ head, at: n }];
+  });
+
+  return heads
+    .filter(({ at }, k) =>
+      lines
+        .slice(at + 1, heads[k + 1]?.at ?? lines.length)
+        .some((line) => line.isOption),
+    )
+    .map(({ head }) => ({
+      number: head.number,
+      summary: head.summary.trim().replace(/:$/, "").trim(),
+    }));
+};
 
 /** The numbered items of a reply's Decide lists that carry an option; a 📌 roll-up's bullets carry none. */
-export const decideItemsOfText = (
-  text: string,
-): readonly Readonly<{ number: number; summary: string }>[] =>
-  sectionsOf(text)
+export const decideItemsOfText = (text: string): readonly PrintedItem[] =>
+  sectionsIn(parseReply(text))
     .filter((section) => DECISIONS.includes(section.name))
-    .flatMap(({ text: body }) => {
-      const heads = [...body.matchAll(DECIDE_ITEM)];
+    .flatMap((section) => printedIn(section.blocks.flatMap(decideLinesOf)));
 
-      return heads
-        .map((head, n) => ({
-          head,
-          chunk: body.slice(head.index, heads[n + 1]?.index ?? body.length),
-        }))
-        .filter(({ chunk }) => DECIDE_OPTION.test(chunk))
-        .map(({ head }) => ({
-          number: Number(head[1]),
-          summary: (head[2] ?? "").trim().replace(/:$/, "").trim(),
-        }));
-    });
+/** A Decide item a reply's own list printed: its number and summary, and the id and place of its turn. */
+type PrintedDecide = Readonly<{
+  number: number;
+  summary: string;
+  id: string;
+  at: number;
+}>;
 
-/** Each subject's latest Decide item a reply's own list printed since the latest `reassess` turn, oldest first. */
-const latestDecideItems = (turns: readonly Turn[]) => {
-  const start = reassessStart(turns);
+/** Each subject's latest Decide item a reply's own list printed since `start`, the latest `reassess` turn, oldest first. */
+const latestDecideItems = (
+  turns: readonly Turn[],
+  start: number,
+): readonly PrintedDecide[] => {
   const raised = turns.flatMap((turn, at) =>
     at < start
       ? []
@@ -331,15 +519,19 @@ const latestDecideItems = (turns: readonly Turn[]) => {
  * answered, read from every turn since the latest `reassess` turn, so a 📌
  * roll-up that still carries one, in the window or not, settles nothing.
  */
-export const answeredSubjects = (turns: readonly Turn[]): ReadonlySet<string> => {
-  const answers = answered(turns);
+export const answeredSubjects = (turns: readonly Turn[]): ReadonlySet<string> =>
+  decidedOf(answered(turns), latestDecideItems(turns, reassessStart(turns)));
 
-  return new Set(
-    latestDecideItems(turns)
+/** The subject keys of the `latest` Decide items that `answers` answer. */
+const decidedOf = (
+  answers: readonly Answer[],
+  latest: readonly PrintedDecide[],
+): ReadonlySet<string> =>
+  new Set(
+    latest
       .filter((item) => isAnswered(answers, item.id, item.at, item.number))
       .map((item) => subjectKey(item.summary)),
   );
-};
 
 // --- pull requests ----------------------------------------------------------
 
@@ -391,15 +583,26 @@ export const mergedQuery = (
   };
 };
 
-const isObject = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
+/** A GraphQL response's `data`, its answers by alias; none where the response is no JSON object or holds no `data`. */
+const dataOf = (response: string): Readonly<Record<string, unknown>> => {
+  const body = parsedJson(response);
 
-const parsed = (text: string): unknown => {
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    return undefined;
-  }
+  return isObject(body) && isObject(body.data) ? body.data : {};
+};
+
+/**
+ * Whether a GraphQL response, aliased `pr<n>` after each pull request's
+ * place in `ordered`, says which of them merged: its `data` holds an entry
+ * for every one. A `gh` that failed, timed out or answered with errors
+ * alone leaves the merges unknown; nothing asked leaves nothing unknown.
+ */
+export const isMergeKnown = (
+  ordered: readonly string[],
+  response: string,
+): boolean => {
+  const data = dataOf(response);
+
+  return ordered.every((_, n) => isObject(data[`pr${n}`]));
 };
 
 /**
@@ -412,8 +615,7 @@ export const mergedOfResponse = (
   ordered: readonly string[],
   response: string,
 ): ReadonlySet<string> => {
-  const body = parsed(response);
-  const data = isObject(body) && isObject(body.data) ? body.data : {};
+  const data = dataOf(response);
   const stateOf = (key: string): unknown => {
     const value = data[key];
     const pull = isObject(value) ? value.pullRequest : undefined;
@@ -428,41 +630,148 @@ export const mergedOfResponse = (
 
 /** Where the count line starts reading: the last `window` turns, never before the latest `reassess` turn; every turn since it for a `window` of 0 or less. */
 export const windowStart = (turns: readonly Turn[], window: number): number =>
-  Math.max(
-    window > 0 && window <= turns.length ? turns.length - window : 0,
-    reassessStart(turns),
-  );
+  windowFrom(turns.length, window, reassessStart(turns));
 
-const keyOf = (item: Readonly<{ list: ListKey; line: string }>): string =>
+/** windowStart, over `length` turns whose latest `reassess` turn is at `floor`. */
+const windowFrom = (length: number, window: number, floor: number): number =>
+  Math.max(window > 0 && window <= length ? length - window : 0, floor);
+
+/** What matches an item across turns: its list and its summary's subject key. */
+export const keyOf = (item: Readonly<{ list: ListKey; line: string }>): string =>
   `${item.list}\t${subjectKey(summaryOf(item.line))}`;
 
-/** One item per list and subject printed in the window, at its latest occurrence, in order of first appearance. */
+/**
+ * One item per list and subject printed in the window, at its latest
+ * occurrence, in order of first appearance. A 📌 bullet that names nothing
+ * it frees keeps what its own list's latest printing since the latest
+ * `reassess` turn freed, so a roll-up's restatement doesn't drop it.
+ */
 export const rollUp = (
   turns: readonly Turn[],
   window: number,
-): readonly ListItem[] => {
-  const start = windowStart(turns, window);
-  const items = allItems(turns).filter((item) => item.at >= start);
-  const last = new Map(items.map((item, n) => [keyOf(item), n]));
-  const firsts = [...new Set(items.map(keyOf))];
+): readonly ListItem[] => rollUpIn(factsOf(turns), window);
+
+/** rollUp, over the facts the turns hold. */
+const rollUpIn = (facts: Facts, window: number): readonly ListItem[] => {
+  const start = windowFrom(facts.turns.length, window, facts.start);
+  const items = facts.items.filter((item) => item.at >= start);
+  const keys = items.map(keyOf);
+  const last = new Map(keys.map((key, n) => [key, n]));
+  const firsts = [...new Set(keys)];
 
   return firsts.flatMap((key) => {
     const n = last.get(key);
-    const item = n === undefined ? undefined : items[n];
+    const found = n === undefined ? undefined : items[n];
+    const item =
+      found !== undefined && found.isPinned && found.frees.length === 0
+        ? { ...found, frees: facts.latestOwn.get(key)?.frees ?? found.frees }
+        : found;
 
     return item === undefined ? [] : [item];
   });
 };
 
-/** The pull requests the roll-up's Review items name with their repository: what to ask GitHub about. */
-export const reviewPullRequests = (items: readonly ListItem[]): readonly string[] =>
-  [
-    ...new Set(
-      items
-        .filter((item) => item.list === "review")
-        .flatMap((item) => pullRequestsOf(item.line)),
+// --- what settles an item ---------------------------------------------------
+
+/** The ways an item is settled, as a list's `settled-by` in the spec names them. */
+export type SettledBy = Lists[keyof Lists]["settled-by"];
+
+/** A report the turns hold: the place `n` of the turn it came in, the names it goes by, and its text. */
+export type Report = Readonly<{
+  n: number;
+  names: readonly string[];
+  report: string;
+}>;
+
+/**
+ * What the turns hold that settles an item: the pull requests that merged,
+ * the subject keys of the Decide items the user answered, the reports, and
+ * the place of the last turn whose own list printed each item since the
+ * latest `reassess` turn, by the item's key.
+ */
+export type Settling = Readonly<{
+  merged: ReadonlySet<string>;
+  decided: ReadonlySet<string>;
+  reports: readonly Report[];
+  lastOwn: ReadonlyMap<string, number>;
+}>;
+
+/** How a way of settling settles an item: whether what the turns hold settles it, and the pull requests to ask GitHub about for it. */
+export type Settler = Readonly<{
+  settles: (item: ListItem, settling: Settling) => boolean;
+  pullRequests: (item: ListItem) => readonly string[];
+}>;
+
+/** No pull requests to ask about, for a way that merges settle nothing of. */
+const askNothing = (): readonly string[] => [];
+
+/**
+ * Each way an item is settled, by the name a list's `settled-by` gives it,
+ * as spec/kanban.yaml's comment states it; every way the spec's lists use
+ * is covered, so a way with no settler here doesn't compile. A later
+ * `reassess` turn settles every list's items besides, which the roll-up
+ * reads before this.
+ */
+export const SETTLERS: Readonly<Record<SettledBy, Settler>> = {
+  answer: {
+    settles: (item, { decided }) =>
+      decided.has(subjectKey(summaryOf(item.line))),
+    pullRequests: askNothing,
+  },
+  "merged-pull-request": {
+    settles: (item, { merged }) => {
+      const refs = pullRequestsOf(item.line);
+
+      return refs.length > 0 && refs.every((ref) => merged.has(ref));
+    },
+    pullRequests: (item) => pullRequestsOf(item.line),
+  },
+  report: {
+    settles: (item, { reports, lastOwn }) => {
+      const summary = summaryOf(item.line);
+      const printed = lastOwn.get(keyOf(item)) ?? -1;
+
+      return reports.some(
+        ({ n, names, report }) =>
+          n > printed && reportNamesItem(summary, names, report),
+      );
+    },
+    pullRequests: askNothing,
+  },
+  none: { settles: () => false, pullRequests: askNothing },
+};
+
+/** The settler of the way the item's list is settled, as the spec's `settled-by` names it. */
+export const settlerOf = (item: Pick<ListItem, "list">): Settler =>
+  SETTLERS[SPEC.lists[item.list]["settled-by"]];
+
+/** What the turns hold that settles an item, given the pull requests that merged. */
+export const settlingOf = (
+  turns: readonly Turn[],
+  merged: ReadonlySet<string>,
+): Settling => settlingIn(factsOf(turns), merged);
+
+/** settlingOf, over the facts the turns hold. */
+const settlingIn = (facts: Facts, merged: ReadonlySet<string>): Settling => ({
+  merged,
+  decided: decidedOf(facts.answers, latestDecideItems(facts.turns, facts.start)),
+  reports: reportsOf(facts.turns),
+  lastOwn: new Map([...facts.latestOwn].map(([key, item]) => [key, item.at])),
+});
+
+/** The reports the turns hold: each text of a turn, not the user's own, that goes by names. */
+const reportsOf = (turns: readonly Turn[]): readonly Report[] =>
+  turns.flatMap((turn, n) =>
+    textsOf(turn).flatMap(({ owner, text, reportNames }) =>
+      isOwn(owner) || reportNames === undefined
+        ? []
+        : [{ n, names: reportNames, report: text }],
     ),
-  ].sort();
+  );
+
+/** The pull requests whose merging would settle any of `items`, as each one's settler names them: what to ask GitHub about. */
+export const settlingPullRequests = (items: readonly ListItem[]): readonly string[] =>
+  [...new Set(items.flatMap((item) => settlerOf(item).pullRequests(item)))].sort();
 
 /** The pull requests the count line over the last `window` turns asks GitHub about: none of those `merged` already holds. */
 export const pullRequestsToAsk = (
@@ -470,46 +779,24 @@ export const pullRequestsToAsk = (
   window: number,
   merged: ReadonlySet<string> = new Set(),
 ): readonly string[] =>
-  reviewPullRequests(rollUp(turns, window)).filter((ref) => !merged.has(ref));
+  settlingPullRequests(rollUp(turns, window)).filter((ref) => !merged.has(ref));
 
 /** The items nothing settled, of the roll-up's `items`, given the pull requests that merged. */
 export const unsettled = (
   turns: readonly Turn[],
   items: readonly ListItem[],
   merged: ReadonlySet<string>,
+): readonly ListItem[] => unsettledIn(factsOf(turns), items, merged);
+
+/** unsettled, over the facts the turns hold. */
+const unsettledIn = (
+  facts: Facts,
+  items: readonly ListItem[],
+  merged: ReadonlySet<string>,
 ): readonly ListItem[] => {
-  const floor = reassessStart(turns);
-  const lastOwn = new Map(
-    allItems(turns)
-      .filter((item) => !item.isPinned && item.at >= floor)
-      .map((item) => [keyOf(item), item.at]),
-  );
-  const reports = turns.flatMap((turn, n) =>
-    textsOf(turn).flatMap(({ owner, text, reportNames }) =>
-      isOwn(owner) || reportNames === undefined
-        ? []
-        : [{ n, names: reportNames, report: text }],
-    ),
-  );
-  const decided = answeredSubjects(turns);
-  const isSettled = (item: ListItem): boolean => {
-    const refs = pullRequestsOf(item.line);
-    const summary = summaryOf(item.line);
+  const settling = settlingIn(facts, merged);
 
-    return item.list === "review"
-      ? refs.length > 0 && refs.every((ref) => merged.has(ref))
-      : item.list === "decide"
-        ? decided.has(subjectKey(summary))
-        : item.list === "waiting"
-          ? reports.some(
-              ({ n, names, report }) =>
-                n > (lastOwn.get(keyOf(item)) ?? -1) &&
-                reportNamesItem(summary, names, report),
-            )
-          : false;
-  };
-
-  return items.filter((item) => !isSettled(item));
+  return items.filter((item) => !settlerOf(item).settles(item, settling));
 };
 
 /**
@@ -538,7 +825,14 @@ export const countLine = (
   turns: readonly Turn[],
   window: number,
   merged: ReadonlySet<string> = new Set(),
-): string => countsOf(unsettled(turns, rollUp(turns, window), merged));
+): string => countLineIn(factsOf(turns), window, merged);
+
+/** countLine, over the facts the turns hold. */
+const countLineIn = (
+  facts: Facts,
+  window: number,
+  merged: ReadonlySet<string>,
+): string => countsOf(unsettledIn(facts, rollUpIn(facts, window), merged));
 
 /** How a Decide item stopped being open: by an answer, a later `reassess` turn, or a later item on its subject; undefined while it's open. */
 const settlementOf = (
@@ -572,13 +866,22 @@ export type DecideState = Readonly<{
  * it settled, if it did: by the latest of the user's answers to it, else by
  * a later `reassess` turn, else by a later item on its subject. A turn that
  * reassesses applies its own answers first, so an item it answers settles
- * as answered.
+ * as answered. Each frees what withRepliedFrees gives it.
  */
-export const decideStates = (turns: readonly Turn[]): readonly DecideState[] => {
-  const start = reassessStart(turns);
-  const answers = answered(turns);
-  const raised = turns.flatMap((turn, at) =>
-    turn.decide.map((item) => ({ item, at })),
+export const decideStates = (turns: readonly Turn[]): readonly DecideState[] =>
+  decideStatesIn(factsOf(turns));
+
+/** decideStates, over the facts the turns hold. */
+const decideStatesIn = ({
+  turns,
+  start,
+  answers,
+  items,
+}: Facts): readonly DecideState[] => {
+  const raised = withRepliedFrees(
+    turns,
+    items,
+    turns.flatMap((turn, at) => turn.decide.map((item) => ({ item, at }))),
   );
   const last = new Map(
     raised
@@ -631,17 +934,54 @@ export type Open = Readonly<{
   counts: string;
 }>;
 
-/** What the turns leave open: the Decide items and the settlements, from one reading of the items' states, and the count line over the last `window` turns given the pull requests that merged. */
+/** What the turns leave open: the Decide items and the settlements, from one reading of the items' states, and the count line over the last `window` turns given the pull requests that merged, all from one gathering of the facts the turns hold. */
 export const openOf = (
   turns: readonly Turn[],
   window: number,
   merged: ReadonlySet<string> = new Set(),
 ): Open => {
-  const states = decideStates(turns);
+  const facts = factsOf(turns);
+  const states = decideStatesIn(facts);
 
   return {
     items: openItemsIn(states),
     settlements: settlementsIn(states),
-    counts: countLine(turns, window, merged),
+    counts: countLineIn(facts, window, merged),
+  };
+};
+
+// --- the facts every reading shares -----------------------------------------
+
+/**
+ * What two or more of the Decide items' states, the roll-up and the
+ * settling read, gathered once: the turns, the place of the latest
+ * `reassess` turn, the user's answers, every item, and each item's latest
+ * printing in its own list since that turn, by the item's key.
+ */
+export type Facts = Readonly<{
+  turns: readonly Turn[];
+  start: number;
+  answers: readonly Answer[];
+  items: readonly ListItem[];
+  latestOwn: ReadonlyMap<string, ListItem>;
+}>;
+
+/** The facts the turns hold, each worked out once. */
+export const factsOf = (turns: readonly Turn[]): Facts => {
+  const starts = reassessStarts(turns);
+  // The latest `reassess` turn at or before the last turn: reassessStart.
+  const start = starts.at(-1) ?? 0;
+  const items = itemsIn(turns, starts);
+
+  return {
+    turns,
+    start,
+    answers: answered(turns),
+    items,
+    latestOwn: new Map(
+      items
+        .filter((item) => !item.isPinned && item.at >= start)
+        .map((item) => [keyOf(item), item] as const),
+    ),
   };
 };

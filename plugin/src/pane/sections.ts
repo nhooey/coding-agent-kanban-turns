@@ -6,9 +6,11 @@
 
 import { isAnswered } from "../items/answers.ts";
 import { refOf } from "../items/items.ts";
-import { itemLabel } from "../protocol/rules.ts";
+import { DONE, itemLabel } from "../protocol/rules.ts";
 import { SPEC } from "../protocol/spec.ts";
-import type { DecideItem } from "../../types/index.d.ts";
+import { padToCells, widestCells } from "../text/cells.ts";
+import { LAYOUT } from "./layout.ts";
+import type { DecideItem, Settings } from "../../types/index.d.ts";
 
 /** One turn's part of the pane: its id, its header, its open items, then its Done ones, each oldest first. */
 export type TurnSection = Readonly<{
@@ -45,7 +47,7 @@ export const subscriptOf = (index: number): string =>
 
 /** A turn's header in the pane: its id and its index between rules, `── 9efb08a1 ₋₃ ──`; the id alone for a turn not read. */
 export const turnHeader = (turn: string, index: number | undefined): string =>
-  `── ${turn}${index === undefined ? "" : ` ${subscriptOf(index)}`} ──`;
+  `${LAYOUT.rule} ${turn}${index === undefined ? "" : ` ${subscriptOf(index)}`} ${LAYOUT.rule}`;
 
 /**
  * Where a turn sorts, latest highest: its place among the turns read, or,
@@ -95,9 +97,21 @@ export const firstUnansweredIn = (
     .flatMap((section) => section.open)
     .find((item) => !isAnswered(draft, item));
 
-/** The header of a turn's Done items: a toggle, `▸ Done (2)` while collapsed, `▾ Done (2)` while expanded. */
-export const doneHeader = (count: number, isExpanded: boolean): string =>
-  `${isExpanded ? "▾" : "▸"} Done (${count})`;
+/**
+ * The header of a turn's Done items: a toggle, `▸ Done (2)` while collapsed,
+ * `▾ Done (2)` while expanded, each mark the `marks` setting's, padded to
+ * the wider of the two so the name stays put as it toggles, named as the
+ * spec names the Done list.
+ */
+export const doneHeader = (
+  count: number,
+  isExpanded: boolean,
+  marks: Pick<Settings["marks"], "collapsed" | "expanded">,
+): string =>
+  `${padToCells(
+    isExpanded ? marks.expanded : marks.collapsed,
+    widestCells([marks.collapsed, marks.expanded]),
+  )} ${DONE.header} (${count})`;
 
 /**
  * A Done item's one line in its expanded section: its label, then its
@@ -108,7 +122,7 @@ export const doneLine = (
   done: string,
 ): Readonly<{ label: string; text: string }> => ({
   label: itemLabel(item.number),
-  text: `${item.summary} · ${done}`,
+  text: `${item.summary}${LAYOUT.divider}${done}`,
 });
 
 /** The key of a turn's Done header, which the expanded set holds while the section is open. */

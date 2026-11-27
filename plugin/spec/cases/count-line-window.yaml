@@ -1,0 +1,31 @@
+title: >-
+  The count line reads only the last turns its window holds, and an item
+  printed before them counts no more; the protocol keeps that item open,
+  so a reply closing on the plugin's count line is no worked example
+example: false
+window: 1
+turns:
+  - id: a0b1c2d3
+    prompt: Start on the loader.
+    replies:
+      - text: "\
+          🚧 **Pending:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔▔\n\
+          1. **Rework the loader**  \n\
+          \   It reads the cache twice.\n"
+        lint: []
+  - id: b1c2d3e4
+    prompt: And the store's snapshots.
+    replies:
+      - text: "\
+          🚧 **Pending:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔▔\n\
+          1. **Prune the store's snapshots**  \n\
+          \   A month of them fills the disk.\n\
+          \n\
+          📌 Outstanding: 🚧 1\n"
+        lint: []
+expect:
+  open: []
+  outstanding: ["Pending: Prune the store's snapshots"]
+  counts: "📌 Outstanding: 🚧 1"

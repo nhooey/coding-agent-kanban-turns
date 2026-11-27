@@ -3,6 +3,10 @@
 // And a pseudo-XML reader, `elements`, which the Claude Code adapter reads
 // its reports' names with. No `$`, no I/O.
 
+import { escaped } from "../text/patterns.ts";
+import { SUBJECT_WORD, inClass } from "../protocol/rules.ts";
+import { SPEC } from "../protocol/spec.ts";
+
 /** One element of a pseudo-XML text: its tag and attributes, lowercased names, and its own text, no child's. */
 export type Element = Readonly<{
   tag: string;
@@ -160,16 +164,31 @@ export const elements = (text: string): readonly Element[] => {
   }));
 };
 
-/** Whether `text` holds `name` as a whole word, ignoring case; a word may hold hyphens, as a branch name does. */
+const BRANCH_SHAPE = SPEC.subject.branch;
+
+// What a whole word may hold: a letter, a digit, `_`, or the separator a
+// branch name joins its words with, `[\p{L}\p{N}_\-]`.
+const WORD_CHAR = String.raw`[\p{L}\p{N}_${inClass(BRANCH_SHAPE.separator)}]`;
+
+/** Whether `text` holds `name` as a whole word, ignoring case; a word may hold the separator a branch name joins its words with, a hyphen. */
 export const namesWord = (name: string, text: string): boolean =>
   name.trim() !== "" &&
   new RegExp(
-    String.raw`(?<![\p{L}\p{N}_-])${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\p{L}\p{N}_-])`,
+    String.raw`(?<!${WORD_CHAR})${escaped(name)}(?!${WORD_CHAR})`,
     "iu",
   ).test(text);
 
 const SPAN = /`([^`]+)`/g;
-const BRANCH = /^[a-z0-9]+(?:-[a-z0-9]+)+$/;
+// A branch name, as the spec shapes it: `[0-9a-z]+(?:-[0-9a-z]+){1,}`.
+const BRANCH = new RegExp(
+  String.raw`^${SUBJECT_WORD}(?:${escaped(BRANCH_SHAPE.separator)}${SUBJECT_WORD}){${BRANCH_SHAPE["fewest-words"] - 1},}$`,
+);
+
+/** The text's code spans shaped like a branch name, the spec's words joined by its separator, `core-shared-helpers`, in order. */
+export const branchSpans = (text: string): readonly string[] =>
+  [...text.matchAll(SPAN)]
+    .map((m) => m[1] ?? "")
+    .filter((span) => BRANCH.test(span));
 
 /**
  * Whether a report names a Waiting item: the item's summary holds one of the
@@ -182,7 +201,4 @@ export const reportNamesItem = (
   report: string,
 ): boolean =>
   names.some((name) => namesWord(name, summary)) ||
-  [...summary.matchAll(SPAN)]
-    .map((m) => m[1] ?? "")
-    .filter((span) => BRANCH.test(span))
-    .some((branch) => namesWord(branch, report));
+  branchSpans(summary).some((branch) => namesWord(branch, report));

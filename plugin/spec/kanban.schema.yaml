@@ -5,7 +5,19 @@ $schema: http://json-schema.org/draft-07/schema#
 title: The kanban turn-response protocol's checkable rules
 type: object
 additionalProperties: false
-required: [lists, options, commands, reference, roll-up, tag, characters]
+required:
+  [
+    lists,
+    options,
+    commands,
+    skill,
+    reference,
+    frees,
+    subject,
+    roll-up,
+    tag,
+    characters,
+  ]
 definitions:
   # One character or emoji, never blank.
   glyph:
@@ -32,7 +44,7 @@ definitions:
   list:
     type: object
     additionalProperties: false
-    required: [header, glyph, aliases, rolls-up, settling-words]
+    required: [header, glyph, aliases, rolls-up, settled-by, settling-words]
     properties:
       header: { $ref: "#/definitions/name" }
       glyph: { $ref: "#/definitions/glyph" }
@@ -41,6 +53,8 @@ definitions:
         items: { $ref: "#/definitions/name" }
         uniqueItems: true
       rolls-up: { type: boolean }
+      # Each way has its settler in src/items/outstanding.ts's SETTLERS.
+      settled-by: { enum: [answer, merged-pull-request, report, none] }
       settling-words:
         type: object
         propertyNames: { $ref: "#/definitions/word" }
@@ -48,7 +62,7 @@ definitions:
   kind:
     type: object
     additionalProperties: false
-    required: [picks, glyph, letters]
+    required: [picks, glyph, letters, taught]
     properties:
       picks: { enum: [one, any] }
       glyph: { $ref: "#/definitions/glyph" }
@@ -56,6 +70,7 @@ definitions:
         type: object
         propertyNames: { $ref: "#/definitions/letter" }
         additionalProperties: { $ref: "#/definitions/glyph" }
+      taught: { type: boolean }
   command:
     type: object
     additionalProperties: false
@@ -107,6 +122,12 @@ properties:
         type: array
         items: { $ref: "#/definitions/slug" }
         uniqueItems: true
+  skill:
+    type: object
+    additionalProperties: false
+    required: [name]
+    properties:
+      name: { $ref: "#/definitions/slug" }
   reference:
     type: object
     additionalProperties: false
@@ -134,11 +155,76 @@ properties:
         properties:
           first: { $ref: "#/definitions/letter" }
           last: { $ref: "#/definitions/letter" }
+  frees:
+    type: object
+    additionalProperties: false
+    required: [label, separator]
+    properties:
+      label: { $ref: "#/definitions/name" }
+      # One punctuation character, so no turn id, list or number holds it.
+      separator:
+        type: string
+        pattern: ^[,;/]$
+  subject:
+    type: object
+    additionalProperties: false
+    required: [alphabet, words-kept, stop-words, entry, branch]
+    properties:
+      # Lowercase letters and digits, since a summary is lowercased before
+      # its words are read.
+      alphabet:
+        type: string
+        pattern: ^[0-9a-z]+$
+      words-kept: { type: integer, minimum: 1 }
+      stop-words:
+        type: array
+        items: { $ref: "#/definitions/word" }
+        uniqueItems: true
+      entry:
+        type: object
+        additionalProperties: false
+        required: [label, words, digits]
+        properties:
+          label: { $ref: "#/definitions/word" }
+          words:
+            type: array
+            items: { $ref: "#/definitions/word" }
+            minItems: 1
+            uniqueItems: true
+          digits:
+            type: object
+            additionalProperties: false
+            required: [fewest, most]
+            properties:
+              fewest: { type: integer, minimum: 1 }
+              most: { type: integer, minimum: 1 }
+      branch:
+        type: object
+        additionalProperties: false
+        required: [label, separator, fewest-words]
+        properties:
+          label: { $ref: "#/definitions/word" }
+          # A hyphen or an underscore, so no word of the alphabet holds it,
+          # and a name a report goes by still reads as a whole word before
+          # a sentence's full stop or beside a path's slash.
+          separator:
+            type: string
+            pattern: ^[-_]$
+          # Two or more, or a single word would be a branch name.
+          fewest-words: { type: integer, minimum: 2 }
   roll-up:
     type: object
     additionalProperties: false
-    required: [glyph, header, aliases, count-label, count-separator]
+    required: [glyph, header, aliases, count-label, count-separator, interval]
     properties:
+      interval:
+        type: object
+        additionalProperties: false
+        required: [most-minutes, times, turns]
+        properties:
+          most-minutes: { type: integer, minimum: 1 }
+          times: { type: integer, minimum: 1 }
+          turns: { type: integer, minimum: 1 }
       glyph: { $ref: "#/definitions/glyph" }
       header: { $ref: "#/definitions/name" }
       aliases:

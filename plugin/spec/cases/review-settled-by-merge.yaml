@@ -1,0 +1,38 @@
+title: >-
+  A Review item settles once every pull request it names with its
+  repository has merged; one naming only a bare `#N` never settles, though
+  GitHub reports its number merged, so the count line still counts it
+example: false
+merged: [example/kanban#21, example/kanban#23]
+turns:
+  - id: 5e7f9a13
+    prompt: Push the branches, with a pull request each.
+    replies:
+      - text: "\
+          Three pull requests are up.\n\
+          \n\
+          🔍 **Review:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔\n\
+          1. **🔗 [#21 Close the pane](https://github.com/example/kanban/pull/21)**\n\
+          \   ⠀\n\
+          2. **example/kanban#22 Bump the lock**  \n\
+          \   It sits on top of example/kanban#21.\n\
+          \   ⠀\n\
+          3. **#23 The README**\n"
+        lint: []
+  - id: 6f80ab24
+    prompt: Merged the first one.
+    replies:
+      - text: "\
+          ✅ **Done:**  \n\
+          ▔▔▔▔▔▔▔▔\n\
+          1. **🔗 [#21 Close the pane](https://github.com/example/kanban/pull/21), merged**\n\
+          \n\
+          📌 Outstanding: 🔍 2\n"
+        lint: []
+expect:
+  open: []
+  outstanding:
+    - "Review: example/kanban#22 Bump the lock"
+    - "Review: #23 The README"
+  counts: "📌 Outstanding: 🔍 2"

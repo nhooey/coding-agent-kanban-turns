@@ -286,6 +286,21 @@ describe("questions in a reply", () => {
     expect(linkedItems(items, hrefs)).toEqual([binary, radio]);
     expect(linkedItems(items, [])).toEqual([]);
   });
+
+  test("a summary line is a numbered item's own line, `1.` or `1)`, not one under another item or inside code", () => {
+    const LINK = "https://kanban-turns.invalid/9efb08a1.Decide.1";
+
+    expect(linkedQuestions("1) **Which cache to keep**", items).hrefs).toEqual([LINK]);
+    expect(linkedQuestions("2. **Other**\n   1. **Which cache to keep**", items).hrefs).toEqual([]);
+    expect(linkedQuestions("```\n1. **Which cache to keep**\n```", items).hrefs).toEqual([]);
+    expect(linkedQuestions("1.\n**Which cache to keep**", items).hrefs).toEqual([]);
+  });
+
+  test("a CRLF reply's summary line keeps its line end", () => {
+    expect(linkedQuestions("1. **Which cache to keep**  \r\nmore", items).text).toBe(
+      "1. **[Which cache to keep](https://kanban-turns.invalid/9efb08a1.Decide.1)**  \r\nmore",
+    );
+  });
 });
 
 describe("checkbox items", () => {
@@ -354,5 +369,30 @@ describe("the items a kanban_options call hands over", () => {
         options: [{ letter: "A", name: "a" }],
       },
     ]);
+  });
+
+  test("an array, even one with an items field, hands over none", () => {
+    const item = {
+      turn: "abc12345",
+      number: 4,
+      summary: "S",
+      options: [{ letter: "A", name: "a" }],
+    };
+
+    expect(itemsOf([item])).toEqual([]);
+    expect(itemsOf(Object.assign([], { items: [item] }))).toEqual([]);
+  });
+
+  test("an item's frees keep only the references, each once, and one not given an array is dropped", () => {
+    const item = { turn: "abc12345", number: 4, summary: "S", options: [{ letter: "A", name: "a" }] };
+    const [given, bad] = itemsOf({
+      items: [
+        { ...item, frees: ["abc12345.Todo.1", "the release", 7, "abc12345.Todo.1", "abc123.Review.2"] },
+        { ...item, number: 5, frees: "abc12345.Todo.1" },
+      ],
+    });
+
+    expect(given?.frees).toEqual(["abc12345.Todo.1", "abc123.Review.2"]);
+    expect(bad === undefined ? true : "frees" in bad).toBe(false);
   });
 });

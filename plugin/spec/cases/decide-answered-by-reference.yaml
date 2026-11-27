@@ -1,0 +1,82 @@
+title: >-
+  Answers naming the turn by its id, or by a prefix of it, settle the Decide
+  items they pick, and the item nobody answered stays open
+turns:
+  - id: 9efb08a1
+    prompt: Pick the loader's cache, and what to clean up next.
+    replies:
+      - text: "\
+          The loader reads its cache twice, and the backlog has 3 cleanups ready.\n\
+          \n\
+          🧠 **Decide:**  \n\
+          ▔▔▔▔▔▔▔▔▔▔\n\
+          1. **Which cache to keep for the loader**  \n\
+          \   A note on the whole item.\n\
+          \   🔘 A. **Keep the disk cache**: it survives restarts.\n\
+          \      ➕ Faster cold starts.\n\
+          \      ➖ Disk use.\n\
+          \   🔘 B. **Keep the memory cache**: simpler.\n\
+          \      ➕ Less code.\n\
+          \      ➖ Slow cold starts.\n\
+          \   ⠀\n\
+          2. **Backlog cleanups to start**  \n\
+          \   Any of 3.\n\
+          \   🔲 A. **Entry 1411, the matchers made one**: one function.\n\
+          \      ➕ One behaviour.\n\
+          \      ➖ Tokens.\n\
+          \   🔲 B. **Entries 0550 and 0455, dead code**: delete it.\n\
+          \      ➕ Cheap.\n\
+          \      ➖ Tidiness only.\n\
+          \   🔲 C. **Entry 0712, the stale fixtures**: regenerate them.\n\
+          \      ➕ The tests read today's shapes.\n\
+          \      ➖ A large diff.\n\
+          \   ⠀\n\
+          3. **Ship the release tonight?**  \n\
+          \   🔘 A. **Ship it**: it goes out.\n\
+          \      ➕ Users get it.\n\
+          \      ➖ Risk.\n\
+          \   🔘 B. **Hold it**: it waits.\n\
+          \      ➕ Safety.\n\
+          \      ➖ Delay.\n"
+        lint: []
+    decide:
+      - number: 1
+        summary: Which cache to keep for the loader
+        kind: radio
+        options:
+          - { letter: A, name: Keep the disk cache }
+          - { letter: B, name: Keep the memory cache }
+      - number: 2
+        summary: Backlog cleanups to start
+        kind: checkbox
+        options:
+          - { letter: A, name: "Entry 1411, the matchers made one" }
+          - { letter: B, name: "Entries 0550 and 0455, dead code" }
+          - { letter: C, name: "Entry 0712, the stale fixtures" }
+      - number: 3
+        summary: Ship the release tonight?
+        kind: radio
+        options:
+          - { letter: A, name: Ship it }
+          - { letter: B, name: Hold it }
+  - id: b2c3d4e5
+    prompt: |-
+      9efb08a1.Decide.1.A
+      9efb08.Decide.2: A,C
+    replies:
+      - text: "\
+          ✅ **Done:**  \n\
+          ▔▔▔▔▔▔▔▔\n\
+          1. **The loader keeps only the disk cache**  \n\
+          \   The memory cache is gone, and cold starts read the disk.\n\
+          \   ⠀\n\
+          2. **Entries 1411 and 0712, cleaned up**  \n\
+          \   The 4 matchers are one function, and the fixtures are regenerated.\n\
+          \   ⠀\n\
+          \n\
+          📌 Outstanding: 🧠 1\n"
+        lint: []
+expect:
+  open: [9efb08a1.Decide.3]
+  outstanding: ["Decide: Ship the release tonight?"]
+  counts: "📌 Outstanding: 🧠 1"

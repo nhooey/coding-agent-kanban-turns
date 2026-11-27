@@ -1,10 +1,18 @@
-# The bundled parsers and their licences are committed as the flake builds
+# The bundled YAML parser and its licence are committed as the flake builds
 # them, byte for byte, which `nix flake check` compares: no line-ending
 # conversion, whatever core.autocrlf says. The bundles are generated, so
 # GitHub folds them in a diff and leaves them out of the language stats.
 /plugin/vendor/*/*.js -text linguist-generated
 /plugin/vendor/*/LICENSE -text
-# The module and JSON copy the protocol's spec compiles to are committed as
-# `spec-build` writes them, which `checks.spec` compares the same way.
+# The module and JSON copy the protocol's spec compiles to, and the module
+# its prose fragments compile to, are committed as `spec-build` writes them,
+# which `checks.spec` compares the same way.
 /plugin/src/protocol/spec.ts -text linguist-generated
 /plugin/spec/kanban.json -text linguist-generated
+/plugin/src/protocol/fragments.ts -text linguist-generated
+# The skill derived from the plugin is committed as `refresh-skill` lays
+# the flake's build of it, which `checks.skill` compares the same way. Its
+# script is the bundled CLI, one long generated file, so git shows no diff
+# of it, only that it changed.
+/plugin/skills/** -text linguist-generated
+/plugin/skills/*/scripts/kanban.js -diff
