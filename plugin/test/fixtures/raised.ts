@@ -1,7 +1,8 @@
 // Raised items for the tests: items raised open, the refs of those
 // settled, and those answered by options, as the tests ask after them.
 
-import { hasOptions, refOf } from "../../src/items/items.ts";
+import { hasOptions } from "../../src/items/items.ts";
+import { refOf } from "../../src/protocol/options-input.ts";
 import { listedItemsOf } from "../../src/items/raised.ts";
 import type { DecideItem, ListedItem, Raised, RaisedItem } from "../../types/index.d.ts";
 

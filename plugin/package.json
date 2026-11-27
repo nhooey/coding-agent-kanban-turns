@@ -9,14 +9,17 @@
     "test:plugin": "bash tools/plugin-test.sh",
     "test:built": "node --test 'test/built/**/*.test.ts'",
     "spec:build": "node tools/spec/compile.ts",
-    "spec:check": "node tools/spec/compile.ts --check"
+    "spec:check": "node tools/spec/compile.ts --check",
+    "layers": "depcruise src hooks cli tools --config .dependency-cruiser.json"
   },
   "dependencies": {
     "yaml": "^2.9.1"
   },
   "devDependencies": {
+    "@swc/core": "^1.16.22",
     "@types/node": "^26.6.5",
     "ajv": "^8.20.0",
+    "dependency-cruiser": "^18.9.0",
     "expect": "^30.5.2",
     "fast-check": "^4.10.3",
     "typescript": "^7.0.2"

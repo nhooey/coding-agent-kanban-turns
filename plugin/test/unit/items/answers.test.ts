@@ -16,21 +16,15 @@ import {
   withNote,
 } from "../../../src/items/answers.ts";
 import { asksQuestion } from "../../../src/items/answer-lines.ts";
-import {
-  decideRefOf,
-  ignoredSupersedes,
-  isSameTurn,
-  itemsOf,
-  reraisable,
-} from "../../../src/items/items.ts";
-import { codeSpans } from "../../../src/pane/layout.ts";
+import { isSameTurn, reraisable } from "../../../src/items/items.ts";
+import { codeSpans } from "../../../src/views/layout.ts";
 import {
   itemOfLink,
   itemOfRef,
   linkedItems,
   linkedSummaries,
   refOfLink,
-} from "../../../src/pane/links.ts";
+} from "../../../src/views/links.ts";
 import type { DecideItem } from "../../../types/index.d.ts";
 
 const radio: DecideItem = {
@@ -388,101 +382,6 @@ describe("an item's text", () => {
 });
 
 describe("the items a kanban_options call hands over", () => {
-  test("a ref and a kind left out are filled in, and a malformed item dropped", () => {
-    const found = itemsOf({
-      items: [
-        {
-          turn: "abc12345",
-          number: 4,
-          summary: "S",
-          options: [{ letter: "A", name: "a" }],
-        },
-        { turn: 1 },
-      ],
-    });
-    expect(found).toEqual([
-      {
-        turn: "abc12345",
-        list: "Decide",
-        number: 4,
-        summary: "S",
-        kind: "radio",
-        ref: "abc12345.Decide.4",
-        options: [{ letter: "A", name: "a" }],
-      },
-    ]);
-  });
-
-  test("an array, even one with an items field, hands over none", () => {
-    const item = {
-      turn: "abc12345",
-      number: 4,
-      summary: "S",
-      options: [{ letter: "A", name: "a" }],
-    };
-
-    expect(itemsOf([item])).toEqual([]);
-    expect(itemsOf(Object.assign([], { items: [item] }))).toEqual([]);
-  });
-
-  test("an item's frees keep only the references, each once, and one not given an array is dropped", () => {
-    const item = { turn: "abc12345", number: 4, summary: "S", options: [{ letter: "A", name: "a" }] };
-    const [given, bad] = itemsOf({
-      items: [
-        { ...item, frees: ["abc12345.Todo.1", "the release", 7, "abc12345.Todo.1", "abc123.Review.2"] },
-        { ...item, number: 5, frees: "abc12345.Todo.1" },
-      ],
-    });
-
-    expect(given?.frees).toEqual(["abc12345.Todo.1", "abc123.Review.2"]);
-    expect(bad === undefined ? true : "frees" in bad).toBe(false);
-  });
-
-  test("an item's supersedes keep only Decide items' references, each once, an empty one kept, one not given an array or naming no item dropped", () => {
-    const item = { turn: "abc12345", number: 4, summary: "S", options: [{ letter: "A", name: "a" }] };
-    const [given, empty, bad, none, naming] = itemsOf({
-      items: [
-        {
-          ...item,
-          supersedes: ["682e71fb.Decide.1", " 682e71fb.Decide.1", "682e71.Decide.2", "682e71fb.Todo.1", "Decide.3", 7],
-        },
-        { ...item, number: 5, supersedes: [] },
-        { ...item, number: 6, supersedes: "682e71fb.Decide.1" },
-        { ...item, number: 7 },
-        { ...item, number: 8, supersedes: ["682e71fb.Todo.1", "Decide.3"] },
-      ],
-    });
-
-    expect(given?.supersedes).toEqual(["682e71fb.Decide.1", "682e71.Decide.2"]);
-    expect(empty?.supersedes).toEqual([]);
-    expect(bad === undefined ? true : "supersedes" in bad).toBe(false);
-    expect(none === undefined ? true : "supersedes" in none).toBe(false);
-    expect(naming === undefined ? true : "supersedes" in naming).toBe(false);
-  });
-
-  test("what an item's supersedes held that itemsOf leaves out, by the item's ref, as JSON, and whether any of it stands", () => {
-    const item = { turn: "abc12345", number: 4, summary: "S", options: [{ letter: "A", name: "a" }] };
-
-    expect(
-      ignoredSupersedes({
-        items: [
-          { ...item, supersedes: ["682e71fb.Decide.1", "682e71fb.Todo.1", "Decide.3", 7, " 682e71fb.Decide.2 "] },
-          { ...item, number: 5, supersedes: ["682e71fb.Decide.1"] },
-          { ...item, number: 6, supersedes: "682e71fb.Decide.x" },
-          { ...item, number: 7 },
-          { ...item, number: 8, supersedes: ["Decide.3"] },
-          { ...item, number: 9, supersedes: [] },
-          { turn: 1, supersedes: ["x"] },
-        ],
-      }),
-    ).toEqual([
-      { ref: "abc12345.Decide.4", values: [`"682e71fb.Todo.1"`, `"Decide.3"`, "7"], left: "some" },
-      { ref: "abc12345.Decide.6", values: [`"682e71fb.Decide.x"`], left: "list" },
-      { ref: "abc12345.Decide.8", values: [`"Decide.3"`], left: "all" },
-    ]);
-    expect(ignoredSupersedes([])).toEqual([]);
-  });
-
   test("an open item handed back to raise again leaves out its supersedes, and keeps the rest", () => {
     const item: DecideItem = { ...radio, ref: "9efb08a1.Decide.1", supersedes: ["682e71fb.Decide.1"] };
     const again = reraisable(item);
@@ -497,14 +396,6 @@ describe("the items a kanban_options call hands over", () => {
     expect(isSameTurn("9efb08a1", "b2c3d4e5")).toBe(false);
     expect(isSameTurn("", "9efb08a1")).toBe(false);
     expect(isSameTurn("9efb08a1", "")).toBe(false);
-  });
-
-  test("a Decide item's reference is its turn, by an id or a long enough prefix, the list and its number, the whole text", () => {
-    expect(decideRefOf("682e71fb.Decide.1")).toEqual({ turn: "682e71fb", list: "Decide", number: 1 });
-    expect(decideRefOf(" 682e71.Decide.12 ")).toEqual({ turn: "682e71", list: "Decide", number: 12 });
-    for (const text of ["682e7.Decide.1", "682e71fb.Todo.1", "Decide.1", "682e71fb.Decide.0", "682e71fb.Decide.1.A", 1]) {
-      expect(decideRefOf(text)).toBeUndefined();
-    }
   });
 });
 

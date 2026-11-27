@@ -17,15 +17,11 @@ import {
   decideItemsOfText,
   decideStates,
   factsOf,
-  isMergeKnown,
   itemsOfText,
   listItemRef,
-  mergedOfResponse,
-  mergedQuery,
   openDecideItems,
   openItemsIn,
   openOf,
-  pullRequestsOf,
   pullRequestsToAsk,
   rollUp,
   settlementsIn,
@@ -41,11 +37,13 @@ import {
   withResolvedFrees,
 } from "../../../src/items/outstanding.ts";
 import type { ListItem, ListKey, Settling } from "../../../src/items/outstanding.ts";
-import { itemsOf, reraisable } from "../../../src/items/items.ts";
+import { reraisable } from "../../../src/items/items.ts";
+import { itemsOf } from "../../../src/protocol/options-input.ts";
 import { parseYaml } from "../../../src/config/config.ts";
 import { field } from "../../../src/json/fields.ts";
 import type { Owner, Turn } from "../../../types/index.d.ts";
 import { numbered, said, turnOf } from "../../fixtures/turns.ts";
+import { REVIEW_REPLY } from "../../fixtures/review.ts";
 
 const SEP = "⠀";
 const RULE = "━".repeat(35);
@@ -1172,21 +1170,11 @@ const openLines = (found: readonly Turn[], merged: ReadonlySet<string> = new Set
 const counted = (found: readonly Turn[], merged: ReadonlySet<string> = new Set()) =>
   countLine(found, WINDOW, merged);
 
-const REVIEW_REPLY =
-  "🔍 **Review:**  \n▔▔▔▔▔▔▔▔▔▔\n" +
-  "1. **🔗 [#21 Close the pane](https://github.com/nhooey/kanban/pull/21)**\n" +
-  "2. **nhooey/kanban#22 Bump the lock**, on top of nhooey/kanban#21\n" +
-  "3. **#23 The README**\n";
-
 const waiting = (summary: string) =>
   `⏳ **Waiting:**  \n▔▔▔▔▔▔▔▔▔▔▔\n1. **${summary}**\n`;
 
 describe("a settled Review item", () => {
   const reviewed = () => [turn(FIRST, "go", REVIEW_REPLY), turn(SECOND, "more", "Prose.")];
-
-  test("the pull requests an item names", () => {
-    expect(pullRequestsOf(REVIEW_REPLY)).toEqual(["nhooey/kanban#21", "nhooey/kanban#22"]);
-  });
 
   test("a merged pull request settles its Review item", () => {
     const out = openLines(reviewed(), new Set(["nhooey/kanban#21"]));
@@ -1202,49 +1190,6 @@ describe("a settled Review item", () => {
 
   test("no merged pull request keeps every item", () => {
     expect(counted(reviewed())).toBe("📌 Outstanding: 🔍 3");
-  });
-
-  test("the GraphQL response names the merged ones", () => {
-    const ordered = ["nhooey/kanban#21", "nhooey/kanban#22", "nhooey/kanban#24"];
-    const response = JSON.stringify({
-      data: {
-        pr0: { pullRequest: { state: "MERGED" } },
-        pr1: { pullRequest: { state: "OPEN" } },
-        pr2: null,
-      },
-    });
-    expect([...mergedOfResponse(ordered, response)]).toEqual(["nhooey/kanban#21"]);
-    for (const broken of ["", "not json", "[]", '{"data": null}']) {
-      expect([...mergedOfResponse(ordered, broken)]).toEqual([]);
-    }
-  });
-
-  test("the merges are known only where the response's data answers for every pull request asked", () => {
-    const ordered = ["nhooey/kanban#21", "nhooey/kanban#22"];
-    const answered = {
-      pr0: { pullRequest: { state: "MERGED" } },
-      pr1: { pullRequest: { state: "OPEN" } },
-    };
-    expect(isMergeKnown(ordered, JSON.stringify({ data: answered }))).toBe(true);
-    expect(isMergeKnown(ordered, JSON.stringify({ data: { pr0: answered.pr0, pr1: null } }))).toBe(false);
-    expect(
-      isMergeKnown(ordered, JSON.stringify({ errors: [{ message: "Bad credentials" }] })),
-    ).toBe(false);
-    for (const broken of ["", "not json", "[]", '{"data": null}']) {
-      expect(isMergeKnown(ordered, broken)).toBe(false);
-    }
-    expect(isMergeKnown([], "")).toBe(true);
-  });
-
-  test("GitHub is asked about the Review items' pull requests, in one gh call", () => {
-    const refs = pullRequestsToAsk(reviewed(), WINDOW);
-    expect(refs).toEqual(["nhooey/kanban#21", "nhooey/kanban#22"]);
-    const { ordered, argv } = mergedQuery(refs);
-    expect(ordered).toEqual(refs);
-    expect(argv.slice(0, 4)).toEqual(["gh", "api", "graphql", "-f"]);
-    expect(argv[4]).toContain('pr0: repository(owner: "nhooey", name: "kanban") { pullRequest(number: 21)');
-    expect(argv[4]).toContain("pr1: repository(owner: \"nhooey\", name: \"kanban\") { pullRequest(number: 22) { state } }");
-    expect(argv.slice(5)).toEqual(["--hostname", "github.com"]);
   });
 
   test("a pull request already known merged is not asked about again", () => {

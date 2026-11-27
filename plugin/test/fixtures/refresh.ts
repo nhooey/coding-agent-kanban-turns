@@ -6,7 +6,7 @@
 
 import fc from "fast-check";
 
-import type { Effect, Event, Found } from "../../src/pane/pane-state.ts";
+import type { Effect, Event, Found } from "../../src/views/pane-state.ts";
 import type { DecideItem, Loaded, Turn } from "../../types/index.d.ts";
 import {
   ENGINE,

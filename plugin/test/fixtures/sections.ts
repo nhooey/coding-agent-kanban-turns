@@ -3,7 +3,7 @@
 // the reply's blocks. The tests of sections and the golden cases compare
 // sections as text; the core reads their blocks.
 
-import { parseReply, sectionsIn } from "../../src/transcript/reply.ts";
+import { parseReply, sectionsIn } from "../../src/harness/reply.ts";
 
 /** One section of a reply: its list's name as the header writes it, and its text, the header first. */
 export type Section = Readonly<{ name: string; text: string }>;

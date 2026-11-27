@@ -10,7 +10,7 @@ import { readFileSync } from "node:fs";
 import fc from "fast-check";
 
 import { DEFAULTS_FILE, loaded } from "../../src/config/config.ts";
-import { settingsFrom } from "../../src/pane/pane-state.ts";
+import { settingsFrom } from "../../src/views/pane-state.ts";
 import type { Loaded, PaneState, Settings } from "../../types/index.d.ts";
 
 const SHIPPED: Loaded = loaded(

@@ -4,7 +4,7 @@
 
 import { isObject } from "../../src/json/fields.ts";
 import { PLUGIN, TOOL_CALLED } from "../../src/protocol/instructions.ts";
-import type { TranscriptRecord } from "../../src/transcript/claude-code.ts";
+import type { TranscriptRecord } from "../../src/harness/claude-code.ts";
 import type { Message, Owner, Turn } from "../../types/index.d.ts";
 
 /** A whole prompt id from the 8 characters a turn id holds; empty stays empty. */

@@ -13,7 +13,7 @@
 
 import type { Turn } from "../../types/index.d.ts";
 import { SPEC } from "../protocol/spec.ts";
-import { parseReply } from "../transcript/reply.ts";
+import { parseReply } from "../harness/reply.ts";
 
 const INTERVAL = SPEC["roll-up"].interval;
 const MINUTE = 60_000;

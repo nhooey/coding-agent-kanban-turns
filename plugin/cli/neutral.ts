@@ -21,7 +21,7 @@
 // - an option kind the spec doesn't name, or an option letter outside the
 //   grammar's letters, or one given twice.
 
-import { itemsOf } from "../src/items/items.ts";
+import { itemsOf } from "../src/protocol/options-input.ts";
 import { field, isObject, parsedJson } from "../src/json/fields.ts";
 import { isOptionLetter, isTurnId } from "../src/protocol/rules.ts";
 import { SPEC } from "../src/protocol/spec.ts";

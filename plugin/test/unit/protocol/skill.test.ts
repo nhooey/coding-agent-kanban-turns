@@ -7,7 +7,7 @@ import { expect } from "expect";
 import { parse } from "yaml";
 
 import { USAGE } from "../../../cli/run.ts";
-import { lintReply } from "../../../src/lint/reply.ts";
+import { lintReply } from "../../../src/harness/reply-lint.ts";
 import { FRAGMENTS } from "../../../src/protocol/fragments.ts";
 import {
   INSTRUCTIONS,
@@ -19,7 +19,7 @@ import {
 import { filled, placeholderValues, unusedFragments } from "../../../src/protocol/prose.ts";
 import { SPEC } from "../../../src/protocol/spec.ts";
 import { LINT_TOOL, OPTIONS_TOOL, OUTSTANDING_TOOL } from "../../../src/protocol/tools.ts";
-import { SKILL_COMMANDS } from "../../../src/transcript/turns.ts";
+import { SKILL_COMMANDS } from "../../../src/harness/turns.ts";
 import {
   SKILL_DESCRIPTION,
   SKILL_FILE,

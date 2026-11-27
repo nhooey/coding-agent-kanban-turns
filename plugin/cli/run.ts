@@ -19,7 +19,8 @@
 
 import { parseArgs } from "node:util";
 
-import { countLine, pullRequestsOf } from "../src/items/outstanding.ts";
+import { pullRequestsOf } from "../src/artefacts/pull-requests.ts";
+import { countLine } from "../src/items/outstanding.ts";
 import { rollUpDue } from "../src/items/roll-up-due.ts";
 import type { Due } from "../src/items/roll-up-due.ts";
 import { rollUpDraft } from "../src/items/roll-up.ts";
@@ -30,9 +31,9 @@ import {
   isKanbanReply,
   lintReply,
   replyLintText,
-} from "../src/lint/reply.ts";
+} from "../src/harness/reply-lint.ts";
 import { SPEC } from "../src/protocol/spec.ts";
-import { turnsOfText } from "../src/transcript/claude-code.ts";
+import { turnsOfText } from "../src/harness/claude-code.ts";
 import type { Loaded, Turn } from "../types/index.d.ts";
 import { turnsOfJson } from "./neutral.ts";
 import type { Got } from "./neutral.ts";

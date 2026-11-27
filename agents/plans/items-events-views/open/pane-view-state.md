@@ -53,11 +53,11 @@ This node moves them in, in the shape the item model gives them.
   A toggle, a facet moved up or down, added or taken out, the ring moving, the keys panel, a control's press and the prompt's change are each an `Event` of the one union, and `register.tsx` has no `update` of the pane's state outside `dispatch`.
   The atoms `folds`, `focused`, `held`, `isKeysOpen`, `noting` and `draft` are gone.
 
-**Refactored as it goes:** `plugin/src/pane/pane-state.ts` is one module of 900 lines; as each atom moves in, the state's parts, Submit, the refresh, the settings and the view, become a module each, with `step` composing their steps, so a part is read and tested alone.
+**Refactored as it goes:** `plugin/src/views/pane-state.ts` is one module of 900 lines; as each atom moves in, the state's parts, Submit, the refresh, the settings and the view, become a module each, with `step` composing their steps, so a part is read and tested alone.
 
 Checks:
 
-- `plugin/test/unit/pane/pane-state.test.ts` drives `step` through: a control pressed and unpressed; a queued line changed by hand, deleted by hand and typed by hand; a Submit sent, then read; a Submit after a pick was deleted by hand, which sends no event for it; a Submit refused; a facet moved, with a folded node whose filter survives and one whose filter doesn't; the ring moving past a folded node;
+- `plugin/test/unit/views/pane-state.test.ts` drives `step` through: a control pressed and unpressed; a queued line changed by hand, deleted by hand and typed by hand; a Submit sent, then read; a Submit after a pick was deleted by hand, which sends no event for it; a Submit refused; a facet moved, with a folded node whose filter survives and one whose filter doesn't; the ring moving past a folded node;
 - a property test over random mixes of presses and edits to the draft's text that the queued marks always equal the accepted events of `eventsOf(draft)`, whatever produced the text, and that the projected items equal the fold of the log with those events after it;
 - a property test that the events Submit keeps as sent equal `eventsOf` of the text it sent, whatever was pressed before;
 - a property test over random event sequences that the view never names an item the log doesn't hold after the next read, that the sent events are empty once a read holds their prompt, and that a reorder changes no fold whose filter exists before and after;

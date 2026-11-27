@@ -86,8 +86,10 @@
 
           # plugin/'s npm dependencies (the YAML parser, and for
           # development TypeScript, Node's types, Jest's expect, fast-check,
-          # for the property tests, and ajv, which checks the protocol's
-          # spec against its schema), each
+          # for the property tests, ajv, which checks the protocol's
+          # spec against its schema, and dependency-cruiser, with swc as
+          # its TypeScript parser, which holds the core's imports to its
+          # layers), each
           # fetched by the integrity hash its
           # package-lock.json records: no `npm ci`, and no hash to keep
           # beside the lock. Built from the two files alone, so an edit
@@ -329,6 +331,12 @@
               }
               {
                 category = "test";
+                name = "layers";
+                help = "check that every import goes one way between the core's layers, with no cycle and no effect in src/ (dependency-cruiser, npm run layers in plugin/)";
+                command = ''cd "$PRJ_ROOT/plugin" && npm run --silent layers'';
+              }
+              {
+                category = "test";
                 name = "typecheck-plugin";
                 help = "type-check the hooks against the engine's API, which Claude Code lays in plugin/.claude-plugin/types/";
                 command = ''cd "$PRJ_ROOT/plugin" && npm run typecheck:plugin'';
@@ -373,9 +381,10 @@
             ];
           };
 
-          # What a build can run: the core's type-check and its tests, the
-          # committed bundles against the flake's, and the module and JSON
-          # copy the protocol's spec compiles to against the committed ones;
+          # What a build can run: the core's type-check, its layers' imports
+          # and its tests, the committed bundles against the flake's, and the
+          # module and JSON copy the protocol's spec compiles to against the
+          # committed ones;
           # kanban.js, run on every golden case; the plugin with its skill under
           # skills/, which `claude plugin validate` accepts, its script the
           # same as kanban.js and its wrapper running it; and the committed
@@ -421,6 +430,7 @@
             vendor = vendorCheck;
             spec = pluginCheck "spec" "spec:check";
             typecheck = pluginCheck "typecheck" "typecheck";
+            layers = pluginCheck "layers" "layers";
             tests = pluginCheck "tests" "test";
             cli-js = pluginCheckWith { KANBAN_JS = "${kanbanJs}/bin/kanban.js"; } "cli-js" "test:built";
           };

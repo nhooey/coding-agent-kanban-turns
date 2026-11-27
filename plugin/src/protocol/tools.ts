@@ -3,7 +3,7 @@
 // `outstanding.py`, and `kanban_lint`, its `lint_reply.py`. Their names,
 // what the engine lists each as and their input schemas; what the agent's
 // instructions say of them is spec/fragments/tools.md's. What each gives
-// back is src/items/roll-up.ts's and src/lint/reply.ts's.
+// back is src/items/roll-up.ts's and src/harness/reply-lint.ts's.
 
 import { DECIDE } from "./rules.ts";
 import { SPEC } from "./spec.ts";

@@ -10,7 +10,7 @@
 // `loose` one also writes items 1 to 3 spaces in, numbered `1)`, numbered
 // lines under an item, a number alone on its line with the bold summary
 // beneath it, an option after a blank line, and code blocks holding any
-// line. test/unit/transcript/reply-text.test.ts states how each reader
+// line. test/unit/harness/reply-text.test.ts states how each reader
 // reads those shapes.
 
 import fc from "fast-check";

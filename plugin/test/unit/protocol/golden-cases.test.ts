@@ -19,7 +19,7 @@ import {
   SKILL_COMMANDS,
   isOwn,
   withoutDraftHeader,
-} from "../../../src/transcript/turns.ts";
+} from "../../../src/harness/turns.ts";
 import { sectionsOf } from "../../fixtures/sections.ts";
 import {
   CASES_DIR,
