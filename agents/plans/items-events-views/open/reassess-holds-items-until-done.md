@@ -24,7 +24,7 @@ So no event has to put each item into the condition or take it out, and an item 
   It's about the session and no one item: the spec's `events` holds it with `scope: session`.
 - **What it covers.**
   Every item that isn't closed when the event lands and that an agent raised through the tool.
-  An item the harness holds, a projected task or a subagent, and an item an external watch will close aren't covered: their state is observed, and no reassess can judge it.
+  A subagent and an item an external watch will close aren't covered: their state is observed, and no reassess can judge it.
 - **Three outcomes for the reassess, read from its turn.**
 
   | The reassess is | When                                                                                   | What its items are                                                  |

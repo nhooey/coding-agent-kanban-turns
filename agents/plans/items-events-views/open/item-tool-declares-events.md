@@ -31,7 +31,7 @@ touches: [plugin/hooks/register.tsx, plugin/src/protocol/tools.ts, plugin/src/tr
   A sidechain's calls are left out (open question 12 in [the end state](items-events-views.md)).
 - **The instructions.**
   `plugin/spec/fragments/tool.md` teaches the tool from the spec's names: when to raise, that an item is raised once and changed by later events, that the id in the result is what the reply and the person refer to, and what each refusal means.
-  Whether the agent raises its own turn-level tasks, or the harness's task list stands for them, is as [task-list-matches-pending](task-list-matches-pending.md) finds.
+  The agent raises its own turn-level tasks through the tool, where the model has the task tools and where it doesn't, and the harness's task list stands for none of them, as [task-list-matches-pending](../../../reports/2026-11-27-task-list-matches-pending.md) found.
 - **`kanban_options` stays** registered and read until [reply-prose-readers-retired](reply-prose-readers-retired.md).
 
 Checks:
