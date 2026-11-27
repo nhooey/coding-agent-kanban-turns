@@ -21,6 +21,8 @@ In the plugin's code:
   A hooks module maps a value the core returns onto the engine's elements, or runs one effect, and decides nothing.
 - **`register.tsx` is wiring.**
   It registers each hook, tool and command by name, and holds nothing else.
+- **A tool's row is one line.**
+  Every tool the plugin registers draws its call by one rule, its name and a short summary of its result, and no tool has a case of its own.
 - **No compatibility code.**
   There is no warning for a retired setting, no alias for an older name, no option kind kept for older replies, and no conversion of a stored shape.
 - **No unused code.**
@@ -39,6 +41,8 @@ In the plugin's code:
 - **`register.tsx` reduced to wiring.**
   A test parses `plugin/hooks/register.tsx` and finds imports and registrations alone: no element, no atom, no effect and no function body other than the registering one.
   No module under `plugin/hooks/` is over 400 lines.
+- **A tool's row is one line.**
+  No tool of the plugin's prints its input in the transcript's compact view: an engine test finds each registered tool's row to be one line holding none of its input, and the engine's full row drawn for an error and for ctrl+o.
 - **No compatibility code.**
   A search of `plugin/` outside the generated files finds no `RETIRED`, no `aliases` key, no `taught` and no `untaught`, and no code that converts a value an older build stored.
   A settings file with a key the plugin doesn't read is refused as unknown.
@@ -48,7 +52,7 @@ In the plugin's code:
 - **No oracle of replaced code.**
   `plugin/test/oracle/` doesn't exist, and no test file's name holds `differential`.
 - **No behaviour changes.**
-  The plugin does what it did before, bar what the compatibility code did: the engine tests pass unchanged, and `tests`, `typecheck`, `typecheck-plugin` and `plugin-test` pass.
+  The plugin does what it did before, bar what the compatibility code did and how a tool's call is drawn: the engine tests pass unchanged but for the tools' rows, and `tests`, `typecheck`, `typecheck-plugin` and `plugin-test` pass.
 
 ## Its parts
 
@@ -58,13 +62,16 @@ Each `needs` the ones before it that it builds on:
 2. [refactor-oracles-deleted](../closed/refactor-oracles-deleted.md): the tests' copies of replaced code go.
 3. [core-folders-are-layers](core-folders-are-layers.md), after both: the core's folders are the layers, and a check holds the imports one way.
 4. [hooks-split-by-concern](hooks-split-by-concern.md), after that: `register.tsx` is a module per concern.
-5. [unused-exports-checked](unused-exports-checked.md), last: a check fails the build on an unused file or export.
+5. [plugin-tool-rows-compact](plugin-tool-rows-compact.md), after the split: every tool's call is drawn as one line, by one rule.
+6. [unused-exports-checked](unused-exports-checked.md), last: a check fails the build on an unused file or export.
 
-The first two delete, so the moves that follow carry less; the layers come before the hooks' split, so a condition moved out of a hook lands in its layer; and the unused-exports check comes last, over the files as they then stand.
+The first two delete, so the moves that follow carry less; the layers come before the hooks' split, so a condition moved out of a hook lands in its layer; the tools' rows come after the split, so their rule lands in the tools' module; and the unused-exports check comes last, over the files as they then stand.
 
 ## What changes for the person
 
-Nothing, bar what the compatibility code did:
+A call to one of the plugin's tools is one line in the transcript, its name and a short summary of its result, where `kanban_lint` printed its whole draft and `kanban_options` drew nothing.
+
+Otherwise nothing, bar what the compatibility code did:
 
 - a settings file that still holds a retired key, such as `pane.hints`, is refused as a file with an unknown key is, with no word on what to set instead;
 - a list an older reply wrote under an earlier header, such as `Unfinished` or `To do`, is no longer read as a list;
