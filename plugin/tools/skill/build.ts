@@ -6,7 +6,7 @@
 //
 // The flake runs it to build the skill, then puts the CLI's builds beside
 // the files, under scripts/. It refuses, writing nothing, a golden case
-// that doesn't read, and a worked example that draws an untaught kind.
+// that doesn't read.
 
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -32,18 +32,14 @@ const loaded = readdirSync(join(plugin, CASES_DIR))
 const cases: readonly NamedCase[] = loaded.flatMap(({ name, result }) =>
   "case" in result ? [{ name, golden: result.case }] : [],
 );
-const built = skillFiles(cases);
-const problems = [
-  ...loaded.flatMap(({ result }) => ("problems" in result ? result.problems : [])),
-  ...("problems" in built ? built.problems : []),
-];
+const problems = loaded.flatMap(({ result }) => ("problems" in result ? result.problems : []));
 
-if (problems.length > 0 || !("files" in built)) {
+if (problems.length > 0) {
   problems.forEach((problem) => console.error(`plugin/${problem}`));
   process.exit(1);
 }
 
-Object.entries(built.files).forEach(([file, text]) => {
+Object.entries(skillFiles(cases)).forEach(([file, text]) => {
   const path = join(folder, file);
 
   mkdirSync(dirname(path), { recursive: true });

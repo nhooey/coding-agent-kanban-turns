@@ -1,4 +1,4 @@
-// What the refresh's pane-state tests and its differential test drive the
+// What the refresh's and the settings' pane-state tests drive the
 // refresh with, beside Submit's fixtures in ./submit.ts: the transcripts a
 // read may find, what the settings files and `gh` may say, and the random
 // events and answers fast-check draws from them, presses and their answers
@@ -52,13 +52,13 @@ export const TRANSCRIPTS = {
 export const GONE = "the transcript is gone";
 
 /** What a read may find: one of the transcripts, or a transcript that can't be read. */
-export const foundArb: fc.Arbitrary<Found> = fc.oneof(
+const foundArb: fc.Arbitrary<Found> = fc.oneof(
   { arbitrary: fc.constantFrom(...Object.values(TRANSCRIPTS)).map((turns): Found => ({ turns })), weight: 4 },
   { arbitrary: fc.constant<Found>({ problem: GONE }), weight: 1 },
 );
 
 /** What `gh` may say merged. */
-export const mergedArb: fc.Arbitrary<readonly string[]> = fc.subarray([PULL]);
+const mergedArb: fc.Arbitrary<readonly string[]> = fc.subarray([PULL]);
 
 /** An item no transcript raises, which a `kanban_options` call may draw. */
 export const DRAWN: DecideItem = {

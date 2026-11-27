@@ -227,13 +227,13 @@ describe("caseProblems", () => {
     ]);
   });
 
-  test("an option kind the spec doesn't name, and a letter its kind doesn't take", () => {
+  test("an option kind the spec doesn't name", () => {
     const item = {
       number: 2,
       summary: "Ship tonight?",
-      kind: "binary",
+      kind: "dial",
       options: [
-        { letter: "Y", name: "Ship" },
+        { letter: "A", name: "Ship" },
         { letter: "B", name: "Hold" },
       ],
     };
@@ -246,7 +246,7 @@ describe("caseProblems", () => {
         })),
       ),
     ).toEqual([
-      "turns[0].decide[1] gives a binary item the letter B, not one of Y, N",
+      "turns[0].decide[1].kind names no option kind of the spec: dial",
       "turns[0].decide[2].kind names no option kind of the spec: slider",
     ]);
   });

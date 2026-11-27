@@ -1,6 +1,6 @@
 ---
 title: The hooks are a module per concern, and `register.tsx` only registers them
-state: proposed
+state: approved
 kind: implementation
 part-of: items-events-views-refactor
 needs: [core-folders-are-layers]

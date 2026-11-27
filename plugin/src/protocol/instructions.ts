@@ -37,11 +37,7 @@ export const BLOCK = "kanbanTurns";
  */
 export const PLUGIN_SKILL = `${PLUGIN}:${SPEC.skill.name}`;
 
-/**
- * The item kinds the tool takes, in the spec's order: every kind it reads,
- * a kind the instructions no longer teach among them, so the schema
- * describes what the plugin reads and the instructions what it teaches.
- */
+/** The item kinds the tool takes, in the spec's order. */
 export const KINDS = Object.keys(SPEC.options.kinds) as readonly DecideKind[];
 
 const { pro: PRO, con: CON } = SPEC.options;
@@ -98,7 +94,7 @@ export const ITEM_SCHEMA = {
         properties: {
           letter: {
             type: "string",
-            description: `The capital letter, ${lettersInWords(SPEC.options.kinds, SPEC.reference.letters.first)}.`,
+            description: `The capital letter, ${lettersInWords(SPEC.reference.letters.first)} and on, in the options' order.`,
           },
           name: { type: "string", description: "The option's bold name." },
           consequence: {

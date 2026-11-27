@@ -11,7 +11,6 @@
 #   header: its name as its header writes it, `🧠 **Decide:**`, and as an
 #     item's reference names it, `Decide.2`;
 #   glyph: what its header opens with, and what the count line counts it by;
-#   aliases: the names older replies in a transcript still carry;
 #   rolls-up: whether its items roll up under 📌 until something settles them;
 #   settled-by: what settles an item of it, besides a later `reassess` turn,
 #     which settles every list's; it decides which items the 📌 roll-up and
@@ -58,7 +57,6 @@ lists:
   done:
     header: Done
     glyph: ✅
-    aliases: []
     rolls-up: false
     settled-by: none
     settling-words: {}
@@ -66,7 +64,6 @@ lists:
   pending:
     header: Pending
     glyph: 🚧
-    aliases: [Unfinished, Open]
     rolls-up: true
     settled-by: none
     settling-words: {}
@@ -74,7 +71,6 @@ lists:
   logged:
     header: Logged
     glyph: 📝
-    aliases: []
     rolls-up: false
     settled-by: none
     settling-words: {}
@@ -82,7 +78,6 @@ lists:
   waiting:
     header: Waiting
     glyph: ⏳
-    aliases: []
     rolls-up: true
     settled-by: report
     settling-words: {}
@@ -90,7 +85,6 @@ lists:
   answers:
     header: Answers
     glyph: ❓
-    aliases: [Questions]
     rolls-up: false
     settled-by: none
     settling-words: {}
@@ -98,7 +92,6 @@ lists:
   authorizations:
     header: Authorizations
     glyph: 🔑
-    aliases: []
     rolls-up: true
     settled-by: none
     settling-words: {}
@@ -106,7 +99,6 @@ lists:
   review:
     header: Review
     glyph: 🔍
-    aliases: [To review]
     rolls-up: true
     settled-by: merged-pull-request
     settling-words: {}
@@ -114,7 +106,6 @@ lists:
   todo:
     header: Todo
     glyph: 👉
-    aliases: [To do]
     rolls-up: true
     settled-by: settling-word
     settling-words:
@@ -124,7 +115,6 @@ lists:
   decide:
     header: Decide
     glyph: 🧠
-    aliases: [Decisions, Blocked]
     rolls-up: true
     settled-by: answer
     settling-words: {}
@@ -136,12 +126,8 @@ lists:
 #   kinds: how many letters an item takes, by its kind, in the order the
 #     agent's instructions name them:
 #     picks: `one` letter, or `any` number of them;
-#     glyph: what each option is drawn with;
-#     letters: the letters the kind takes, each with its own glyph in place
-#       of `glyph`; none for a kind that takes any letter the reference
-#       grammar allows. `Y` and `N` are strings: YAML 1.2 types no letter;
-#     taught: whether the agent's instructions teach the kind; one not
-#       taught is still read in the replies that hold it.
+#     glyph: what each option is drawn with.
+#   An option of any kind takes any letter the reference grammar allows.
 options:
   pro: ➕
   con: ➖
@@ -149,22 +135,9 @@ options:
     radio:
       picks: one
       glyph: 🔘
-      letters: {}
-      taught: true
     checkbox:
       picks: any
       glyph: 🔲
-      letters: {}
-      taught: true
-    # A yes-or-no question is taught as a radio item lettered A and B, so
-    # every answer names an option one way; older replies still hold this.
-    binary:
-      picks: one
-      glyph: 👍
-      letters:
-        Y: 👍
-        N: 👎
-      taught: false
 
 # The commands a prompt runs, by its first word, bare or after a skill
 # command.
@@ -284,7 +257,6 @@ subject:
 #   glyph: what the roll-up's header and its count line open with;
 #   header: the full roll-up's header, `📌 **Outstanding from previous
 #     turns:**`;
-#   aliases: the headers older replies opened their roll-up with;
 #   count-label: the word the count line names it by, `📌 Outstanding: …`;
 #   count-separator: what parts the count line's lists;
 #   interval: when the full roll-up is due, once min(`most-minutes` min,
@@ -293,7 +265,6 @@ subject:
 roll-up:
   glyph: 📌
   header: Outstanding from previous turns
-  aliases: [Still open from earlier]
   count-label: Outstanding
   count-separator: " · "
   interval:

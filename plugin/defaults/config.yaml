@@ -16,13 +16,8 @@
 # from here and follows this file as it changes. A key that's no setting
 # here, or a value of the wrong type, refuses your whole file: the plugin
 # uses these defaults and says why in the pane and in /answers-config,
-# which lists every setting in effect and the file it came from. An
-# `outstanding` section, or a `pane.hints`, `keys.dismiss`,
-# `marks.buttons.dismiss`, `colors.title`, `colors.expand`,
-# `colors.close` or `colors.close-x` setting, which the plugin no longer
-# reads, is left out with a warning naming what to set or use instead,
-# and the rest of your file is used. Your own file is `config.yaml`; no
-# other name is read.
+# which lists every setting in effect and the file it came from. Your
+# own file is `config.yaml`; no other name is read.
 
 # The count line above the prompt, such as `📌 Outstanding: 🚧 2 · 🧠 3`,
 # which the plugin works out from this session's transcript.

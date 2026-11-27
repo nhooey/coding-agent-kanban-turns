@@ -19,7 +19,7 @@
 //   1 or more, a `note`, `frees`, `supersedes`, `pros`, `cons` or `notes`
 //   that isn't a list of strings, or a `glyph` or `consequence` that isn't a string;
 // - an option kind the spec doesn't name, or an option letter outside the
-//   grammar's letters, one its kind doesn't take, or one given twice.
+//   grammar's letters, or one given twice.
 
 import { itemsOf } from "../src/items/items.ts";
 import { field, isObject, parsedJson } from "../src/json/fields.ts";
@@ -85,8 +85,7 @@ const OPTION_FIELDS: Readonly<Record<keyof DecideOption, true>> = {
   notes: true,
 };
 
-const KINDS: Readonly<Record<string, Readonly<{ letters: object }>>> =
-  SPEC.options.kinds;
+const KINDS: Readonly<Record<string, unknown>> = SPEC.options.kinds;
 
 const isOwner = (value: unknown): value is Owner =>
   typeof value === "string" && Object.hasOwn(OWNERS, value);
@@ -212,34 +211,24 @@ export const messageAt = (value: unknown, where: string): Got<Message> => {
       };
 };
 
-/** What's wrong with one option's fields and letter, at `at`, among a `kindName` item's, which take the letters `taken`, or any where none. */
-const optionProblems = (
-  option: unknown,
-  at: string,
-  kindName: unknown,
-  taken: readonly string[],
-): readonly string[] => {
+/** What's wrong with one option's fields and letter, at `at`. */
+const optionProblems = (option: unknown, at: string): readonly string[] => {
   const letter = field(option, "letter");
   const { first, last } = SPEC.reference.letters;
 
   return [
     ...unknownFields(option, OPTION_FIELDS, at, "an option"),
     ...typeProblems(option, OPTION_CHECKS, at),
-    ...(typeof letter !== "string"
+    ...(typeof letter !== "string" || isOptionLetter(letter)
       ? []
-      : !isOptionLetter(letter)
-        ? [`${at}.letter ${JSON.stringify(letter)} isn't one of ${first} to ${last}`]
-        : taken.length > 0 && !taken.includes(letter)
-          ? [`${at}.letter ${letter} isn't one a ${String(kindName)} item takes: ${taken.join(", ")}`]
-          : []),
+      : [`${at}.letter ${JSON.stringify(letter)} isn't one of ${first} to ${last}`]),
   ];
 };
 
 /** What's wrong with a Decide item's kind and its options, at `where`, that kanban_options' own reading lets through. */
 const kindProblems = (value: unknown, where: string): readonly string[] => {
   const kindName = field(value, "kind");
-  const kind = typeof kindName === "string" && Object.hasOwn(KINDS, kindName) ? KINDS[kindName] : undefined;
-  const taken = Object.keys(kind?.letters ?? {});
+  const isKind = typeof kindName === "string" && Object.hasOwn(KINDS, kindName);
   const options = field(value, "options");
   const listed: readonly unknown[] = Array.isArray(options) ? options : [];
   const letters = listed.flatMap((option) => {
@@ -249,14 +238,12 @@ const kindProblems = (value: unknown, where: string): readonly string[] => {
   });
 
   return [
-    ...(kindName === undefined || kind !== undefined
+    ...(kindName === undefined || isKind
       ? []
       : [
           `${where}.kind names no option kind of the spec: ${JSON.stringify(kindName)}; give one of ${Object.keys(KINDS).join(", ")}`,
         ]),
-    ...listed.flatMap((option, n) =>
-      optionProblems(option, `${where}.options[${n}]`, kindName, taken),
-    ),
+    ...listed.flatMap((option, n) => optionProblems(option, `${where}.options[${n}]`)),
     ...repeated(letters).map(
       (letter) => `${where}.options give the letter ${letter} more than once`,
     ),

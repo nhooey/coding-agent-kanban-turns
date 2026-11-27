@@ -118,14 +118,10 @@ const linesOf = (text: string): readonly string[] => {
 
 /** What's wrong with one Decide item's options, at `n` among its turn's, that the schema can't say. */
 const optionProblems = (item: CaseItem, n: number, where: string): readonly string[] => {
-  const kinds: Readonly<Record<string, Readonly<{ letters: object }>>> =
-    SPEC.options.kinds;
-  const kind = kinds[item.kind];
-  const taken = Object.keys(kind?.letters ?? {});
   const letters = item.options.map((option) => option.letter);
   const at = `${where}.decide[${n}]`;
 
-  return kind === undefined
+  return !Object.hasOwn(SPEC.options.kinds, item.kind)
     ? [`${at}.kind names no option kind of the spec: ${item.kind}`]
     : [
         ...letters
@@ -133,15 +129,6 @@ const optionProblems = (item: CaseItem, n: number, where: string): readonly stri
           .map(
             (letter) =>
               `${at} gives the letter ${JSON.stringify(letter)}, not one of ${LETTERS.first} to ${LETTERS.last}`,
-          ),
-        ...letters
-          .filter(
-            (letter) =>
-              isLetter(letter) && taken.length > 0 && !taken.includes(letter),
-          )
-          .map(
-            (letter) =>
-              `${at} gives a ${item.kind} item the letter ${letter}, not one of ${taken.join(", ")}`,
           ),
         ...repeated(letters).map(
           (letter) => `${at} gives the letter ${letter} more than once`,

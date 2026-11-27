@@ -1,6 +1,6 @@
 ---
 title: Every file and export is used, and a check fails the build on one that isn't
-state: proposed
+state: approved
 kind: implementation
 part-of: items-events-views-refactor
 needs: [hooks-split-by-concern]

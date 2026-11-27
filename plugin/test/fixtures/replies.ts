@@ -1,21 +1,21 @@
 // Replies for the tests of a reply's readers: seeded random replies built
-// from the protocol's pieces, list headers and their aliases, items numbered
+// from the protocol's pieces, list headers, items numbered
 // and bulleted with lines under them, options, `Frees:` lines, code blocks,
 // separators, underlines, topic headers, 📌 roll-ups and count lines; and
 // the Decide items a reply's Decide list may print.
 //
-// A `strict` reply keeps to what every reader read alike before
-// `parseReply`, so the old readers and the new give the same for it; a
-// loose one also writes what only the old `itemsOfText` read as the new one
-// does: items 1 to 3 spaces in, numbered `1)`, numbered lines under an item,
-// a number alone on its line with the bold summary beneath it, an option
-// after a blank line, and code blocks holding any line. What a strict reply
-// leaves out, and why, is the list of the readers' differences in
-// test/unit/transcript/reply-differential.test.ts.
+// A `strict` reply writes its items as the protocol's examples do: at the
+// line's start, numbered `1.` with the bold summary on the number's line,
+// options right under their item, and code blocks holding inert lines. A
+// `loose` one also writes items 1 to 3 spaces in, numbered `1)`, numbered
+// lines under an item, a number alone on its line with the bold summary
+// beneath it, an option after a blank line, and code blocks holding any
+// line. test/unit/transcript/reply-text.test.ts states how each reader
+// reads those shapes.
 
 import fc from "fast-check";
 
-import { DECISIONS, SECTION_NAMES } from "../../src/protocol/rules.ts";
+import { DECIDE, SECTION_NAMES } from "../../src/protocol/rules.ts";
 import { SPEC } from "../../src/protocol/spec.ts";
 import type { DecideItem } from "../../types/index.d.ts";
 
@@ -40,17 +40,14 @@ export const OPTIONS = [
   { letter: "C", name: "Both" },
 ] as const;
 
-const OPTION_GLYPHS = Object.values(SPEC.options.kinds).flatMap((kind) => [
-  kind.glyph,
-  ...Object.values(kind.letters),
-]);
+const OPTION_GLYPHS = Object.values(SPEC.options.kinds).map((kind) => kind.glyph);
 
 const BR = fc.constantFrom("", "  ");
 const summaryArb = fc.constantFrom(...SUMMARIES);
 const underlineArb = (char: string) =>
   fc.integer({ min: 3, max: 12 }).map((n) => char.repeat(n));
 
-/** A list's header: its glyph or another, then one of its names in bold with a colon. */
+/** A list's header: a list's glyph or another, then one of `names`, each a list's header, in bold with a colon. */
 const headerArb = (names: readonly string[]) =>
   fc
     .tuple(
@@ -76,8 +73,7 @@ const optionArb = fc
 /**
  * A code block under an item: its fences `pad` in, as far as the item's
  * text, closed, holding inert lines, blank lines among them where `blanks`,
- * and any line where loose and `rich`, in an item of a list that rolls up,
- * the only code the old `itemsOfText` read as code.
+ * and any line where loose and `rich`, in an item of a list that rolls up.
  */
 const codeArb = (mode: Mode, blanks: boolean, rich = false, pad = "   ") =>
   fc
@@ -190,33 +186,39 @@ const itemsArb = (mode: Mode, room: Room) =>
         ),
     );
 
-/** A list: its header, perhaps its underline, and its items. */
+/**
+ * A list: its header, perhaps its underline, and its items; a Decide list,
+ * the one most readers read, more often than any other.
+ */
 const sectionArb = (mode: Mode) =>
-  fc.constantFrom(...SECTION_NAMES).chain((name) =>
-    fc
-      .tuple(
-        headerArb([name]),
-        fc.option(underlineArb(CHARS["header-underline"]), { nil: undefined }),
-        itemsArb(mode, {
-          blanks: !DECISIONS.includes(name),
-          rich: Object.values(SPEC.lists).some(
-            (list) =>
-              list["rolls-up"] &&
-              ([list.header, ...list.aliases] as readonly string[]).includes(name),
-          ),
-        }),
-      )
-      .map(([header, underline, items]) => [
-        header,
-        ...(underline === undefined ? [] : [underline]),
-        ...items,
-      ]),
-  );
+  fc
+    .oneof(
+      { weight: 2, arbitrary: fc.constantFrom(...SECTION_NAMES) },
+      { weight: 1, arbitrary: fc.constant(DECIDE.header) },
+    )
+    .chain((name) =>
+      fc
+        .tuple(
+          headerArb([name]),
+          fc.option(underlineArb(CHARS["header-underline"]), { nil: undefined }),
+          itemsArb(mode, {
+            blanks: name !== DECIDE.header,
+            rich: Object.values(SPEC.lists).some(
+              (list) => list["rolls-up"] && list.header === name,
+            ),
+          }),
+        )
+        .map(([header, underline, items]) => [
+          header,
+          ...(underline === undefined ? [] : [underline]),
+          ...items,
+        ]),
+    );
 
-/** The 📌 roll-up: its header or an older one, perhaps its underline, and its lists' bullets, each tagged. */
+/** The 📌 roll-up: its header, perhaps its underline, and its lists' bullets, each tagged. */
 const rollUpArb = fc
   .tuple(
-    fc.constantFrom(ROLL_UP.header, ...ROLL_UP.aliases),
+    fc.constant(ROLL_UP.header),
     BR,
     fc.option(underlineArb(CHARS["roll-up-underline"]), { nil: undefined }),
     fc.array(
@@ -258,10 +260,6 @@ const partArb = (mode: Mode) =>
     { weight: 1, arbitrary: looseCodeArb },
     { weight: 1, arbitrary: fc.constant(["Some work.", "It went well."]) },
     { weight: 1, arbitrary: fc.constant([COUNT]) },
-    {
-      weight: 1,
-      arbitrary: fc.constantFrom(...ROLL_UP.aliases.flatMap((older) => [[older], [`${older}:`]])),
-    },
   );
 
 /** A reply's lines from its parts, a blank line between two, or none. */
@@ -298,55 +296,3 @@ export const decideItemsArb: fc.Arbitrary<readonly DecideItem[]> = fc
       ),
     ),
   );
-
-/** A Decide list printing `items` as the instructions draw them, with lines of their own besides. */
-export const decideListArb = (
-  items: readonly DecideItem[],
-): fc.Arbitrary<readonly string[]> =>
-  fc
-    .tuple(
-      headerArb(DECISIONS),
-      fc.option(underlineArb(CHARS["header-underline"]), { nil: undefined }),
-      fc.tuple(
-        ...items.map((item) =>
-          fc
-            .tuple(
-              BR,
-              fc.subarray(["   It still reads twice.", "   Frees: 9efb08a1.Todo.1"]),
-              fc.constantFrom(...OPTION_GLYPHS),
-              fc.option(codeArb("strict", false), { nil: undefined }),
-              fc.subarray(["Prose at the line's start."]),
-            )
-            .map(([br, extra, glyph, code, prose]) => [
-              `${item.number}. **${item.summary}**${br}`,
-              ...extra,
-              ...item.options.map(
-                (option) => `   ${glyph} ${option.letter}. **${option.name}**: why.`,
-              ),
-              ...(code ?? []),
-              ...prose,
-            ]),
-        ),
-      ),
-    )
-    .map(([header, underline, printed]) => [
-      header,
-      ...(underline === undefined ? [] : [underline]),
-      ...printed.flatMap((lines, n) => (n > 0 ? ["   ⠀", ...lines] : lines)),
-    ]);
-
-/** A random reply with `items`' Decide list among its parts, and the items. */
-export const replyWithItemsArb: fc.Arbitrary<
-  Readonly<{ text: string; items: readonly DecideItem[] }>
-> = decideItemsArb.chain((items) =>
-  fc
-    .tuple(
-      fc.array(fc.tuple(fc.boolean(), partArb("strict")), { maxLength: 2 }),
-      decideListArb(items),
-      fc.array(fc.tuple(fc.boolean(), partArb("strict")), { maxLength: 2 }),
-    )
-    .map(([before, list, after]) => ({
-      text: joined([...before, [true, list], ...after]).join("\n"),
-      items,
-    })),
-);

@@ -1,6 +1,6 @@
 ---
 title: Items are one type changed only by events, and every view is a pure function of them and the view state
-state: proposed
+state: approved
 kind: end-state
 ---
 
@@ -81,6 +81,7 @@ response: # questions only: the shape of a valid answer
   options: [{ letter: A, name: Keep the fast loader, pros: [], cons: [] }]
   default: null # the option the raiser may assume
 urgency: turn-end # now | turn-end
+refused: null # approvals only: the refused call's exact text, which the approval gates
 links:
   - { rel: blocked-by, to: "item:9" }
   - { rel: about, to: "github:nhooey/coding-agent-kanban-turns#49" }
@@ -128,6 +129,11 @@ A picked answer that isn't sent is no item state: it's a line of the draft's tex
   - Tests find a completed reassess closing exactly the covered items its turn neither kept, raised again nor resolved, and a lapsed one changing no item its turn's own events didn't.
   - A test finds no control drawn for an item being reassessed, in the pane, under a reply or at a reference.
   - In a live session, a submitted `reassess` closes the pane and the count line reads `reassessing`; the pane reopens when the turn's final response lands, only if an item awaits the person; and an interrupted reassess leaves the items open, with the pane saying how many weren't reassessed.
+- **A command runs where the agent sees it.**
+  Tests find an item's command drawn as one control that fills the prompt draft with `! <cmd>`, and, for a command that must run in another shell, the wrapper's status lines and log file and a Started control that fires `start`.
+  An item for a refused action also draws a grant, whose fill holds the refused command byte for byte ([commands-run-where-the-agent-sees](commands-run-where-the-agent-sees.md)).
+- **A task whose command has run, or whose target is already in place, is closed without the person writing `done`.**
+  Tests find a `!` command's bash output, followed by the agent's `resolve`, closing its item, and an item whose target is already in place resolved with no run; in a live session, a task whose command the person ran doesn't show as open in the next turn.
 - **The architecture still holds.**
   [The refactor plan](../../items-events-views-refactor/open/items-events-views-refactor.md)'s checks pass with the model built, and its unused-exports check lists no exception.
 - **Nothing is kept for the lists.**
@@ -139,14 +145,14 @@ A picked answer that isn't sent is no item state: it's a line of the draft's tex
 
 Three checks of the model come first, each cheap, and each can change the model before anything is built on it:
 
-1. [lists-fit-filter-table](lists-fit-filter-table.md): every item in the fixture transcripts fits one row of the filter table.
-2. [list-moves-fit-transitions](list-moves-fit-transitions.md): every move between lists is one event of the transition table.
-3. [task-list-matches-pending](task-list-matches-pending.md): whether the agent's Pending items are the harness's task list.
+1. [lists-fit-filter-table](../closed/lists-fit-filter-table.md): every item in the fixture transcripts fits one row of the filter table.
+2. [list-moves-fit-transitions](../closed/list-moves-fit-transitions.md): every move between lists is one event of the transition table.
+3. [task-list-matches-pending](../closed/task-list-matches-pending.md): whether the agent's Pending items are the harness's task list.
 
 Beside them, [the refactor plan](../../items-events-views-refactor/open/items-events-views-refactor.md)'s five nodes clear the ground the model is built on, and need no answer from the checks.
 This plan's nodes wait on them across the two plans:
 
-- [item-model-in-spec](item-model-in-spec.md) on [compatibility-code-deleted](../../items-events-views-refactor/open/compatibility-code-deleted.md);
+- [item-model-in-spec](item-model-in-spec.md) on [compatibility-code-deleted](../../items-events-views-refactor/closed/compatibility-code-deleted.md);
 - [item-event-reducer](item-event-reducer.md) on [core-folders-are-layers](../../items-events-views-refactor/open/core-folders-are-layers.md);
 - [item-tool-declares-events](item-tool-declares-events.md) and [item-renderer-densities](item-renderer-densities.md) on [hooks-split-by-concern](../../items-events-views-refactor/open/hooks-split-by-concern.md);
 - [reply-prose-readers-retired](reply-prose-readers-retired.md) on [unused-exports-checked](../../items-events-views-refactor/open/unused-exports-checked.md).
@@ -169,6 +175,7 @@ Then, each `needs` the ones it builds on:
 - [reply-prose-readers-retired](reply-prose-readers-retired.md): no reader takes an item from a reply's prose.
 - [derived-skill-follows-items](derived-skill-follows-items.md): the derived skill's update.
 - [pane-windowed-render](pane-windowed-render.md): the pane draws only what's in or near its scroll window.
+- [commands-run-where-the-agent-sees](commands-run-where-the-agent-sees.md): a command the person is asked to run, as a control that fills the prompt with it.
 
 **The 9-list path keeps working until the cut-over.**
 Each part up to the tree lands beside the list readers, unreached by the hooks; [pane-facet-tree](pane-facet-tree.md) and [reply-refers-to-items](reply-refers-to-items.md) switch the pane and the reply to items, and [reply-prose-readers-retired](reply-prose-readers-retired.md) deletes the old path.
@@ -231,7 +238,7 @@ Each has a recommendation, and the node it changes waits on the answer.
 | 2   | How does a reference in prose differ from a GitHub `#12`?                | A bare `#12`; a Markdown link the tool's result gives; another sigil                                                 | A bare `#12`, read as an item only when the log holds item 12 and it stands outside a link, a code span and `owner/repo#12`. The instructions have the agent name a pull request by a link or with its repository. |
 | 3   | Where is a turn's digest drawn?                                          | On the item tool's row; under the reply                                                                             | Both, by one rule each: the tool's row draws its own call's events as lines, and the reply draws, under its text, the card of each item it refers to that awaits the person.                                |
 | 4   | Where do observations live that the transcript doesn't hold, such as a merged pull request? | A second log in the plugin's store; read live at each refresh                                    | Read live, as a second input to the fold. A tracker's closed states never reopen, so a replay gives the same items, and no second log can drift from the first.                                             |
-| 5   | Are the agent's own tasks the harness's task list or raised through the tool? | Project `TaskCreate` and `TaskUpdate`; raise them through the tool                                              | Project them where the model has the task tools, and fall back to the tool where it doesn't. [task-list-matches-pending](task-list-matches-pending.md) can flip this.                                       |
+| 5   | Are the agent's own tasks the harness's task list or raised through the tool? | Project `TaskCreate` and `TaskUpdate`; raise them through the tool                                              | Raise them through the tool, where the model has the task tools and where it doesn't; a `TaskCreate` or `TaskUpdate` call is evidence alone. [task-list-matches-pending](../../../reports/2026-11-27-task-list-matches-pending.md) found the task list held none of the agent's Pending items. |
 | 6   | Is a note an event?                                                      | A `note` verb with no state change; words after an id are always an answer                                          | A `note` verb. Words after a question's id answer it, unless the line asks a question; words after a task's id are a note. Which of the two a kind's words are is the kind's entry in the spec.             |
 | 7   | How does an answer in plain words, with no reference, become an event?   | The grammar only; the agent records it for the person                                                               | Both, marked by provenance. The agent's `resolve … by user` cites the person's own prompt, which the tool checks exists and is later than the raise; the row says "as the agent read it", and `reopen` undoes it. |
 | 8   | Is Queued a branch or a mark?                                            | A mark on the item; a derived facet the order can hold                                                              | Both, and neither stored. The item is drawn in the state its queued event gives it, so it sits where that state belongs under the default order, with the mark; and `queued` is a derived facet the person may put in the order to gather the queued items under one node. It isn't in the default order. |
@@ -246,4 +253,5 @@ Each has a recommendation, and the node it changes waits on the answer.
 | 17  | Where are the items being reassessed drawn?                              | Under one folded node ahead of the person's order; in place, dim and without controls                               | One folded node, first, so no node the person reads as theirs heads items they can't act on. It's the third `special` entry.                                                                                |
 | 18  | What becomes of the items a lapsed reassess never reached?               | Open again, as they were; withdrawn, as on completion; held until the person reassesses again                       | Open again, with the pane saying how many weren't reassessed. The agent judged none of them, and a held item is a stuck one.                                                                                |
 | 19  | Does the pane open by itself when the reassess completes?                | It opens without taking the keyboard, if an item awaits the person; only the count line changes                     | It opens, without the keyboard, only when an item awaits the person. The person closed it by submitting, so its return is the signal that the wait is over.                                                 |
-| 20  | Which items does a reassess cover?                                       | Every not-closed item an agent raised through the tool; every not-closed item                                       | Those an agent raised through the tool. A projected task, a subagent and an externally watched item are observed, and no reassess can judge them.                                                           |
+| 20  | Which items does a reassess cover?                                       | Every not-closed item an agent raised through the tool; every not-closed item                                       | Those an agent raised through the tool. A subagent and an externally watched item are observed, and no reassess can judge them.                                                           |
+| 21  | How does an item blocked by a peer session in another repository unblock? | A `session:<id>` target whose messages change nothing by themselves; a status read from the peer's words; no target, the item only `about` the peer | Settled by the person (`717d7c65.Decide.1.A`): a `session:<id>` target type in [harness-observations-as-events](harness-observations-as-events.md), with no status source. A peer is no subagent or teammate the engine reads, and a status read from its words would be a guess. Each report from the peer is an `observe`, as the `observe` row of [item-model-in-spec](item-model-in-spec.md)'s transition table has a peer agent's report, which with no watch rule records the report and changes nothing; the agent, reading it, removes the link or resolves the item. |

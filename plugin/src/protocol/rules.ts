@@ -1,5 +1,5 @@
 // What the core derives from the protocol's spec in more than one place:
-// the pieces of the reference grammar as patterns, a list's names, an
+// the pieces of the reference grammar as patterns, the lists' headers, an
 // item's label. The spec itself is src/protocol/spec.ts, generated from
 // spec/kanban.yaml; this module only reads it.
 
@@ -30,21 +30,14 @@ export const REASSESS = "reassess" satisfies keyof typeof SPEC.commands.names;
 /** The kind an item is when its kind isn't given: one option chosen. */
 export const DEFAULT_KIND = "radio" satisfies keyof typeof SPEC.options.kinds;
 
-/** A list's names: its header, then the aliases older replies carry. */
-export const namesOf = (
-  list: Readonly<{ header: string; aliases: readonly string[] }>,
-): readonly string[] => [list.header, ...list.aliases];
+/** Each list's header, in the spec's order. */
+export const SECTION_NAMES: readonly string[] = Object.values(SPEC.lists).map(
+  (list) => list.header,
+);
 
-/** Each list header followed by its aliases, the names older replies in a transcript still carry. */
-export const SECTION_NAMES: readonly string[] =
-  Object.values(SPEC.lists).flatMap(namesOf);
-
-/** The spec's list a header names, by its header or an alias; undefined for a name no list has. */
+/** The spec's list a header names; undefined for a name no list has. */
 export const listNamed = (name: string): List | undefined =>
-  Object.values(SPEC.lists).find((list) => namesOf(list).includes(name));
-
-/** The Decide list's names, the first its own. */
-export const DECISIONS: readonly string[] = namesOf(DECIDE);
+  Object.values(SPEC.lists).find((list) => list.header === name);
 
 /** A list as an item's label and reference name it: its glyph and its header. */
 export type ListName = Readonly<{ glyph: string; header: string }>;

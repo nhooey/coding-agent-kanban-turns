@@ -1,8 +1,8 @@
 title: >-
-  A Waiting item a report settled, restated under the 📌 roll-up's header or
-  an older reply's name for it, reopens nothing, since an item under 📌 is
-  pinned, not printed in its own list again; the restating replies carry a
-  settled item, so the case is no worked example
+  A Waiting item a report settled, restated under the 📌 roll-up's header,
+  reopens nothing, since an item under 📌 is pinned, not printed in its own
+  list again; the restating reply carries a settled item, so the case is no
+  worked example
 example: false
 turns:
   - id: 3c4d5e6f
@@ -50,17 +50,6 @@ turns:
           ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\
           ⏳ **Waiting:**  \n\
           - **Watcher on #143 (`b8a83gfv0`)** 🔖 3c4d5e6f₋₂\n"
-        lint: []
-  - id: 6f708192
-    prompt: And its notes field.
-    replies:
-      - text: "\
-          The notes field grows to 4 rows.\n\
-          \n\
-          📌 **Still open from earlier:**  \n\
-          ━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\
-          ⏳ **Waiting:**  \n\
-          - **The nightly build (`n1ght1y`)** 🔖 3c4d5e6f₋₃\n"
         lint: []
 expect:
   open: []

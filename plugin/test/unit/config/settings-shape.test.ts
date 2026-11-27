@@ -1,8 +1,7 @@
 // The settings' shape, derived from the shipped defaults file: each
 // setting the type of its default, unless KINDS names its section's; and
-// the settings in effect, against the oracle that checked both files
-// against a fixed shape, over random user files under the shipped defaults
-// and altered ones.
+// the settings in effect over random user files, under the shipped
+// defaults and altered ones.
 
 import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
@@ -13,16 +12,15 @@ import { stringify } from "yaml";
 import {
   DEFAULTS_FILE,
   clashesIn,
+  leaves,
   loaded,
   nullSectionsEmptied,
   parseYaml,
   shapeOf,
-  withoutRetired,
 } from "../../../src/config/config.ts";
 import type { Shape } from "../../../src/config/config.ts";
 import type { Json, Loaded } from "../../../types/index.d.ts";
 import { SETTINGS_SHAPE } from "../../fixtures/settings-shape.ts";
-import { loaded as oldLoaded } from "../../oracle/config.ts";
 
 const isSection = (value: Json | undefined): value is { readonly [key: string]: Json } =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -31,7 +29,7 @@ const SHIPPED = readFileSync(new URL(`../../../${DEFAULTS_FILE}`, import.meta.ur
 const parsed = parseYaml(SHIPPED);
 const shipped: { readonly [key: string]: Json } =
   "value" in parsed && isSection(parsed.value) ? parsed.value : {};
-const derived = shapeOf(withoutRetired(shipped));
+const derived = shapeOf(shipped);
 const shape: Shape = "shape" in derived ? derived.shape : {};
 
 const NO_TYPE =
@@ -191,9 +189,6 @@ describe("the type a default gives its setting", () => {
     expect(
       loaded({ path: D, text: asString }, { path: U, text: 'notes:\n  rows: "5"\n' }).settings?.notes.rows,
     ).toBe("5");
-    expect(oldLoaded({ path: D, text: asString }, undefined).problems).toEqual([
-      `${D}: notes.rows is string, not a number`,
-    ]);
   });
 
   test("is the setting's being one: a default added is a setting, and one left out is none", () => {
@@ -208,11 +203,9 @@ describe("the type a default gives its setting", () => {
   });
 });
 
-// The differential test: the oracle, test/oracle/config.ts, checks both files
-// against the fixed shape the fixture holds; `loaded` checks the user's file
-// against the shape the defaults file gives. Under defaults the oracle takes,
-// both say the same. Under defaults it refuses, each says what one of the
-// stated changes says it does.
+// The settings in effect over random user files: the shipped defaults
+// changed at random, written as YAML, or text YAML refuses or reads oddly,
+// under the shipped defaults and under defaults changed in one way each.
 
 /** A value a setting might be given. */
 const valueArb: fc.Arbitrary<Json> = fc.oneof(
@@ -229,7 +222,7 @@ const valueArb: fc.Arbitrary<Json> = fc.oneof(
 
 /** Keys no section or file holds, and keys a plain object inherits. */
 const extraArb = fc.dictionary(
-  fc.constantFrom("extra", "prev", "__proto__", "constructor", "toString", "outstanding", "hints"),
+  fc.constantFrom("extra", "prev", "__proto__", "constructor", "toString"),
   valueArb,
   { maxKeys: 2 },
 );
@@ -295,7 +288,6 @@ const userTextArb: fc.Arbitrary<string> = fc.oneof(
       "---\n",
       "--- {}\n--- {}\n",
       "keys:\n  help: x\n  help: y\n",
-      "keys:\n  dismiss: x\n",
       "marks:\n  sent: *x\n",
       "keys:\n",
       "notes:\n  rows: .inf\n",
@@ -305,6 +297,30 @@ const userTextArb: fc.Arbitrary<string> = fc.oneof(
     ),
     weight: 1,
   },
+);
+
+/** A sound user file's value: `value`'s sections and settings, some left out, a number one more and a boolean flipped. */
+const soundArb = (value: Json): fc.Arbitrary<Json> =>
+  isSection(value)
+    ? fc
+        .tuple(
+          ...Object.entries(value).map(([key, inner]) =>
+            fc.tuple(fc.constant(key), fc.boolean(), soundArb(inner)),
+          ),
+        )
+        .map((entries) =>
+          Object.fromEntries(entries.filter(([, isKept]) => isKept).map(([key, , inner]) => [key, inner])),
+        )
+    : typeof value === "number"
+      ? fc.constantFrom(value, value + 1)
+      : typeof value === "boolean"
+        ? fc.constantFrom(value, !value)
+        : fc.constant(value);
+
+/** A user file's text: mostly one of userTextArb's, else a sound one. */
+const anyUserTextArb: fc.Arbitrary<string> = fc.oneof(
+  { arbitrary: userTextArb, weight: 3 },
+  { arbitrary: soundArb(shipped).map((value) => stringify(value)), weight: 1 },
 );
 
 /** The shipped defaults with `section` replaced by `inner`, or left out where `inner` is undefined. */
@@ -323,51 +339,42 @@ const sectionOf = (name: string): { readonly [key: string]: Json } => {
 };
 
 /**
- * A defaults file the differential test runs under, and what differs from
- * the oracle under it: nothing; the defaults giving no shape, so `loaded`
- * says only `problems` and checks no user file; or a default that sets a
- * setting's type, or whether it is one, in `section`, which the oracle
- * refused with `refusal`.
+ * A defaults file the random user files are read under, and what it does:
+ * nothing but give the shipped settings; bind a key twice, so no settings
+ * are in effect and the clash is said first; give no shape, so `loaded`
+ * says only `problems` and checks no user file; or set a setting's type,
+ * or whether it is one, in `section`, which changes nothing outside it.
  */
 type Case = Readonly<{
   name: string;
   text: string | undefined;
   change:
     | Readonly<{ kind: "none" }>
+    | Readonly<{ kind: "clashing"; clash: string }>
     | Readonly<{ kind: "unshaped"; problems: readonly string[] }>
     | Readonly<{
         kind: "retyped";
         section: string;
         value: { readonly [key: string]: Json };
-        refusal: readonly string[];
       }>;
 }>;
 
-const retyped = (name: string, section: string, inner: Json | undefined, refusal: readonly string[]): Case => {
+const retyped = (name: string, section: string, inner: Json | undefined): Case => {
   const value = withSection(section, inner);
 
-  return { name, text: stringify(value), change: { kind: "retyped", section, value, refusal } };
+  return { name, text: stringify(value), change: { kind: "retyped", section, value } };
 };
 
 const CASES: readonly Case[] = [
   { name: "shipped", text: SHIPPED, change: { kind: "none" } },
   {
-    name: "with a retired section",
-    text: stringify(withSection("outstanding", { script: "x" })),
-    change: { kind: "none" },
-  },
-  {
     name: "binding a key twice",
     text: stringify(withSection("keys", { ...sectionOf("keys"), next: "s" })),
-    change: { kind: "none" },
+    change: { kind: "clashing", clash: 'keys.next and keys.submit are both "s"; each key presses one button' },
   },
-  retyped("with a number default written as a string", "notes", { ...sectionOf("notes"), rows: "3" }, [
-    "notes.rows is string, not a number",
-  ]),
-  retyped("with a default added", "notes", { ...sectionOf("notes"), extra: true }, [
-    "notes.extra is no setting; the keys here are rows",
-  ]),
-  retyped("with a section left out", "lint", undefined, ["lint is missing"]),
+  retyped("with a number default written as a string", "notes", { ...sectionOf("notes"), rows: "3" }),
+  retyped("with a default added", "notes", { ...sectionOf("notes"), extra: true }),
+  retyped("with a section left out", "lint", undefined),
   {
     name: "with a null default",
     text: stringify(withSection("counts", { ...sectionOf("counts"), turns: null })),
@@ -412,32 +419,66 @@ const touches = (text: string, value: { readonly [key: string]: Json }, section:
 
 const outside = (section: string) => (line: string) => !line.startsWith(`${section}.`);
 
-describe("the settings in effect, against the oracle", () => {
+/** Every shipped setting by its dotted key, with its default. */
+const DEFAULT_LEAVES: ReadonlyMap<string, Json> = new Map(leaves(shipped));
+
+/** Every setting a user file's text gives, by its dotted key; none where YAML refuses it. */
+const givenIn = (text: string | undefined): ReadonlyMap<string, Json> => {
+  const user = text === undefined ? undefined : parseYaml(text);
+
+  return new Map(user !== undefined && "value" in user ? leaves(user.value) : []);
+};
+
+/**
+ * What any user file leaves true under the shipped defaults: settings are
+ * in effect, every problem names the user's file, every shipped setting is
+ * in effect once, in order, with its default's type and either its default
+ * or the user's value, one effective line each; and where the user's file
+ * has no problem, every setting it gives is in effect.
+ */
+const holdsUnderShipped = (got: Loaded, userText: string | undefined): void => {
+  const given = givenIn(userText);
+  const inEffect = got.settings === null ? [] : leaves(got.settings as unknown as Json);
+
+  expect(got.settings).not.toBeNull();
+  expect(got.problems.filter((line) => !line.startsWith(`${U}: `))).toEqual([]);
+  expect(inEffect.map(([key]) => key)).toEqual([...DEFAULT_LEAVES.keys()]);
+  expect(got.effective.map((line) => line.split(" = ")[0])).toEqual([...DEFAULT_LEAVES.keys()]);
+  inEffect.forEach(([key, value]) => {
+    expect(typeof value).toBe(typeof DEFAULT_LEAVES.get(key));
+    expect([DEFAULT_LEAVES.get(key), given.get(key)]).toContainEqual(value);
+    if (got.problems.length === 0 && given.has(key)) {
+      expect(value).toEqual(given.get(key));
+    }
+  });
+};
+
+describe("the settings in effect over random user files", () => {
   for (const { name, text, change } of CASES) {
     test(`under defaults ${name}`, () => {
       fc.assert(
-        fc.property(fc.option(userTextArb, { nil: undefined }), (userText) => {
+        fc.property(fc.option(anyUserTextArb, { nil: undefined }), (userText) => {
           const user = userText === undefined ? undefined : { path: U, text: userText };
           const got = loaded({ path: D, text }, user);
-          const old = oldLoaded({ path: D, text: text ?? "" }, user);
 
           if (change.kind === "none") {
-            expect(got).toEqual(old);
+            holdsUnderShipped(got, userText);
+          } else if (change.kind === "clashing") {
+            expect(got.settings).toBeNull();
+            expect(got.effective).toEqual([]);
+            expect(got.problems[0]).toBe(`${D}: ${change.clash}`);
           } else if (change.kind === "unshaped") {
-            expect(old.settings).toBeNull();
             expect(got).toEqual({
               settings: null,
               effective: [],
               problems: change.problems.map((line) => `${D}: ${line}`),
             });
           } else {
-            const { section, value, refusal } = change;
-            expect(old.settings).toBeNull();
-            expect(old.problems.slice(0, refusal.length)).toEqual(refusal.map((line) => `${D}: ${line}`));
+            const { section, value } = change;
             expect(got.problems.filter((line) => line.startsWith(`${D}:`))).toEqual([]);
 
             if (user !== undefined && !touches(user.text, value, section)) {
-              const was = oldLoaded({ path: D, text: SHIPPED }, user);
+              const was = loaded({ path: D, text: SHIPPED }, user);
               expect(got.problems).toEqual(was.problems);
               expect(omitting(got.settings, section)).toEqual(omitting(was.settings, section));
               expect(sectionIn(got.settings, section)).toEqual(value[section]);
@@ -460,10 +501,21 @@ describe("the settings in effect, against the oracle", () => {
     expect(alone.filter((count) => count < 20)).toEqual([]);
   });
 
+  test("many random user files are sound and set a setting, so every setting they give is checked in effect", () => {
+    const sound = fc
+      .sample(anyUserTextArb, { seed: 20261121, numRuns: 200 })
+      .filter(
+        (text) =>
+          loaded({ path: D, text: SHIPPED }, { path: U, text }).problems.length === 0 &&
+          [...givenIn(text).keys()].some((key) => DEFAULT_LEAVES.has(key)),
+      );
+    expect(sound.length).toBeGreaterThan(20);
+  });
+
   test("the random user files reach every kind of problem", () => {
     const said = fc
       .sample(userTextArb, { seed: 20261121, numRuns: 1000 })
-      .flatMap((text) => oldLoaded({ path: D, text: SHIPPED }, { path: U, text }).problems);
+      .flatMap((text) => loaded({ path: D, text: SHIPPED }, { path: U, text }).problems);
     const kinds = [
       "is no setting",
       "not a section",
@@ -474,7 +526,6 @@ describe("the settings in effect, against the oracle", () => {
       "not one lowercase letter or digit",
       "not a mark",
       "each key presses one button",
-      "is no longer read",
       "YAML documents",
     ];
     expect(kinds.filter((kind) => !said.some((line) => line.includes(kind)))).toEqual([]);

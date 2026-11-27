@@ -57,9 +57,9 @@ describe("the spec", () => {
     expect(specProblems(SPEC)).toEqual([]);
   });
 
-  test("holds 9 lists, each with its own glyph and names", () => {
+  test("holds 9 lists, each with its own glyph and header", () => {
     const lists = Object.values(SPEC.lists);
-    const names = lists.flatMap((list) => [list.header, ...list.aliases]);
+    const names = lists.map((list) => list.header);
 
     expect(lists).toHaveLength(9);
     expect(new Set(lists.map((list) => list.glyph)).size).toBe(9);
@@ -83,10 +83,6 @@ describe("the spec", () => {
   test("names the kinds an item's type allows", () => {
     expect(kindsMatch).toBe(true);
   });
-
-  test("reads Y and N as letters, as YAML 1.2 does", () => {
-    expect(Object.keys(SPEC.options.kinds.binary.letters)).toEqual(["Y", "N"]);
-  });
 });
 
 describe("specProblems", () => {
@@ -104,7 +100,6 @@ describe("specProblems", () => {
           ...decide,
           header: "Extra",
           glyph: "🧩",
-          aliases: [],
           "settled-by": "none",
           feedback: "none",
         }),
@@ -120,9 +115,9 @@ describe("specProblems", () => {
     ]);
   });
 
-  test("finds a name two lists share, as a header or an alias", () => {
-    expect(specProblems(withList("decide", { ...decide, aliases: ["To do"] }))).toEqual([
-      'the name "To do" names more than one list',
+  test("finds a header two lists share", () => {
+    expect(specProblems(withList("decide", { ...decide, header: "Todo" }))).toEqual([
+      'the name "Todo" names more than one list',
     ]);
   });
 
@@ -252,20 +247,10 @@ describe("specProblems", () => {
   test("finds letters that run backwards", () => {
     expect(
       specProblems({ ...spec, reference: { ...spec.reference, letters: { first: "Z", last: "A" } } }),
-    ).toEqual([
-      "the letters run backwards, Z to A",
-      "the letter Y of binary is outside the letters, Z to A",
-      "the letter N of binary is outside the letters, Z to A",
-    ]);
+    ).toEqual(["the letters run backwards, Z to A"]);
   });
 
-  test("finds an option kind's letter outside the letters", () => {
-    expect(
-      specProblems({ ...spec, reference: { ...spec.reference, letters: { first: "A", last: "X" } } }),
-    ).toEqual(["the letter Y of binary is outside the letters, A to X"]);
-  });
-
-  test("finds a glyph two option kinds share, as a kind's glyph or a letter's", () => {
+  test("finds a glyph two option kinds share", () => {
     const kinds = spec.options.kinds;
     const withKinds = (changed: SpecShape["options"]["kinds"]): SpecShape => ({
       ...spec,
@@ -275,8 +260,8 @@ describe("specProblems", () => {
     expect(specProblems(withKinds({ checkbox: { ...kinds["checkbox"]!, glyph: "🔘" } }))).toEqual([
       "the glyph 🔘 marks more than one option kind",
     ]);
-    expect(specProblems(withKinds({ radio: { ...kinds["radio"]!, glyph: "👎" } }))).toEqual([
-      "the glyph 👎 marks more than one option kind",
+    expect(specProblems(withKinds({ dial: { glyph: "🔲" } }))).toEqual([
+      "the glyph 🔲 marks more than one option kind",
     ]);
   });
 

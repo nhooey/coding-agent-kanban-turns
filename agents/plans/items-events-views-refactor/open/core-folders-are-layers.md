@@ -1,6 +1,6 @@
 ---
 title: The core's folders are the model's layers, and a check holds every import to one direction
-state: proposed
+state: approved
 kind: implementation
 part-of: items-events-views-refactor
 needs: [compatibility-code-deleted, refactor-oracles-deleted]

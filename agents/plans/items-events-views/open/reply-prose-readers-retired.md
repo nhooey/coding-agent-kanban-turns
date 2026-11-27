@@ -1,6 +1,6 @@
 ---
 title: No reader takes an item from a reply's prose, and the list readers, the settlers, the roll-up and `kanban_options` are gone
-state: proposed
+state: approved
 kind: implementation
 part-of: items-events-views
 needs: [pane-facet-tree, reply-refers-to-items, harness-observations-as-events, derived-skill-follows-items, reassess-holds-items-until-done, unused-exports-checked]

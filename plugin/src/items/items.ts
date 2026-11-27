@@ -54,18 +54,10 @@ export const answerKeysOf = (item: ListedItem): readonly string[] => [
 export const isSameTurn = (a: string, b: string): boolean =>
   a !== "" && b !== "" && (a.startsWith(b) || b.startsWith(a));
 
-/** The glyph a kind draws an option with: its letter's own, else the kind's. */
-const kindGlyph = (kind: DecideKind, letter: string): string => {
-  const spec = SPEC.options.kinds[kind];
-  const lettered: Readonly<Record<string, string>> = spec.letters;
-
-  return Object.hasOwn(lettered, letter) ? (lettered[letter] ?? spec.glyph) : spec.glyph;
-};
-
 /** The glyph an option is drawn with: its own, else its item kind's. */
 export const glyphOf = (item: DecideItem, letter: string): string =>
   item.options.find((o) => o.letter === letter)?.glyph ||
-  kindGlyph(item.kind, letter);
+  SPEC.options.kinds[item.kind].glyph;
 
 /** What an option is drawn with: `chosenMark`, the `marks.chosen` setting, while the draft chooses it, else its glyph. */
 export const markOf = (

@@ -1,6 +1,6 @@
 ---
 title: The derived skill teaches the item model and declares events through the CLI, built from the same spec, fragments and cases
-state: proposed
+state: approved
 kind: implementation
 part-of: items-events-views
 needs: [item-tool-declares-events, reply-refers-to-items]

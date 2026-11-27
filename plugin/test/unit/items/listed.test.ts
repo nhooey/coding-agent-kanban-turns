@@ -9,7 +9,7 @@ import { describe, test } from "node:test";
 import { expect } from "expect";
 
 import { openTodoOf, todoStates, wordedSubjects } from "../../../src/items/listed.ts";
-import { countLine, rollUp, summaryOf, unsettled } from "../../../src/items/outstanding.ts";
+import { countLine, rollUp, settlingOf, summaryOf, unsettled } from "../../../src/items/outstanding.ts";
 import type { TodoItem, Turn } from "../../../types/index.d.ts";
 import { turnOf } from "../../fixtures/turns.ts";
 
@@ -107,8 +107,9 @@ describe("the Todo items of a reply", () => {
     ]);
   });
 
-  test("an older reply's alias for the list reads too", () => {
-    expect(todoItemsOfText("👉 **To do:**\n1. **Rotate the token**\n", FIRST)).toHaveLength(1);
+  test("a list read by its header alone, not another name for it", () => {
+    expect(todoItemsOfText("👉 **Todo:**\n1. **Rotate the token**\n", FIRST)).toHaveLength(1);
+    expect(todoItemsOfText("👉 **Backlog:**\n1. **Rotate the token**\n", FIRST)).toEqual([]);
   });
 
   test("no other list's items, no 📌 roll-up bullet, and no unnumbered item are Todo items", () => {
@@ -239,5 +240,29 @@ describe("how a Todo item settles", () => {
 
   test("a word on a line that asks a question settles nothing", () => {
     expect(countLine([raising(), turnOf(SECOND, "Todo.1: done?")], 0)).toBe("📌 Outstanding: 🚧 1 · 👉 2");
+  });
+
+  test("the 📌 roll-up's settling word settles the subjects a word settled since the latest reassess; the items' states keep those before it too", () => {
+    const later = todoReply([["Rotate the deploy token", []]]);
+    const rotate = "rotate deploy token";
+    // Each case: the turns, the roll-up's worded subjects, the items' states'.
+    const cases: readonly (readonly [readonly Turn[], readonly string[], readonly string[]])[] = [
+      [[raising()], [], []],
+      [[raising(), turnOf(SECOND, "go on")], [], []],
+      [[raising(), turnOf(SECOND, "Todo.1: done\nTodo.2: tomorrow")], [rotate], [rotate]],
+      [[raising(), turnOf(SECOND, "Todo.1: done?")], [], []],
+      [[raising(), turnOf(SECOND, "Todo.1: done", { replies: [later] })], [], []],
+      [[raising(), turnOf(SECOND, "Todo.1: done"), turnOf(THIRD, "go on")], [rotate], [rotate]],
+      [[raising(), turnOf(SECOND, "Todo.1: done"), turnOf(THIRD, "reassess")], [], [rotate]],
+      [
+        [raising(), turnOf(SECOND, "reassess", { replies: [LISTED] }), turnOf(THIRD, "Todo.2: done")],
+        ["announce release"],
+        ["announce release"],
+      ],
+    ];
+
+    expect(
+      cases.map(([turns]) => [[...settlingOf(turns, new Set()).worded], [...wordedSubjects(turns)]]),
+    ).toEqual(cases.map(([, rollUp, states]) => [rollUp, states]));
   });
 });

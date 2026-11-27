@@ -1,9 +1,10 @@
 ---
 title: No test compares the core with a copy of code it replaced
-state: proposed
+state: implemented
 kind: implementation
 part-of: items-events-views-refactor
 touches: [plugin/test/oracle/, plugin/test/unit/, plugin/test/fixtures/, plugin/tsconfig.json, AGENTS.md, README.md]
+implemented-by: items-events-views-build
 ---
 
 # No test compares the core with a copy of code it replaced

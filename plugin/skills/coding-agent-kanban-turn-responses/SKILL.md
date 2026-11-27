@@ -106,7 +106,6 @@ Before sending a final response, check the draft for each of these and fix every
 - a missing or misplaced separator line, a line of other whitespace where one belongs, or a blank line beside one inside a list;
 - text after a numbered item's summary on its line, or a summary line with no hard line break;
 - a list among a Decide item's options;
-- a 👍 or 👎 option, or one lettered `Y` or `N`;
 - a header or topic underline of the wrong width;
 - a list under a topic that does not number on from the topics before;
 - a header written directly under a list, with no blank line between;
@@ -222,7 +221,7 @@ A prompt opening on a command's name runs it. A prefix of a command's name runs 
 
 Both `open` and `reassess` leave out an item a later turn settled or made moot, a Todo item as much as a Decide one, and an Authorizations item once granted or withdrawn, and print into the 🔑 Authorizations, 🔍 Review, 👉 Todo and 🧠 Decide lists, never ❓ Answers.
 
-**`open`: the open items as they were written.** The items are reprinted with their wording and options unchanged, so the user can answer the items they were already shown; a Todo item keeps its path and what it frees. Each names the turn and item it came from, `(from 0f311c94 2.C)`. The earlier turns stay open, rolled up as before. Grouping only moves the items under their topics and renumbers them. A Decide item an older reply wrote with 👍 `Y` and 👎 `N` options is reprinted with them as 🔘 `A` and `B`, in their order, its source naming the letter it was printed with.
+**`open`: the open items as they were written.** The items are reprinted with their wording and options unchanged, so the user can answer the items they were already shown; a Todo item keeps its path and what it frees. Each names the turn and item it came from, `(from 0f311c94 2.C)`. The earlier turns stay open, rolled up as before. Grouping only moves the items under their topics and renumbers them.
 
 **`reassess`: the open items, worked out afresh.** It reads the same items and the work's state now: what has landed, what is running, what has been learnt since. The earlier items are evidence of what is undecided, not a structure to keep, so the reassess takes no item's wording, grouping, numbering or options as given:
 

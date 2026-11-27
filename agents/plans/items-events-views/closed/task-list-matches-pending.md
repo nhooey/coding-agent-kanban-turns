@@ -1,9 +1,10 @@
 ---
 title: A session's Pending items are compared with its task list's open tasks at each turn's end, and a report says which the agent's tasks are read from
-state: proposed
+state: implemented
 kind: implementation
 part-of: items-events-views
 touches: [agents/reports/]
+implemented-by: items-events-views-build
 ---
 
 # A session's Pending items are compared with its task list's open tasks at each turn's end, and a report says which the agent's tasks are read from
@@ -11,7 +12,7 @@ touches: [agents/reports/]
 The harness holds the agent's own tasks as entities with a lifecycle: `TaskCreate` and `TaskUpdate` give each a status of `pending`, `in_progress`, `completed` or `deleted`, an owner, and `blocks` and `blockedBy`.
 The model projects them as the agent's tasks, so the agent never writes a task twice.
 That holds only if the task list and the agent's 🚧 Pending list name the same work.
-This check compares them, and its answer settles open question 5 in [the end state](items-events-views.md).
+This check compares them, and its answer settles open question 5 in [the end state](../open/items-events-views.md).
 It writes no code.
 
 ## What it does
@@ -38,4 +39,4 @@ A dated report, `agents/reports/<date>-task-list-matches-pending.md`, `state: cu
 Checks:
 
 - the report exists, with the counts for each session;
-- [harness-observations-as-events](harness-observations-as-events.md) and [item-tool-declares-events](item-tool-declares-events.md) say which of the two they build, in the commit that adds the report.
+- [harness-observations-as-events](../open/harness-observations-as-events.md) and [item-tool-declares-events](../open/item-tool-declares-events.md) say which of the two they build, in the commit that adds the report.

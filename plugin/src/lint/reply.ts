@@ -33,11 +33,6 @@
 //   in the topics before, so a reference still names one item.
 // - A table indented under a list item is never drawn, and a table needs a
 //   blank line above and below it, or a line beside it joins it.
-// - An option is drawn with a kind the instructions teach; a kind the spec
-//   only reads, which earlier turns may hold, is no longer written. Its
-//   glyph gives it away on any option, and its letters only where they are
-//   an item's whole set, so a radio item's 14th option, `N.`, is no
-//   finding. The skill's `lint_reply.py` [n] flags every `Y` and `N`.
 //
 // A list is a run of items, `-`, `*`, `+`, `1.` or `1)`, at one indent: every
 // list of the reply, the 📌 roll-up's groups and an item's own steps among
@@ -51,33 +46,16 @@
 // each wide part's 2 there. Here is what the terminal draws.
 
 import { cellWidth } from "../text/cells.ts";
-import {
-  firstLetters,
-  glyphsInWords,
-  optionGlyphs,
-  taughtKinds,
-} from "../protocol/kinds.ts";
+import { optionGlyphs } from "../protocol/kinds.ts";
 import type { Kinds } from "../protocol/kinds.ts";
 import { codepoint } from "../protocol/prose.ts";
-import { DECIDE, DEFAULT_KIND, LETTER } from "../protocol/rules.ts";
+import { DECIDE, LETTER } from "../protocol/rules.ts";
 import { SPEC } from "../protocol/spec.ts";
 import { NO_DRAFT, draftOf } from "../protocol/tools.ts";
 import { escaped } from "../text/patterns.ts";
 import { isCountLine, parseReply, proseLines } from "../transcript/reply.ts";
 
 const KINDS: Kinds = SPEC.options.kinds;
-const TAUGHT = taughtKinds(KINDS);
-const UNTAUGHT: Kinds = Object.fromEntries(
-  Object.entries(KINDS).filter(([name]) => !(name in TAUGHT)),
-);
-/** The glyphs only an untaught kind's options are drawn with. */
-const UNTAUGHT_GLYPHS: readonly string[] = optionGlyphs(UNTAUGHT);
-/** Each lettered untaught kind's letters, `Y` and `N`, sorted. */
-const UNTAUGHT_LETTERS: readonly string[] = Object.values(UNTAUGHT)
-  .map((kind) => Object.keys(kind.letters).toSorted().join(""))
-  .filter((letters) => letters !== "");
-const PAIR = firstLetters(SPEC.reference.letters.first, 2);
-const DEFAULT_GLYPH = KINDS[DEFAULT_KIND]?.glyph ?? "";
 
 /** The rules, in the order a finding on one line sorts by, each with what it tells the agent to do. */
 export const RULES = {
@@ -103,7 +81,6 @@ export const RULES = {
     "a table needs a blank line above it and below it, or the line beside it joins it",
   "list-renumbered":
     "under a topic header a list numbers on from where the same list ended in the topics before",
-  "untaught-option": `an option is ${glyphsInWords(TAUGHT)} lettered from ${PAIR[0] ?? ""}; write a yes-or-no question as ${DEFAULT_GLYPH} ${PAIR[0] ?? ""}. and ${DEFAULT_GLYPH} ${PAIR[1] ?? ""}.`,
 } as const;
 
 /** A rule the lint checks. */
@@ -127,7 +104,7 @@ const UNDERLINES: readonly string[] = [
 
 // Markdown's own syntax: a list item's marker and the spaces after it, a
 // table row, a code fence and a bold summary; and the protocol's lines, a
-// separator alone at its indent, an option, of any kind the spec reads, and
+// separator alone at its indent, an option, of any kind the spec has, and
 // a list's bold name.
 const SEP_LINE = new RegExp(`^( *)${escaped(SEPARATOR)} *$`, "u");
 const SPACES = /^[ \t ]+$/;
@@ -166,9 +143,6 @@ type Item = Readonly<{
   isUnbroken: boolean;
 }>;
 
-/** One option line of a Decide item: where it is, and the glyph and letter it opens on. */
-export type Mark = Readonly<{ line: number; glyph: string; letter: string }>;
-
 type Previous = "text" | "blank" | "sep";
 type Above = "blank" | "row" | "text";
 
@@ -186,8 +160,6 @@ type State = Readonly<{
   lastText: string;
   /** The indent of the open Decide item's option lines. */
   options: number | undefined;
-  /** The open item's options so far: each one's line, glyph and letter. */
-  marks: readonly Mark[];
   /** A blank line under a separator, fine only where the list ends. */
   blankUnderSep: number | undefined;
   /** The line before, for tables. */
@@ -210,7 +182,6 @@ const START: State = {
   previous: "text",
   lastText: "",
   options: undefined,
-  marks: [],
   blankUnderSep: undefined,
   above: "blank",
   topics: 0,
@@ -468,48 +439,14 @@ const textStep = (state: State, line: string): State => {
   return { ...grew, fence: FENCE.exec(line)?.[1] ?? grew.fence };
 };
 
-/** An option's line, matched as `option`: where its options sit, and its glyph and letter among the item's. */
-const optionStep = (
-  state: State,
-  number: number,
-  option: RegExpExecArray,
-): State => {
-  const [, lead = "", glyph = "", letter = ""] = option;
-
-  return {
-    ...state,
-    options: lead.length,
-    marks: [...state.marks, { line: number, glyph, letter }],
-  };
-};
-
-/**
- * The options of a kind the instructions no longer teach among `marks`, one
- * item's: each drawn with an untaught kind's glyph, `👍` or `👎`, and each
- * of an item whose letters are exactly an untaught kind's, `Y` and `N`. A
- * `Y` or an `N` among other letters, as the 14th option of a radio item, is
- * a taught kind's letter.
- */
-export const untaughtMarks = (marks: readonly Mark[]): readonly number[] => {
-  const letters = [...new Set(marks.map((mark) => mark.letter))].toSorted().join("");
-  const isUntaughtSet = UNTAUGHT_LETTERS.includes(letters);
-
-  return marks
-    .filter((mark) => isUntaughtSet || UNTAUGHT_GLYPHS.includes(mark.glyph))
-    .map((mark) => mark.line);
-};
-
-/** The state with the open item's options checked and let go. */
-const flushed = (state: State): State => ({
-  ...untaughtMarks(state.marks).reduce(
-    (sofar, line) => found(sofar, line, "untaught-option"),
-    state,
-  ),
-  marks: [],
+/** An option's line, matched as `option`: where its item's options sit. */
+const optionStep = (state: State, option: RegExpExecArray): State => ({
+  ...state,
+  options: (option[1] ?? "").length,
 });
 
-/** One line of the reply, `number` from 1, its item's options not yet checked. */
-const lineStep = (before: State, raw: string, at: number): State => {
+/** One line of the reply, `number` from 1. */
+const step = (before: State, raw: string, at: number): State => {
   const number = at + 1;
   const line = raw.replace(/\r$/, "");
 
@@ -564,21 +501,12 @@ const lineStep = (before: State, raw: string, at: number): State => {
     return underlineStep(texted, number, line, header);
   }
   const option = OPTION.exec(line);
-  const optioned = option === null ? texted : optionStep(texted, number, option);
+  const optioned = option === null ? texted : optionStep(texted, option);
   const item = ITEM.exec(line);
 
   return item === null
     ? textStep(optioned, line)
     : itemStep(optioned, number, line, item);
-};
-
-/** One line of the reply, `number` from 1; an item's options end where its option lines do, and are checked there. */
-const step = (before: State, raw: string, at: number): State => {
-  const after = lineStep(before, raw, at);
-
-  return before.options !== undefined && after.options === undefined
-    ? flushed(after)
-    : after;
 };
 
 /** What the items say once every line is read: a summary line with no hard break, and the separators between items. */
@@ -623,7 +551,7 @@ const linesOf = (text: string): readonly string[] => {
 
 /** What the lint finds in a reply, in line order: empty for a reply that keeps every rule. */
 export const lintReply = (text: string): readonly Finding[] => {
-  const end = flushed(linesOf(text).reduce(step, START));
+  const end = linesOf(text).reduce(step, START);
 
   return [...end.findings, ...itemFindings(end.items)].toSorted(byLine);
 };

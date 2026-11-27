@@ -4,26 +4,18 @@
 // tools; and its worked examples, one per golden case that keeps every
 // rule. Pure: tools/skill/build.ts reads the cases and writes the files,
 // and the flake puts the CLI's builds beside them, under scripts/.
-//
-// A worked example draws only the option kinds the instructions teach: a
-// case that draws another, such as the binary kind's 👍 and 👎, breaks a
-// rule the lint checks, so it is marked `example: false`, and the build
-// refuses an example that isn't.
 
 import { stringify } from "yaml";
 
 import { USAGE } from "../../cli/run.ts";
 import type { Command } from "../../cli/run.ts";
-import { lintReply } from "../../src/lint/reply.ts";
 import { FRAGMENTS } from "../../src/protocol/fragments.ts";
 import type { FragmentName } from "../../src/protocol/fragments.ts";
 import { PLUGIN, TOOL_CALLED } from "../../src/protocol/instructions.ts";
-import { taughtKinds } from "../../src/protocol/kinds.ts";
 import { filled, placeholderValues } from "../../src/protocol/prose.ts";
 import type { OwnValues } from "../../src/protocol/prose.ts";
 import { SPEC } from "../../src/protocol/spec.ts";
 import type { Owner } from "../../types/index.d.ts";
-import { CASES_DIR } from "../spec/cases.ts";
 import type { CaseTurn, GoldenCase } from "../spec/cases.ts";
 
 /** The skill's name, its folder's and its frontmatter's, as the spec gives it. */
@@ -81,11 +73,6 @@ const VALUES = placeholderValues(SPEC, SKILL_OWN);
 /** A golden case and its file's name, `every-list.yaml`. */
 export type NamedCase = Readonly<{ name: string; golden: GoldenCase }>;
 
-/** What skillFiles gives: each file's text by its path in the skill's folder, or why the skill can't be built. */
-export type Built = Readonly<
-  { files: Readonly<Record<string, string>> } | { problems: readonly string[] }
->;
-
 /** A worked example's file, by its case's file name: `examples/every-list.md`. */
 export const exampleFile = (name: string): string =>
   `${EXAMPLES_DIR}/${name.replace(/\.yaml$/, "")}.md`;
@@ -108,34 +95,6 @@ export const fenced = (text: string, info: string = "text"): string => {
 /** Skill frontmatter: each field as YAML, every value on one line, between `---` lines. */
 export const frontmatterOf = (fields: Readonly<Record<string, string>>): string =>
   `---\n${stringify(fields, { lineWidth: 0 })}---\n`;
-
-const TAUGHT = taughtKinds(SPEC.options.kinds);
-
-/** Where a case draws an option kind the instructions don't teach: an item of that kind, or a reply's option line drawn with it. */
-export const untaughtUses = (golden: GoldenCase): readonly string[] =>
-  golden.turns.flatMap((turn, at) => [
-    ...(turn.decide ?? []).flatMap((item, n) =>
-      Object.hasOwn(TAUGHT, item.kind)
-        ? []
-        : [`turns[${at}].decide[${n}] is a ${item.kind} item, a kind the instructions don't teach`],
-    ),
-    ...turn.replies.flatMap((reply, n) =>
-      lintReply(reply.text)
-        .filter((finding) => finding.rule === "untaught-option")
-        .map(
-          (finding) =>
-            `turns[${at}].replies[${n}] line ${finding.line} draws an option of a kind the instructions don't teach`,
-        ),
-    ),
-  ]);
-
-/** Each worked example's untaught kinds, naming its file, and how to make it no example. */
-export const exampleProblems = (cases: readonly NamedCase[]): readonly string[] =>
-  examplesOf(cases).flatMap(({ name, golden }) =>
-    untaughtUses(golden).map(
-      (use) => `${CASES_DIR}/${name}: ${use}; mark the case example: false`,
-    ),
-  );
 
 /** Who wrote a prompt or a message, as an example names them. */
 const WRITERS: Readonly<Record<Owner, string>> = {
@@ -244,16 +203,9 @@ export const skillText = (cases: readonly NamedCase[]): string => {
   ).join("\n\n")}\n`;
 };
 
-/** The skill's text files, SKILL.md and each worked example, by their paths in its folder; or, where a worked example draws an untaught kind, each such use. */
-export const skillFiles = (cases: readonly NamedCase[]): Built => {
-  const problems = exampleProblems(cases);
-
-  return problems.length > 0
-    ? { problems }
-    : {
-        files: Object.fromEntries([
-          [SKILL_FILE, skillText(cases)],
-          ...examplesOf(cases).map((named) => [exampleFile(named.name), exampleText(named)] as const),
-        ]),
-      };
-};
+/** The skill's text files, SKILL.md and each worked example, by their paths in its folder. */
+export const skillFiles = (cases: readonly NamedCase[]): Readonly<Record<string, string>> =>
+  Object.fromEntries([
+    [SKILL_FILE, skillText(cases)],
+    ...examplesOf(cases).map((named) => [exampleFile(named.name), exampleText(named)] as const),
+  ]);

@@ -1,6 +1,6 @@
 ---
 title: What the harness and the trackers report, a finished shell, a subagent's end or a merged pull request, reaches the fold as observations
-state: proposed
+state: approved
 kind: implementation
 part-of: items-events-views
 needs: [item-event-reducer, task-list-matches-pending]
@@ -16,7 +16,7 @@ The third is what the harness and the trackers report, and without it an item ow
   An item names a harness entity or an artefact in a `blocked-by` or an `about` link, and holds none of its state.
   The target's status is read live and drawn in the item's status clause.
 - **The link targets are typed in the spec.**
-  Each target type has a form, such as `shell:<id>`, `agent:<id>`, `task:<id>` or `github:<owner>/<repo>#<n>`, its statuses, and its watch rule: which status closes the item, and with what outcome.
+  Each target type has a form, such as `shell:<id>`, `agent:<id>` or `github:<owner>/<repo>#<n>`, its statuses, and its watch rule: which status closes the item, and with what outcome.
 
   | Target                          | Statuses                                              | Watch rule                                               |
   | ------------------------------- | ----------------------------------------------------- | -------------------------------------------------------- |
@@ -31,7 +31,7 @@ The third is what the harness and the trackers report, and without it an item ow
   The Claude Code adapter reads, into a turn's `events`, each as an `observe` by `external:<source>` with the record as its evidence:
   - a task notification for a finished shell, workflow or expired monitor;
   - an agent's or another session's message that reports on a subagent or a branch an item links to;
-  - a `TaskCreate` or a `TaskUpdate` call, as [task-list-matches-pending](task-list-matches-pending.md) finds they should be read: projected as the agent's own tasks, or as evidence alone;
+  - a `TaskCreate` or a `TaskUpdate` call, as evidence alone, which raises, closes and unblocks no item and is no link target, since the agent raises its own tasks through [the tool](item-tool-declares-events.md), as [task-list-matches-pending](../../../reports/2026-11-27-task-list-matches-pending.md) found;
   - an `AskUserQuestion` call and its answer, as a question raised and resolved in one, so the history is whole (open question 11 in [the end state](items-events-views.md)).
 
   The fold turns an `observe` into a `resolve` or an unblocking by the target's watch rule, with no code for any one target.

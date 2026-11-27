@@ -47,15 +47,12 @@ const prefixRuns = (runs: boolean): ProseSpec => ({
   commands: { ...SPEC.commands, "unique-prefix-runs": runs },
 });
 
-/** The spec with every option kind taught. */
-const allTaught: ProseSpec = {
+/** The spec with a third option kind. */
+const withDial: ProseSpec = {
   ...SPEC,
   options: {
     ...SPEC.options,
-    kinds: {
-      ...SPEC.options.kinds,
-      binary: { ...SPEC.options.kinds.binary, taught: true },
-    },
+    kinds: { ...SPEC.options.kinds, dial: { picks: "one", glyph: "⭕" } },
   },
 };
 
@@ -149,7 +146,7 @@ describe("placeholderValues", () => {
 
   test("leaves out the spec's booleans, which prose says in words", () => {
     expect(values["lists.decide.rolls-up"]).toBeUndefined();
-    expect(values["options.kinds.radio.taught"]).toBeUndefined();
+    expect(values["commands.unique-prefix-runs"]).toBeUndefined();
   });
 
   test("writes each list's header, its underline and its width as a final response draws them", () => {
@@ -221,7 +218,7 @@ describe("placeholderValues", () => {
     expect(not["command.reassess.shared-prefix"]).toBeUndefined();
   });
 
-  test("name only the option kinds the instructions teach, their glyphs and their letters", () => {
+  test("name the spec's option kinds, their glyphs and their letters", () => {
     expect(values["kinds.names"]).toBe("`radio` or `checkbox`");
     expect(values["glyphs.options"]).toBe("🔘 or 🔲");
     expect(values["count.option-glyphs"]).toBe("2");
@@ -230,24 +227,16 @@ describe("placeholderValues", () => {
     expect(values["letters.radio"]).toBe("`A`, `B`, `C`");
     expect(values["kind.radio"]).toBe("🔘 radio");
     expect(values["kind.checkbox.name"]).toBe("checkbox");
-    expect(values["letters.binary"]).toBeUndefined();
-    expect(values["kind.binary"]).toBeUndefined();
   });
 
-  test("name a kind not taught's glyphs and letters, for the rules that a reply no longer writes them", () => {
-    expect(values["untaught.glyphs"]).toBe("👍 or 👎");
-    expect(values["untaught.letters"]).toBe("`Y` or `N`");
-    expect(values["untaught.options"]).toBe("👍 `Y` and 👎 `N`");
-  });
+  test("name every kind the spec holds, by its glyph and the letters it takes", () => {
+    const every = placeholderValues(withDial, own);
 
-  test("teach a kind the spec marks taught, and name no kind not taught once every kind is", () => {
-    const every = placeholderValues(allTaught, own);
-
-    expect(every["kinds.names"]).toBe("`radio`, `checkbox` or `binary`");
-    expect(every["glyphs.options"]).toBe("🔘, 🔲, or 👍 and 👎");
-    expect(every["count.option-glyphs"]).toBe("4");
-    expect(every["letters.binary"]).toBe("`Y` and `N`");
-    expect(every["untaught.glyphs"]).toBeUndefined();
+    expect(every["kinds.names"]).toBe("`radio`, `checkbox` or `dial`");
+    expect(every["glyphs.options"]).toBe("🔘, 🔲 or ⭕");
+    expect(every["count.option-glyphs"]).toBe("3");
+    expect(every["kind.dial"]).toBe("⭕ dial");
+    expect(every["letters.dial"]).toBe("`A`, `B`, `C`");
   });
 
   test("names each rule character by its code point", () => {

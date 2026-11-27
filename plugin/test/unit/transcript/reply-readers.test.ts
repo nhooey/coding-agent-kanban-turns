@@ -19,7 +19,7 @@ import { decideItemsOfText } from "../../../src/items/outstanding.ts";
 import { ITEM_LINK, linkedSummaries } from "../../../src/pane/links.ts";
 import { optionGlyphs } from "../../../src/protocol/kinds.ts";
 import {
-  DECISIONS,
+  DECIDE,
   LETTER,
   SECTION_NAMES,
   isLineOf,
@@ -34,7 +34,7 @@ const SEED = 0x72656164;
 const ROLL_UP = SPEC["roll-up"];
 const HEADER = new RegExp(String.raw`^\s*\S+\s+\*\*(${SECTION_NAMES.map(escaped).join("|")}):\*\*`);
 const PIN = new RegExp(
-  String.raw`^\s*${escaped(ROLL_UP.glyph)}\s+\*\*(${[ROLL_UP.header, ...ROLL_UP.aliases].map(escaped).join("|")}):\*\*`,
+  String.raw`^\s*${escaped(ROLL_UP.glyph)}\s+\*\*${escaped(ROLL_UP.header)}:\*\*`,
   "u",
 );
 const OPTION = new RegExp(
@@ -47,8 +47,6 @@ const BARE = /^ {0,2}(\d+)[.)]\s*$/;
 const BOLD = /^\s*\*\*(.+?)\*\*/;
 
 const isRule = (line: string): boolean => isLineOf(SPEC.characters["topic-underline"], line);
-const isStop = (line: string): boolean =>
-  ROLL_UP.aliases.some((older) => [older, `${older}:`].includes(line.trimEnd()));
 
 /** The fence a line opens a code block with, its indent and an item's marker aside: its character and length. */
 const fenceOf = (line: string): readonly [string, number] | undefined => {
@@ -92,15 +90,15 @@ const isTitle = (lines: readonly string[], code: readonly boolean[], n: number):
   );
 };
 
-/** Each Decide list's lines after its header, by place, outside code or in it, up to a header, the roll-up, a bare older roll-up header or a topic. */
+/** Each Decide list's lines after its header, by place, outside code or in it, up to a header, the roll-up or a topic. */
 const decideSections = (lines: readonly string[], code: readonly boolean[]): readonly (readonly number[])[] =>
   lines.reduce<Readonly<{ open: boolean; done: readonly (readonly number[])[] }>>(
     ({ open, done }, line, n) => {
       const name = code[n] ? undefined : HEADER.exec(line)?.[1];
 
       return name !== undefined
-        ? { open: DECISIONS.includes(name), done: DECISIONS.includes(name) ? [...done, []] : done }
-        : !code[n] && (PIN.test(line) || isStop(line) || isRule(line) || isTitle(lines, code, n))
+        ? { open: name === DECIDE.header, done: name === DECIDE.header ? [...done, []] : done }
+        : !code[n] && (PIN.test(line) || isRule(line) || isTitle(lines, code, n))
           ? { open: false, done }
           : open
             ? { open, done: [...done.slice(0, -1), [...(done.at(-1) ?? []), n]] }

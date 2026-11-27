@@ -120,24 +120,25 @@ const REPLY = `Opening prose, in no section.
 ▔▔▔▔▔▔▔▔
 1. **Fixed the loader**
 
-📋 **To review:**${BR}
+🔍 **Review:**${BR}
 - **The pull request**
 
-🧠 **Decisions:**${BR}
+🧠 **Decide:**${BR}
 1. **Which cache**
 
-Still open from earlier
-🧠 **Decide:**${BR}
+📋 **Backlog:**${BR}
 - **An old one**
 `;
 
 describe("sectionsOf", () => {
-  test("each header opens a section and the stop line closes one", () => {
+  test("each header opens a section, and a name the spec gives no list is prose in the one before", () => {
     expect(sectionsOf(REPLY)).toEqual([
       { name: "Done", text: "✅ **Done:**  \n▔▔▔▔▔▔▔▔\n1. **Fixed the loader**" },
-      { name: "To review", text: "📋 **To review:**  \n- **The pull request**" },
-      { name: "Decisions", text: "🧠 **Decisions:**  \n1. **Which cache**" },
-      { name: "Decide", text: "🧠 **Decide:**  \n- **An old one**" },
+      { name: "Review", text: "🔍 **Review:**  \n- **The pull request**" },
+      {
+        name: "Decide",
+        text: "🧠 **Decide:**  \n1. **Which cache**\n\n📋 **Backlog:**  \n- **An old one**",
+      },
     ]);
   });
 

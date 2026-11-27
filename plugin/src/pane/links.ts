@@ -12,7 +12,7 @@
 
 import { hasOptions, refOf } from "../items/items.ts";
 import { summaryText } from "../items/outstanding.ts";
-import { PANE_LISTS, isLineOf, listNamed, namesOf } from "../protocol/rules.ts";
+import { PANE_LISTS, isLineOf, listNamed } from "../protocol/rules.ts";
 import type { List } from "../protocol/rules.ts";
 import { SPEC } from "../protocol/spec.ts";
 import { parseReply, sectionNamesOf } from "../transcript/reply.ts";
@@ -264,7 +264,7 @@ export type ListSpan = Readonly<{ list: string; start: number; end: number }>;
 /**
  * Where `list` stands in the reply, its header, its rule and every line of
  * its items, whatever the list. Undefined unless it's found intact: exactly
- * one list of `list`'s names before any 📌 roll-up, whose summary lines,
+ * one list under `list`'s header before any 📌 roll-up, whose summary lines,
  * each summary alone on its line, name `items`, every one and no other, in
  * their order, each as `isWritten` says.
  */
@@ -276,9 +276,8 @@ export const listSpan = (
   const blocks = parseReply(text);
   const pinned = blocks.findIndex((block) => block.kind === "roll-up");
   const own = pinned < 0 ? blocks : blocks.slice(0, pinned);
-  const names = namesOf(list);
   const headers = own.flatMap((block, n) =>
-    block.kind === "header" && names.includes(block.name) ? [n] : [],
+    block.kind === "header" && block.name === list.header ? [n] : [],
   );
   const start = headers.length === 1 ? headers[0] : undefined;
   const header = start === undefined ? undefined : blocks[start];
@@ -309,7 +308,7 @@ export const listSpan = (
  * The reply's text either side of `list`, the list's header, its rule and
  * every line of its items cut out; undefined unless `listSpan` finds it
  * intact. The hooks cut a reply with `replyDrawing`; this form is what the
- * tests and the differential oracle check a cut by.
+ * tests check a cut by.
  */
 export const listCut = (
   text: string,

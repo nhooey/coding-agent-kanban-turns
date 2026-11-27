@@ -52,11 +52,10 @@ const checkbox: DecideItem = {
     { letter: "B", name: "Dead code" },
   ],
 };
-const binary: DecideItem = {
+const yesOrNo: DecideItem = {
   ...radio,
   number: 3,
   summary: "Ship tonight?",
-  kind: "binary",
   ref: "9efb08a1.Decide.3",
   options: [
     { letter: "Y", name: "Ship" },
@@ -81,7 +80,7 @@ describe("the session the items belong to", () => {
 
 describe("merging items in", () => {
   test("a new item goes at the end, newest last", () => {
-    expect(refs(withItems(raised, [binary]))).toEqual([
+    expect(refs(withItems(raised, [yesOrNo]))).toEqual([
       "9efb08a1.Decide.1",
       "9efb08a1.Decide.2",
       "9efb08a1.Decide.3",
@@ -90,7 +89,7 @@ describe("merging items in", () => {
 
   test("an item raised before keeps its place and takes the newer content", () => {
     const told = { ...radio, note: ["Both are built."] };
-    const merged = withItems(raised, [binary, told]);
+    const merged = withItems(raised, [yesOrNo, told]);
     expect(refs(merged)).toEqual([
       "9efb08a1.Decide.1",
       "9efb08a1.Decide.2",
@@ -100,13 +99,13 @@ describe("merging items in", () => {
   });
 
   test("an item handed over twice at once is raised once, holding the later content", () => {
-    const told = { ...binary, note: ["Tonight's build is green."] };
-    expect(optionItemsOf(withItems(emptyRaised, [binary, told]))).toEqual([told]);
+    const told = { ...yesOrNo, note: ["Tonight's build is green."] };
+    expect(optionItemsOf(withItems(emptyRaised, [yesOrNo, told]))).toEqual([told]);
   });
 
   test("a new item is open, and an item raised before keeps where it stands", () => {
     const settled = refreshed(raised, [checkbox], [], []);
-    expect(states(withItems(settled, [{ ...radio, note: ["Again."] }, binary]))).toEqual([
+    expect(states(withItems(settled, [{ ...radio, note: ["Again."] }, yesOrNo]))).toEqual([
       { tag: "settled" },
       { tag: "open" },
       { tag: "open" },
@@ -116,7 +115,7 @@ describe("merging items in", () => {
 
 describe("a refresh", () => {
   test("merges in the open items and settles every raised item not among them", () => {
-    const after = refreshed(raised, [checkbox, binary], [], []);
+    const after = refreshed(raised, [checkbox, yesOrNo], [], []);
     expect(refs(after)).toEqual([
       "9efb08a1.Decide.1",
       "9efb08a1.Decide.2",
@@ -125,7 +124,7 @@ describe("a refresh", () => {
     expect(settledRefsOf(after)).toEqual(["9efb08a1.Decide.1"]);
     expect(isSettled(after, radio)).toBe(true);
     expect(isSettled(after, checkbox)).toBe(false);
-    expect(isSettled(after, { ...binary, ref: "cafecafe.Decide.9" })).toBe(false);
+    expect(isSettled(after, { ...yesOrNo, ref: "cafecafe.Decide.9" })).toBe(false);
   });
 
   test("an item open again is no longer settled, and holds no settlement", () => {
@@ -177,7 +176,7 @@ describe("a refresh", () => {
     const stray = { ref: "cafecafe.Decide.9", how: "superseded", by: "9efb08a1.Decide.1" } as const;
     const after = refreshed(raised, [checkbox], [first, stray, last], []);
     expect(states(after)).toEqual([settledAs(last), { tag: "open" }]);
-    expect(settlementOf(after, { ...binary, ref: "cafecafe.Decide.9" })).toBeUndefined();
+    expect(settlementOf(after, { ...yesOrNo, ref: "cafecafe.Decide.9" })).toBeUndefined();
   });
 
   test("settles an item the transcript doesn't say how, with no settlement", () => {
@@ -207,9 +206,9 @@ describe("a refresh", () => {
   });
 
   test("the items still open are the raised ones not settled, in order", () => {
-    expect(stillOpen(refreshed(raised, [checkbox, binary], [], []))).toEqual([
+    expect(stillOpen(refreshed(raised, [checkbox, yesOrNo], [], []))).toEqual([
       checkbox,
-      binary,
+      yesOrNo,
     ]);
   });
 });
@@ -217,17 +216,17 @@ describe("a refresh", () => {
 describe("the items an item supersedes", () => {
   const newer: DecideItem = { ...radio, turn: "b2c3d4e5", ref: "b2c3d4e5.Decide.1", summary: "Which loader to keep" };
   const by = (ref: string, of: string): Settlement => ({ ref, how: "superseded", by: of });
-  const all: Raised = { ...emptyRaised, items: openItems([radio, checkbox, binary, newer]) };
+  const all: Raised = { ...emptyRaised, items: openItems([radio, checkbox, yesOrNo, newer]) };
 
   test("are those settled as superseded by it, oldest first: the inverse of each one's by", () => {
     const after = refreshed(
       all,
-      [binary, newer],
+      [yesOrNo, newer],
       [by("9efb08a1.Decide.1", "b2c3d4e5.Decide.1"), by("9efb08a1.Decide.2", "b2c3d4e5.Decide.1")],
       [],
     );
     expect(supersedesOf(after, newer)).toEqual(["9efb08a1.Decide.1", "9efb08a1.Decide.2"]);
-    expect(supersedesOf(after, binary)).toEqual([]);
+    expect(supersedesOf(after, yesOrNo)).toEqual([]);
   });
 
   test("leave out an item superseded by another, one settled any other way, and one open again", () => {
@@ -261,7 +260,7 @@ describe("announcing new items", () => {
   test("once seen, only an item raised after is unseen", () => {
     const looked = seen(raised);
     expect(unseen(looked)).toEqual([]);
-    expect(unseen(withItems(looked, [binary]))).toEqual([binary]);
+    expect(unseen(withItems(looked, [yesOrNo]))).toEqual([yesOrNo]);
   });
 });
 

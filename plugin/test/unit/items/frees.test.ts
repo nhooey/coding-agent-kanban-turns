@@ -56,11 +56,11 @@ describe("refOfText", () => {
     ].forEach((text) => expect(refOfText(text)).toBeUndefined());
   });
 
-  test("refuses a list that doesn't roll up, an alias, and a number that isn't one", () => {
+  test("refuses a list that doesn't roll up, a name the spec gives no list, and a number that isn't one", () => {
     [
       "0f311c94.Done.1",
       "0f311c94.Answers.1",
-      "0f311c94.Decisions.1",
+      "0f311c94.Backlog.1",
       "0f311c94.decide.1",
       "0f311c94.Decide.0",
       "0f311c94.Decide.02",

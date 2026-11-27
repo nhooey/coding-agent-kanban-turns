@@ -1,6 +1,6 @@
 ---
 title: One pure fold over the event log gives the session's items, and refuses an event the transition table doesn't allow
-state: proposed
+state: approved
 kind: implementation
 part-of: items-events-views
 needs: [item-model-in-spec, core-folders-are-layers]

@@ -1,15 +1,16 @@
 ---
 title: Every list item in the fixture transcripts fits one row of the filter table, or a report names the field it lacks
-state: proposed
+state: implemented
 kind: implementation
 part-of: items-events-views
 touches: [agents/reports/, plugin/spec/cases/, plugin/test/fixtures/]
+implemented-by: items-events-views-build
 ---
 
 # Every list item in the fixture transcripts fits one row of the filter table, or a report names the field it lacks
 
 The model says each of the 9 lists is a filter over 3 independent fields, kind, owner and state, written down as if it were a type.
-This check tests that claim against real replies before [item-model-in-spec](item-model-in-spec.md) writes the fields into the spec.
+This check tests that claim against real replies before [item-model-in-spec](../open/item-model-in-spec.md) writes the fields into the spec.
 It writes no code.
 
 ## The filter table
@@ -49,4 +50,4 @@ A dated report, `agents/reports/<date>-lists-fit-filter-table.md`, `state: curre
 Checks:
 
 - the report exists and labels every list item of every golden case;
-- each misfit is answered by an edit to [item-model-in-spec](item-model-in-spec.md) or [items-events-views](items-events-views.md), in the commit that adds the report, or the report says why none is needed.
+- each misfit is answered by an edit to [item-model-in-spec](../open/item-model-in-spec.md) or [items-events-views](../open/items-events-views.md), in the commit that adds the report, or the report says why none is needed.

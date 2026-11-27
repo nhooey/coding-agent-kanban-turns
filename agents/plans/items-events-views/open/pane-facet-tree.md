@@ -1,6 +1,6 @@
 ---
 title: The pane is a group-by tree over facets in the order the person sets, each level one facet and each node one value, and the count line is its first level
-state: proposed
+state: approved
 kind: implementation
 part-of: items-events-views
 needs: [item-renderer-densities, pane-view-state, item-tool-declares-events]
