@@ -315,11 +315,11 @@ export const settledText = (
   said: WordSaid = (word) => word,
 ): string => (settlement === undefined ? DONE.header : textOf(settlement, said));
 
-/** What a Done row says each settling word did, by the `actions` settings: the word's `settled`, else the word itself. */
+/** What a Done row says each settling word did, by the lists' `actions` settings, the note button's aside: the word's `settled`, else the word itself. */
 export const wordSaidBy =
-  (actions: Settings["actions"]): WordSaid =>
+  ({ note: _note, ...lists }: Settings["actions"]): WordSaid =>
   (word) =>
-    Object.values(actions).flatMap((list) =>
+    Object.values(lists).flatMap((list) =>
       Object.entries(list).flatMap(([each, action]) => (each === word ? [action.settled] : [])),
     )[0] ?? word;
 

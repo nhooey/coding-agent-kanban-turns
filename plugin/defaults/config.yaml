@@ -71,11 +71,17 @@ notes:
   # drawn as 1.
   rows: 3
 
-# The buttons an item's box carries, by its list, each named by the word
-# it writes after the item's reference, `9efb08a1.Todo.3: done`, which
-# settles the item; a second press takes the word out again. The words
-# are the protocol's, so only what each button says is a setting.
+# The buttons an item's box carries: the one every list's open item has
+# under a reply, then each list's own, each named by the word it writes
+# after the item's reference, `9efb08a1.Todo.3: done`, which settles the
+# item; a second press takes the word out again. The words are the
+# protocol's, so only what each button says is a setting.
 actions:
+  # The button under a reply, in place of the pane's notes field, which
+  # opens the pane at that field; it writes nothing itself.
+  note:
+    # The button's text, after `marks.note`.
+    label: Add a note
   # A 👉 Todo item's buttons.
   todo:
     # The item done.

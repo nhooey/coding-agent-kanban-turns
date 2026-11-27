@@ -111,11 +111,15 @@ export type ListItem = Readonly<{
   body?: readonly string[];
 }>;
 
+/** A summary's text as an item's summary keeps it: trimmed, without a trailing colon. */
+export const summaryText = (text: string): string =>
+  text.trim().replace(/:$/, "").trim();
+
 /** The item's summary: its bold text without a trailing colon, else its line. */
 export const summaryOf = (line: string): string => {
   const text = line.replace(PREFIX, "");
 
-  return (BOLD.exec(text)?.[1] ?? text).trim().replace(/:$/, "").trim();
+  return summaryText(BOLD.exec(text)?.[1] ?? text);
 };
 
 const SUBJECT = SPEC.subject;

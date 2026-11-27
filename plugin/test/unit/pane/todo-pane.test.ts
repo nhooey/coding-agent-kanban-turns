@@ -132,6 +132,7 @@ describe("a Todo item's box and Done row", () => {
     ]);
     expect(
       todoActions({
+        note: { label: "Comment" },
         todo: { done: { label: "Did it", settled: "did" }, skip: { label: "Drop", settled: "dropped" } },
       }).map((action) => action.label),
     ).toEqual(["Did it", "Drop"]);
@@ -170,6 +171,9 @@ describe("a Todo item's box and Done row", () => {
       "Sent: skipped",
     );
     expect(settledText(worded)).toBe("Done: skip");
+    // The note button's setting is no list's: none of its keys is a word.
+    expect(said("label")).toBe("label");
+    expect(SETTINGS.actions.note.label).toBe("Add a note");
     expect(sentWord(worded)).toBe("skip");
     expect(sentWord({ ref: TOKEN.ref, how: "reassessed" })).toBe("");
   });

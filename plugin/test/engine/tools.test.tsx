@@ -88,6 +88,7 @@ const DEFAULTS = JSON.stringify({
   pane: { "close-when-all-submitted": true },
   notes: { rows: 3 },
   actions: {
+    note: { label: "Add a note" },
     todo: {
       done: { label: "Done", settled: "done" },
       skip: { label: "Skip", settled: "skipped" },

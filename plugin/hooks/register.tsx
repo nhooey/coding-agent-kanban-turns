@@ -1,14 +1,14 @@
 // Clickable answers to the kanban turn responses' Decide items: a pane that
 // lists every item raised in the session, newest turn first, and the same
-// boxes under the reply that raised them, in place of its Decide list. The
-// pane opens by itself, without the keyboard, at session start when items
-// are open and when a reply raises a new one; 🖥️ Kanban and the skill's
-// count line above the prompt, and /answers, open it with the keyboard. A
-// click writes the item's reference, on a line of its own, into the prompt
-// draft and never sends it; only the pane's Submit sends a prompt. An item
-// no longer open is Done: it moves, dimmed, to its turn under the Done
-// branch, collapsed until a click opens it, and its options still answer it
-// again.
+// boxes under the reply that raised them, in place of its Decide and Todo
+// lists. The pane opens by itself, without the keyboard, at session start
+// when items are open and when a reply raises a new one; 🖥️ Kanban and the
+// skill's count line above the prompt, and /answers, open it with the
+// keyboard. A click writes the item's reference, on a line of its own, into
+// the prompt draft and never sends it; only the pane's Submit sends a
+// prompt. An item no longer open is Done: it moves, dimmed, to its turn
+// under the Done branch, collapsed until a click opens it, and its options
+// still answer it again.
 //
 // The pane, top to bottom: a header row, `🖥️ Kanban · 📌 <count line>`, how
 // many open items the draft answers, and ↑ Previous, ↓ Next, ? Keys and
@@ -71,16 +71,20 @@ import { ignoredSupersedes, isDecide, itemsOf, refOf } from "../src/items/items.
 import { freesLineOf } from "../src/items/frees.ts";
 import { LAYOUT, codeSpans } from "../src/pane/layout.ts";
 import { cellWidth } from "../src/text/cells.ts";
-import { DECIDE, REASSESS } from "../src/protocol/rules.ts";
+import { DECIDE, PANE_LISTS, REASSESS, TODO } from "../src/protocol/rules.ts";
 import { capitalized } from "../src/text/words.ts";
 import { SPEC } from "../src/protocol/spec.ts";
 import {
-  decideListCut,
+  decideListSpan,
   itemOfRef,
   linkedItems,
   linkedQuestions,
+  printedTodoItems,
   refOfLink,
+  replyParts,
+  todoListSpan,
 } from "../src/pane/links.ts";
+import type { ListSpan } from "../src/pane/links.ts";
 import {
   isMergeKnown,
   mergedOfResponse,
@@ -104,6 +108,7 @@ import {
   shownOf,
   step as paneStep,
   submitShown,
+  turnOf,
 } from "../src/pane/pane-state.ts";
 import type { Effect, Event, Found, Stepped } from "../src/pane/pane-state.ts";
 import {
@@ -1167,54 +1172,83 @@ export const register: Register = (on) => {
     );
   });
 
-  // A reply's Decide questions: the items the reply names are drawn in place
-  // of its Decide list, each in its box, the text either side of the list
-  // kept. Where the list isn't found intact, each raised item's summary line
-  // becomes a link that opens the pane at that item, and the items are drawn
-  // under the whole text instead.
+  // A reply's Decide questions and Todo items: the items of each list the
+  // reply prints are drawn in place of that list, each in its box, the text
+  // round the lists kept. A list not found intact is drawn as written, its
+  // items' boxes under the whole reply instead, after any text that follows
+  // a list cut out, Todo's before Decide's, as the pane orders them; while
+  // the Decide list is drawn as written, each Decide item's summary line
+  // becomes a link that opens the pane at that item.
   on("ui.render", { component: "AssistantMessage" }, async ($, e, next) => {
-    const r = await shownNow($);
+    const state = await read($, pane);
+    const r = shownOf(state);
     const raisedItems = decideItemsOf(r);
     const linked = linkedQuestions(e.props.text, raisedItems);
+    const decide = linkedItems(raisedItems, linked.hrefs);
+    // A reply's Todo items are raised only at its turn's end, so while a
+    // main-loop turn runs, a reply printing a list an earlier turn raised
+    // may be that turn's own: no reply draws Todo boxes then, each Todo
+    // list drawn as written.
+    const todo =
+      turnOf(state.submit) === undefined ? printedTodoItems(e.props.text, listedItemsOf(r)) : [];
 
-    if (linked.hrefs.length === 0) {
+    if (decide.length === 0 && todo.length === 0) {
       return next(e);
     }
 
     const s = await settingsNow($);
     const elements = $.ui.resolve(e);
     const { Box, Markdown } = elements;
-    const items = linkedItems(raisedItems, linked.hrefs);
-    const boxes =
-      s === null
+    const text = await read($, draft);
+    // Each list's items the reply prints, by its header, and where the
+    // list stands, where it's found intact; without settings, no list is
+    // cut, and no boxes are drawn.
+    const lists: ReadonlyMap<
+      string,
+      Readonly<{ items: readonly ListedItem[]; span: ListSpan | undefined }>
+    > = new Map(
+      [
+        { list: TODO.header, items: todo, span: todoListSpan(e.props.text, todo) },
+        { list: DECIDE.header, items: decide, span: decideListSpan(e.props.text, decide) },
+      ].map((each) => [each.list, s === null ? { ...each, span: undefined } : each]),
+    );
+    const boxesOf = (list: string) => {
+      const items = lists.get(list)?.items ?? [];
+
+      return s === null || items.length === 0
         ? null
         : itemBoxes($, elements, s, r, items, {
-            key: "kanban-items",
-            text: await read($, draft),
+            key: `kanban-items-${list}`,
+            text,
             isPane: false,
             noting: "",
           });
-    const cut = s === null ? undefined : decideListCut(e.props.text, items);
+    };
+    // The Decide summaries are links only while the Decide list is drawn as
+    // written; linking keeps every line where it was, so the Todo list's
+    // span still holds.
+    const isLinked = decide.length > 0 && lists.get(DECIDE.header)?.span === undefined;
+    const spans = [...lists.values()].flatMap((each) => each.span ?? []);
+    const parts = replyParts(isLinked ? linked.text : e.props.text, spans);
+    const uncut = PANE_LISTS.filter((list) => lists.get(list.header)?.span === undefined);
 
-    return cut === undefined ? (
+    return (
       <Box flexDirection="column">
-        <Markdown
-          key="kanban-questions"
-          text={linked.text}
-          pressableLinks={linked.hrefs}
-          onLinkPress={(link) => showItem($, link.href)}
-        />
-        {boxes}
-      </Box>
-    ) : (
-      <Box flexDirection="column">
-        {cut.before === "" ? null : (
-          <Markdown key="kanban-before" text={cut.before} />
+        {parts.map((part) =>
+          part.kind === "list" ? (
+            boxesOf(part.list)
+          ) : isLinked ? (
+            <Markdown
+              key={`kanban-${part.key}`}
+              text={part.text}
+              pressableLinks={linked.hrefs}
+              onLinkPress={(link) => showItem($, link.href)}
+            />
+          ) : (
+            <Markdown key={`kanban-${part.key}`} text={part.text} />
+          ),
         )}
-        {boxes}
-        {cut.after === "" ? null : (
-          <Markdown key="kanban-after" text={cut.after} />
-        )}
+        {uncut.map((list) => boxesOf(list.header))}
       </Box>
     );
   });
@@ -2002,7 +2036,7 @@ const indentedLines = (
   ));
 };
 
-/** The notes under an item: none, a button that opens the pane at the field under a reply, or the field, taking the focus where `✏️ Add a note` asked for it. */
+/** The notes under an item: none, a button labelled by the `actions.note` setting that opens the pane at the field under a reply, or the field, taking the focus where that button asked for it. */
 const notesView = (
   elements: Elements,
   s: Settings,
@@ -2016,11 +2050,11 @@ const notesView = (
     <Box key={`${view.keyOf("add-note")}-box`} marginLeft={LAYOUT.indent}>
       <Button
         key={view.keyOf("add-note")}
-        label="Add a note"
+        label={s.actions.note.label}
         plain
         onPress={() => view.onOpenNotes()}
       >
-        {`${s.marks.note} Add a note`}
+        {`${s.marks.note} ${s.actions.note.label}`}
       </Button>
     </Box>
   ) : (

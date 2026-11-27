@@ -49,9 +49,10 @@ The pane holds 👉 Todo items beside 🧠 Decide items, end to end:
 - each Todo item sits in its turn under Open, Queued or Done, the turn's Todo items before its Decide items, each list under a faint header;
 - its box carries `👉 Todo.3` and its summary on the title line, its body, **Done** and **Skip**, and a notes field;
 - Done and Skip write plain references, `9efb08a1.Todo.3: done`, a line each, and a note goes after the word or stands alone, settling nothing;
-- a word settles a Todo item in the 📌 roll-up and the count line too, as Todo's `settled-by`, `settling-word`, says, and a note alone settles it nowhere.
+- a word settles a Todo item in the 📌 roll-up and the count line too, as Todo's `settled-by`, `settling-word`, says, and a note alone settles it nowhere;
+- a reply's Todo list found intact is cut out and its boxes drawn in its place, as its Decide list is, and one that isn't is drawn as written, its boxes under the reply.
 
-Still to come: the boxes under a reply, which hold Decide items alone; the other 7 lists; the grouped answers; the filters; turn navigation; and the windowed rendering.
+Still to come: the other 7 lists; the grouped answers; the filters; turn navigation; and the windowed rendering.
 
 Checks:
 

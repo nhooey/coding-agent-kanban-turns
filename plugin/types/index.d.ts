@@ -352,8 +352,9 @@ export type Settings = Readonly<{
   }>;
   pane: Readonly<{ "close-when-all-submitted": boolean }>;
   notes: Readonly<{ rows: number }>;
-  /** Each list's actions, by the settling word each writes: its button's label, and what a Done row says the word did. */
+  /** The note button's label, under a reply; then each list's actions, by the settling word each writes: its button's label, and what a Done row says the word did. */
   actions: Readonly<{
+    note: Readonly<{ label: string }>;
     todo: Readonly<{
       done: Readonly<{ label: string; settled: string }>;
       skip: Readonly<{ label: string; settled: string }>;
