@@ -1,15 +1,21 @@
 // A reply's Decide list cut out of its text, for the item boxes to stand in
-// its place, and only when the list is found intact.
+// its place, and only when the list is found intact: the one cut every list
+// takes, read here for the list whose items carry options.
 
 import { describe, test } from "node:test";
 import { expect } from "expect";
 
 import {
-  QUESTION_LINK,
-  decideListCut,
-  linkedQuestions,
+  ITEM_LINK,
+  linkedSummaries,
+  listCut,
 } from "../../../src/pane/links.ts";
+import { SPEC } from "../../../src/protocol/spec.ts";
 import type { DecideItem } from "../../../types/index.d.ts";
+
+/** The reply cut round its Decide list. */
+const decideListCut = (text: string, items: readonly DecideItem[]) =>
+  listCut(text, SPEC.lists.decide, items);
 
 const item = (number: number, summary: string): DecideItem => ({
   turn: "9efb08a1",
@@ -168,11 +174,15 @@ describe("a reply's Decide list cut out, as parseReply reads the reply", () => {
     expect(decideListCut(reply(glyphless), [cache, ship])).toBeUndefined();
   });
 
-  test("links a summary line whose bold summary ends at the line's end, not one holding two bold spans", () => {
+  test("links a summary line by the bold summary its text opens on, alone on its line or not, not one holding two bold spans", () => {
     const two = { ...cache, summary: "a** and **b" };
-    expect(linkedQuestions("1. **a** and **b**", [two]).hrefs).toEqual([]);
-    expect(linkedQuestions(`1. **${cache.summary}**  \r`, [cache]).text).toBe(
-      `1. **[${cache.summary}](${QUESTION_LINK}${cache.ref})**  \r`,
+    const header = "🧠 **Decide:**\n";
+    expect(linkedSummaries(`${header}1. **a** and **b**`, [two]).hrefs).toEqual([]);
+    expect(linkedSummaries(`${header}1. **${cache.summary}**  \r`, [cache]).text).toBe(
+      `${header}1. **[${cache.summary}](${ITEM_LINK}${cache.ref})**  \r`,
+    );
+    expect(linkedSummaries(`${header}1. **${cache.summary}**, pick one`, [cache]).text).toBe(
+      `${header}1. **[${cache.summary}](${ITEM_LINK}${cache.ref})**, pick one`,
     );
   });
 

@@ -40,7 +40,20 @@
 #     Any other text after `: ` is a note, which settles no item of a list
 #     with settling words; a Decide item's note is an answer in words. A
 #     word settles the item in the pane and under a reply, and, for a list
-#     settled-by settling-word, in the 📌 roll-up and the count line.
+#     settled-by settling-word, in the 📌 roll-up and the count line;
+#   feedback: what the person answers an item of it with, which is all
+#     that sets one list's items apart from another's in the pane and in
+#     the boxes under a reply: each list with feedback is drawn the same
+#     way, its items matched to a reply's summary lines, its list cut out
+#     where it's intact, and its items' boxes drawn, by this alone:
+#     options: one of the item's options, by letter, or words, the options
+#       a `kanban_options` call raised it with; the one feedback of a list
+#       settled-by answer, and only of one;
+#     settling-words: one of its list's settling-words, a note after it, or
+#       a note alone, which settles nothing; the one feedback of a list
+#       with settling-words, and only of one;
+#     none: nothing yet; the pane and the boxes under a reply leave its
+#       items out.
 lists:
   done:
     header: Done
@@ -49,6 +62,7 @@ lists:
     rolls-up: false
     settled-by: none
     settling-words: {}
+    feedback: none
   pending:
     header: Pending
     glyph: 🚧
@@ -56,6 +70,7 @@ lists:
     rolls-up: true
     settled-by: none
     settling-words: {}
+    feedback: none
   logged:
     header: Logged
     glyph: 📝
@@ -63,6 +78,7 @@ lists:
     rolls-up: false
     settled-by: none
     settling-words: {}
+    feedback: none
   waiting:
     header: Waiting
     glyph: ⏳
@@ -70,6 +86,7 @@ lists:
     rolls-up: true
     settled-by: report
     settling-words: {}
+    feedback: none
   answers:
     header: Answers
     glyph: ❓
@@ -77,6 +94,7 @@ lists:
     rolls-up: false
     settled-by: none
     settling-words: {}
+    feedback: none
   authorizations:
     header: Authorizations
     glyph: 🔑
@@ -84,6 +102,7 @@ lists:
     rolls-up: true
     settled-by: none
     settling-words: {}
+    feedback: none
   review:
     header: Review
     glyph: 🔍
@@ -91,6 +110,7 @@ lists:
     rolls-up: true
     settled-by: merged-pull-request
     settling-words: {}
+    feedback: none
   todo:
     header: Todo
     glyph: 👉
@@ -100,6 +120,7 @@ lists:
     settling-words:
       done: settles it, the person having done it
       skip: settles it, the person not doing it
+    feedback: settling-words
   decide:
     header: Decide
     glyph: 🧠
@@ -107,6 +128,7 @@ lists:
     rolls-up: true
     settled-by: answer
     settling-words: {}
+    feedback: options
 
 # A Decide item's options.
 #   pro, con: what opens the lines under an option for what it gains and

@@ -17,7 +17,6 @@ import {
 } from "../../../src/items/answers.ts";
 import {
   answeredCount,
-  decideItemsOf,
   sentOf,
   stillOpen,
   unseen,
@@ -25,6 +24,7 @@ import {
 } from "../../../src/items/raised.ts";
 import { emptyRaised } from "../../../src/items/raised.ts";
 import type { DecideItem, TodoItem } from "../../../types/index.d.ts";
+import { optionItemsOf } from "../../fixtures/raised.ts";
 
 const TODO: TodoItem = {
   turn: "9efb08a1",
@@ -128,10 +128,10 @@ describe("what Submit sends and the pane counts", () => {
     expect(answeredCount(raised, "9efb08a1.Todo.3: done\n9efb08a1.Decide.3.A\n")).toBe(2);
   });
 
-  test("both lists are open, a reply draws its Decide items alone, and only a new Decide item opens the pane", () => {
+  test("both lists are open, the options items are Decide's alone, and a new item of either list opens the pane", () => {
     expect(stillOpen(raised)).toEqual([DECIDE, TODO]);
-    expect(decideItemsOf(raised)).toEqual([DECIDE]);
-    expect(unseen(raised)).toEqual([DECIDE]);
-    expect(unseen(withItems(emptyRaised, [TODO]))).toEqual([]);
+    expect(optionItemsOf(raised)).toEqual([DECIDE]);
+    expect(unseen(raised)).toEqual([DECIDE, TODO]);
+    expect(unseen(withItems(emptyRaised, [TODO]))).toEqual([TODO]);
   });
 });

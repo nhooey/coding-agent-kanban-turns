@@ -130,7 +130,7 @@ export const INPUT_SCHEMA = {
 
 /** What the tool does, as the engine lists it to the agent. */
 export const TOOL_DESCRIPTION = [
-  `Draws clickable buttons for this turn's ${DECIDE.header} items in the transcript, just under the final response, and lists them in the plugin's ${DECIDE.header} pane.`,
+  `Draws clickable buttons for this turn's ${DECIDE.header} items in the transcript, just under the final response, and lists them in the plugin's pane, beside every other list's items.`,
   `Call it once, right before writing the final response, with every ${DECIDE.header} item that response will hold, in its order: each item's turn id, number, summary, kind, frees and supersedes, and each option's letter, name, consequence, pros and cons.`,
   `An item that restates an earlier turn's ${DECIDE.header} item names it in supersedes, \`<turn>.${DECIDE.header}.<n>\`, which moves the earlier one to ${DONE.header}.`,
   `\`${OUTSTANDING_TOOL}\` gives earlier turns' open ${DECIDE.header} items in this shape.`,

@@ -23,9 +23,9 @@ import {
   actionLead,
   itemTitle,
   sentWord,
+  actionsOf,
+  notePlaceholder,
   settledText,
-  todoActions,
-  todoNotePlaceholder,
   wordSaidBy,
 } from "../../../src/pane/view.ts";
 import type {
@@ -126,12 +126,12 @@ describe("a Todo item's box and Done row", () => {
   });
 
   test("its actions are Done and Skip, from the settings, each by its word", () => {
-    expect(todoActions(SETTINGS.actions)).toEqual([
+    expect(actionsOf(TOKEN, SETTINGS.actions)).toEqual([
       { word: "done", label: "Done" },
       { word: "skip", label: "Skip" },
     ]);
     expect(
-      todoActions({
+      actionsOf(TOKEN, {
         note: { label: "Comment" },
         todo: { done: { label: "Did it", settled: "did" }, skip: { label: "Drop", settled: "dropped" } },
       }).map((action) => action.label),
@@ -139,7 +139,7 @@ describe("a Todo item's box and Done row", () => {
   });
 
   test("its notes field says a note goes with an action or alone, and settles nothing alone unless it opens with a word", () => {
-    expect(todoNotePlaceholder(todoActions(SETTINGS.actions))).toBe(
+    expect(notePlaceholder(TOKEN, actionsOf(TOKEN, SETTINGS.actions))).toBe(
       'A note: with Done or Skip, or alone, which settles nothing unless it opens with "done" or "skip"',
     );
   });

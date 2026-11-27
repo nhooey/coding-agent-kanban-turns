@@ -5,9 +5,10 @@
 //   spaces in, or a number alone with its bold summary on the next line
 //   not blank, in a Decide list's section, outside code, with an option
 //   outside code before the next such line; and it reads every such item;
-// - every line linkedQuestions links is a numbered item line at most 2
-//   spaces in, outside code, its bold summary alone on it naming an item,
-//   and no topic's title; it links every such line, and changes no other.
+// - every line linkedSummaries links is a numbered item line at most 2
+//   spaces in, in a Decide list's section, outside code, the bold summary
+//   it opens on naming an item, and no topic's title; it links every such
+//   line, and changes no other.
 
 import { describe, test } from "node:test";
 import { expect } from "expect";
@@ -15,7 +16,7 @@ import fc from "fast-check";
 
 import { refOf } from "../../../src/items/items.ts";
 import { decideItemsOfText } from "../../../src/items/outstanding.ts";
-import { QUESTION_LINK, linkedQuestions } from "../../../src/pane/links.ts";
+import { ITEM_LINK, linkedSummaries } from "../../../src/pane/links.ts";
 import { optionGlyphs } from "../../../src/protocol/kinds.ts";
 import {
   DECISIONS,
@@ -44,7 +45,6 @@ const MARKER = /^ {0,2}(?:[-*]|\d+[.)])\s+/;
 const HEAD = /^ {0,2}(\d+)[.)]\s+\*\*(.+?)\*\*/;
 const BARE = /^ {0,2}(\d+)[.)]\s*$/;
 const BOLD = /^\s*\*\*(.+?)\*\*/;
-const ALONE = /^( {0,2}\d+[.)]\s+)\*\*((?:(?!\*\*).)+)\*\*\s*$/;
 
 const isRule = (line: string): boolean => isLineOf(SPEC.characters["topic-underline"], line);
 const isStop = (line: string): boolean =>
@@ -141,17 +141,21 @@ const printedItems = (text: string): readonly Readonly<{ number: number; summary
 
 const plain = (summary: string): string => summary.replaceAll("**", "").replaceAll("`", "").trim();
 
-/** Each line a reply's questions link, by place, and the reference of the item it names. */
+/** A summary as a line and an item are matched by: plain, a trailing colon aside. */
+const summaryKey = (summary: string): string => plain(summary.trim().replace(/:$/, "").trim());
+
+/** Each line a reply's questions link, by place, and the reference of the item it names: a numbered item line in a Decide list's section, opening on its bold summary. */
 const linkedLines = (
   text: string,
   refs: ReadonlyMap<string, string>,
 ): readonly Readonly<{ n: number; ref: string }>[] => {
   const lines = text.split("\n").map((line) => line.replace(/\r$/, ""));
   const code = codeOf(lines);
+  const decide = new Set(decideSections(lines, code).flat());
 
   return lines.flatMap((line, n) => {
-    const alone = code[n] || HEADER.test(line) || isTitle(lines, code, n) ? null : ALONE.exec(line);
-    const ref = alone === null ? undefined : refs.get(plain(alone[2] ?? ""));
+    const head = !decide.has(n) || code[n] || isTitle(lines, code, n) ? null : HEAD.exec(line);
+    const ref = head === null ? undefined : refs.get(summaryKey(head[2] ?? ""));
 
     return ref === undefined ? [] : [{ n, ref }];
   });
@@ -169,15 +173,15 @@ describe("the readers of a reply, line by line", () => {
     });
   });
 
-  test("linkedQuestions links each numbered item line at most 2 spaces in, outside code, its bold summary alone naming an item, and changes no other line", () => {
+  test("linkedSummaries links each numbered item line at most 2 spaces in, in a Decide list's section, outside code, its bold summary naming an item, and changes no other line", () => {
     property(fc.record({ text: looseArb, items: decideItemsArb }), ({ text, items }) => {
-      const refs = new Map(items.map((item) => [plain(item.summary), refOf(item)]));
+      const refs = new Map(items.map((item) => [summaryKey(item.summary), refOf(item)]));
       const expected = linkedLines(text, refs);
-      const { text: linked, hrefs } = linkedQuestions(text, items);
+      const { text: linked, hrefs } = linkedSummaries(text, items);
       const before = text.split("\n");
       const after = linked.split("\n");
 
-      expect(hrefs).toEqual(expected.map(({ ref }) => `${QUESTION_LINK}${ref}`));
+      expect(hrefs).toEqual(expected.map(({ ref }) => `${ITEM_LINK}${ref}`));
       expect(after.length).toBe(before.length);
       expect(before.flatMap((line, n) => (after[n] === line ? [] : [n]))).toEqual(expected.map(({ n }) => n));
     });

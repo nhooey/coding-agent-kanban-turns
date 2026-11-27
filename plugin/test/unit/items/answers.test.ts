@@ -28,7 +28,7 @@ import {
   itemOfLink,
   itemOfRef,
   linkedItems,
-  linkedQuestions,
+  linkedSummaries,
   refOfLink,
 } from "../../../src/pane/links.ts";
 import type { DecideItem } from "../../../types/index.d.ts";
@@ -269,23 +269,29 @@ describe("notes and answers in words", () => {
 });
 
 describe("questions in a reply", () => {
+  /** The Decide list's header, which a question's summary line sits under to name a Decide item. */
+  const DECIDE_HEADER = "🧠 **Decide:**";
+
   test("an open item's summary line becomes a link to it, and nothing else does", () => {
     const reply = [
+      DECIDE_HEADER,
       "1. **Which cache to keep**  ",
       "   Both are built.",
       "2. **Some other question**  ",
     ].join("\n");
-    const linked = linkedQuestions(reply, items);
+    const linked = linkedSummaries(reply, items);
 
     expect(linked.hrefs).toEqual([
       "https://kanban-turns.invalid/9efb08a1.Decide.1",
     ]);
-    expect(linked.text.split("\n")[0]).toBe(
+    expect(linked.text.split("\n")[1]).toBe(
       "1. **[Which cache to keep](https://kanban-turns.invalid/9efb08a1.Decide.1)**  ",
     );
-    expect(linked.text.split("\n").slice(1)).toEqual(
-      reply.split("\n").slice(1),
+    expect(linked.text.split("\n").slice(2)).toEqual(
+      reply.split("\n").slice(2),
     );
+    // Under no list's header, the same line names nothing.
+    expect(linkedSummaries(reply.split("\n").slice(1).join("\n"), items).hrefs).toEqual([]);
     expect(itemOfLink(items, linked.hrefs[0] ?? "")).toBe(0);
     expect(itemOfLink(items, "https://example.com/")).toBe(-1);
     expect(refOfLink(linked.hrefs[0] ?? "")).toBe("9efb08a1.Decide.1");
@@ -325,15 +331,17 @@ describe("questions in a reply", () => {
   test("a summary line is a numbered item's own line, `1.` or `1)`, not one under another item or inside code", () => {
     const LINK = "https://kanban-turns.invalid/9efb08a1.Decide.1";
 
-    expect(linkedQuestions("1) **Which cache to keep**", items).hrefs).toEqual([LINK]);
-    expect(linkedQuestions("2. **Other**\n   1. **Which cache to keep**", items).hrefs).toEqual([]);
-    expect(linkedQuestions("```\n1. **Which cache to keep**\n```", items).hrefs).toEqual([]);
-    expect(linkedQuestions("1.\n**Which cache to keep**", items).hrefs).toEqual([]);
+    const under = (text: string) => linkedSummaries(`${DECIDE_HEADER}\n${text}`, items).hrefs;
+
+    expect(under("1) **Which cache to keep**")).toEqual([LINK]);
+    expect(under("2. **Other**\n   1. **Which cache to keep**")).toEqual([]);
+    expect(under("```\n1. **Which cache to keep**\n```")).toEqual([]);
+    expect(under("1.\n**Which cache to keep**")).toEqual([]);
   });
 
   test("a CRLF reply's summary line keeps its line end", () => {
-    expect(linkedQuestions("1. **Which cache to keep**  \r\nmore", items).text).toBe(
-      "1. **[Which cache to keep](https://kanban-turns.invalid/9efb08a1.Decide.1)**  \r\nmore",
+    expect(linkedSummaries(`${DECIDE_HEADER}\r\n1. **Which cache to keep**  \r\nmore`, items).text).toBe(
+      `${DECIDE_HEADER}\r\n1. **[Which cache to keep](https://kanban-turns.invalid/9efb08a1.Decide.1)**  \r\nmore`,
     );
   });
 });

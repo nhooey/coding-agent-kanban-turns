@@ -327,7 +327,7 @@ describe("the tool's description", () => {
   test("says where the buttons go, when to call it and that a click sends nothing", () => {
     [
       "just under the final response",
-      "Decide pane",
+      "the plugin's pane",
       "right before writing the final response",
       "nothing is sent",
     ].forEach((phrase) => expect(TOOL_DESCRIPTION).toContain(phrase));

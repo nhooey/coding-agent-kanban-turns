@@ -430,12 +430,16 @@ const appended = (
       : section,
   );
 
+/** Whether a block ends the section it's in and opens none: the 📌 roll-up's start, an older roll-up header bare, or a topic header. */
+const endsSection = (block: Block): boolean =>
+  block.kind === "roll-up" || block.kind === "stop" || block.kind === "topic";
+
 const sectioned = ({ isOpen, done }: Sectioning, block: Block): Sectioning => {
   const stop = stopAt(block);
 
   return block.kind === "header"
     ? { isOpen: true, done: [...done, { name: block.name, blocks: [block] }] }
-    : block.kind === "roll-up" || block.kind === "stop" || block.kind === "topic"
+    : endsSection(block)
       ? { isOpen: false, done }
       : !isOpen
         ? { isOpen, done }
@@ -451,3 +455,19 @@ const sectioned = ({ isOpen, done }: Sectioning, block: Block): Sectioning => {
  */
 export const sectionsIn = (blocks: readonly Block[]): readonly SectionBlocks[] =>
   blocks.reduce(sectioned, { isOpen: false, done: [] }).done;
+
+type Naming = Readonly<{ open: string | undefined; names: readonly (string | undefined)[] }>;
+
+const named = ({ open, names }: Naming, block: Block): Naming => {
+  const name = block.kind === "header" ? block.name : endsSection(block) ? undefined : open;
+
+  return { open: stopAt(block) >= 0 ? undefined : name, names: [...names, name] };
+};
+
+/**
+ * The name, as its header writes it, of the list whose section each block
+ * sits in, by the rule `sectionsIn` reads sections by, a header's its own;
+ * undefined for a block in no list's section.
+ */
+export const sectionNamesOf = (blocks: readonly Block[]): readonly (string | undefined)[] =>
+  blocks.reduce(named, { open: undefined, names: [] }).names;

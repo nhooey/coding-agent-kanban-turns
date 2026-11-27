@@ -7,7 +7,6 @@ import { expect } from "expect";
 import {
   answeredCount,
   closesOnSubmit,
-  decideItemsOf,
   emptyRaised,
   forSession,
   heldNow,
@@ -28,7 +27,7 @@ import {
   withoutRead,
 } from "../../../src/items/raised.ts";
 import type { DecideItem, ItemState, Raised, Settlement } from "../../../types/index.d.ts";
-import { openItems, settledRefsOf } from "../../fixtures/raised.ts";
+import { openItems, optionItemsOf, settledRefsOf } from "../../fixtures/raised.ts";
 
 const radio: DecideItem = {
   turn: "9efb08a1",
@@ -65,7 +64,7 @@ const binary: DecideItem = {
   ],
 };
 const raised: Raised = { ...emptyRaised, session: "s1", items: openItems([radio, checkbox]) };
-const refs = (r: Raised) => decideItemsOf(r).map((item) => item.ref);
+const refs = (r: Raised) => optionItemsOf(r).map((item) => item.ref);
 const states = (r: Raised) => r.items.map((each) => each.state);
 /** Settled as `settled` says, as an item holds it: without its ref. */
 const settledAs = ({ ref: _ref, ...how }: Settlement): ItemState => ({ tag: "settled", settlement: how });
@@ -97,12 +96,12 @@ describe("merging items in", () => {
       "9efb08a1.Decide.2",
       "9efb08a1.Decide.3",
     ]);
-    expect(decideItemsOf(merged)[0]?.note).toEqual(["Both are built."]);
+    expect(optionItemsOf(merged)[0]?.note).toEqual(["Both are built."]);
   });
 
   test("an item handed over twice at once is raised once, holding the later content", () => {
     const told = { ...binary, note: ["Tonight's build is green."] };
-    expect(decideItemsOf(withItems(emptyRaised, [binary, told]))).toEqual([told]);
+    expect(optionItemsOf(withItems(emptyRaised, [binary, told]))).toEqual([told]);
   });
 
   test("a new item is open, and an item raised before keeps where it stands", () => {

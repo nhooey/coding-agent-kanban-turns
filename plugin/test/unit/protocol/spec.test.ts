@@ -100,7 +100,14 @@ describe("specProblems", () => {
   test("finds a list too many", () => {
     expect(
       specProblems(
-        withList("extra", { ...decide, header: "Extra", glyph: "🧩", aliases: [], "settled-by": "none" }),
+        withList("extra", {
+          ...decide,
+          header: "Extra",
+          glyph: "🧩",
+          aliases: [],
+          "settled-by": "none",
+          feedback: "none",
+        }),
       ),
     ).toEqual([
       "holds 10 lists, not 9",
@@ -127,9 +134,11 @@ describe("specProblems", () => {
   });
 
   test("finds a list other than Decide settled by an answer, which reads only Decide's items", () => {
-    expect(specProblems(withList("todo", { ...SPEC.lists.todo, "settled-by": "answer" }))).toEqual([
-      "todo is settled by answer, which reads only the decide list's items",
-    ]);
+    expect(
+      specProblems(
+        withList("todo", { ...SPEC.lists.todo, "settled-by": "answer", "settling-words": {}, feedback: "options" }),
+      ),
+    ).toEqual(["todo is settled by answer, which reads only the decide list's items"]);
     expect(specProblems(withList("decide", { ...SPEC.lists.decide, "settled-by": "answer" }))).toEqual([]);
   });
 
@@ -140,13 +149,40 @@ describe("specProblems", () => {
           ...SPEC.lists.review,
           "settled-by": "settling-word",
           "settling-words": { reviewed: "settles it" },
+          feedback: "settling-words",
         }),
       ),
     ).toEqual(["review is settled by settling-word, which reads only the todo list's items"]);
-    expect(specProblems(withList("todo", { ...SPEC.lists.todo, "settling-words": {} }))).toEqual([
+    expect(
+      specProblems(withList("todo", { ...SPEC.lists.todo, "settling-words": {}, feedback: "none" })),
+    ).toEqual([
       "todo is settled by settling-word, yet it has no settling-words",
     ]);
     expect(SPEC.lists.todo["settled-by"]).toBe("settling-word");
+  });
+
+  test("finds a list whose feedback its other keys belie", () => {
+    expect(specProblems(withList("review", { ...SPEC.lists.review, feedback: "options" }))).toEqual([
+      "review's feedback is options and it's settled by merged-pull-request: a list is answered by options exactly when it's settled by answer",
+    ]);
+    expect(specProblems(withList("decide", { ...decide, feedback: "none" }))).toEqual([
+      "decide's feedback is none and it's settled by answer: a list is answered by options exactly when it's settled by answer",
+    ]);
+    expect(specProblems(withList("todo", { ...SPEC.lists.todo, feedback: "none" }))).toEqual([
+      "todo's feedback is none and it has 2 settling-words: a list is answered by settling-words exactly when it has some",
+    ]);
+    expect(specProblems(withList("review", { ...SPEC.lists.review, feedback: "settling-words" }))).toEqual([
+      "review's feedback is settling-words and it has 0 settling-words: a list is answered by settling-words exactly when it has some",
+    ]);
+    expect(
+      specProblems(
+        withList("review", {
+          ...SPEC.lists.review,
+          "settling-words": { reviewed: "settles it" },
+          feedback: "settling-words",
+        }),
+      ),
+    ).toEqual([]);
   });
 
   test("finds a word that settles two lists differently", () => {
@@ -160,7 +196,11 @@ describe("specProblems", () => {
         ...settling,
         lists: {
           ...settling.lists,
-          review: { ...SPEC.lists.review, "settling-words": { skip: "asks to merge it" } },
+          review: {
+            ...SPEC.lists.review,
+            "settling-words": { skip: "asks to merge it" },
+            feedback: "settling-words",
+          },
         },
       }),
     ).toEqual(['the word "skip" settles review and todo differently']);
@@ -169,7 +209,11 @@ describe("specProblems", () => {
         ...settling,
         lists: {
           ...settling.lists,
-          review: { ...SPEC.lists.review, "settling-words": { skip: "settles it" } },
+          review: {
+            ...SPEC.lists.review,
+            "settling-words": { skip: "settles it" },
+            feedback: "settling-words",
+          },
         },
       }),
     ).toEqual([]);
@@ -354,6 +398,15 @@ describe("the build step", () => {
     ]);
     expect(problemsOf(edited("  minus: ₋\n", "  minus: ₋\n  plus: ₊\n"))).toEqual([
       `${SPEC_FILE}: /tag must NOT have additional properties: plus`,
+    ]);
+  });
+
+  test("refuses a list with no feedback, or one the schema doesn't name", () => {
+    expect(problemsOf(edited("    feedback: options\n", ""))).toEqual([
+      `${SPEC_FILE}: /lists/decide must have required property 'feedback'`,
+    ]);
+    expect(problemsOf(edited("    feedback: options\n", "    feedback: letters\n"))).toEqual([
+      `${SPEC_FILE}: /lists/decide/feedback must be equal to one of the allowed values`,
     ]);
   });
 

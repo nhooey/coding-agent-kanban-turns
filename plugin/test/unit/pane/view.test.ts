@@ -69,19 +69,19 @@ const SETTLED = { tag: "settled" } as const;
 const OPEN = { tag: "open" } as const;
 
 describe("the text with no open items", () => {
-  test("says why when the reason is known", () => {
-    expect(noItemsText("")).toBe("No open Decide items.");
-    expect(noItemsText("no script")).toBe("No open Decide items: no script.");
+  test("says why when the reason is known, naming no list, since the pane holds every list's", () => {
+    expect(noItemsText("")).toBe("No open items.");
+    expect(noItemsText("no script")).toBe("No open items: no script.");
   });
 });
 
 describe("/answers's reply", () => {
-  test("counts the open items the pane opened over, the settled left out", () => {
-    expect(answersText(raised)).toBe("Decide pane opened: 2 open Decide items.");
+  test("counts the open items the pane opened over, the settled left out, the pane named for no list", () => {
+    expect(answersText(raised)).toBe("Kanban pane opened: 2 open Decide items.");
     expect(
       answersText({ ...raised, items: [{ item: radio, state: SETTLED }, { item: binary, state: OPEN }] }),
     ).toBe(
-      "Decide pane opened: 1 open Decide items.",
+      "Kanban pane opened: 1 open Decide items.",
     );
   });
 
@@ -95,20 +95,20 @@ describe("/answers's reply", () => {
     };
 
     expect(answersText({ ...emptyRaised, items: openItems([todo]) })).toBe(
-      "Decide pane opened: 1 open Todo items.",
+      "Kanban pane opened: 1 open Todo items.",
     );
     expect(answersText({ ...raised, items: openItems([radio, binary, todo]) })).toBe(
-      "Decide pane opened: 1 open Todo items, 2 open Decide items.",
+      "Kanban pane opened: 1 open Todo items, 2 open Decide items.",
     );
   });
 
   test("says there are none, and why", () => {
     expect(answersText({ ...emptyRaised, problem: "it broke" })).toBe(
-      "No open Decide items: it broke.",
+      "No open items: it broke.",
     );
     expect(
       answersText({ ...raised, items: [{ item: radio, state: SETTLED }, { item: binary, state: SETTLED }] }),
-    ).toBe("No open Decide items.");
+    ).toBe("No open items.");
   });
 });
 
@@ -132,7 +132,7 @@ describe("/answers-config's reply", () => {
 describe("the tool's result", () => {
   test("names each item drawn by its reference, filling a missing one", () => {
     expect(drewText([radio, binary])).toBe(
-      "Drew buttons for 2 Decide items under the final response and in the Decide pane: 9efb08a1.Decide.1, 9efb08a1.Decide.2.",
+      "Drew buttons for 2 Decide items under the final response and in the Kanban pane: 9efb08a1.Decide.1, 9efb08a1.Decide.2.",
     );
   });
 
@@ -143,14 +143,14 @@ describe("the tool's result", () => {
         [{ ref: "9efb08a1.Decide.2", values: [`"Decide.1"`, `"682e71fb.Todo.1"`, "7"], left: "some" }],
       ),
     ).toBe(
-      "Drew buttons for 2 Decide items under the final response and in the Decide pane: 9efb08a1.Decide.1, 9efb08a1.Decide.2." +
+      "Drew buttons for 2 Decide items under the final response and in the Kanban pane: 9efb08a1.Decide.1, 9efb08a1.Decide.2." +
         ` Ignored in 9efb08a1.Decide.2's supersedes, as no Decide item's reference, <turn>.Decide.<n>: "Decide.1", "682e71fb.Todo.1", 7.`,
     );
   });
 
   test("says an item whose supersedes it ignored whole replaces an earlier item on its subject, and names the list's form where it was no list", () => {
     const drew =
-      "Drew buttons for 1 Decide items under the final response and in the Decide pane: 9efb08a1.Decide.1.";
+      "Drew buttons for 1 Decide items under the final response and in the Kanban pane: 9efb08a1.Decide.1.";
 
     expect(drewText([radio], [{ ref: "9efb08a1.Decide.1", values: [`"Decide.1"`], left: "all" }])).toBe(
       `${drew} Ignored all of 9efb08a1.Decide.1's supersedes, as no Decide item's reference, <turn>.Decide.<n>: "Decide.1";` +

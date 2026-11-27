@@ -1,13 +1,14 @@
-// The items raised in this session, oldest first, Decide's and Todo's:
+// The items raised in this session, oldest first, of every list the pane draws:
 // every item a `kanban_options` call drew or a refresh found open, kept
 // once raised, each holding where it stands, and which the pane has been
 // opened over. Each function takes the items and returns new ones, or a
 // part of them; none changes what it's given.
 
 import { choiceTo, settles } from "./answers.ts";
-import { isDecide, refOf } from "./items.ts";
+import type { Answer } from "./answers.ts";
+import { feedbackOfItem, refOf } from "./items.ts";
+import type { Feedback } from "../protocol/rules.ts";
 import type {
-  DecideItem,
   Held,
   HowSettled,
   ItemState,
@@ -35,10 +36,6 @@ export const forSession = (raised: Raised, session: string): Raised =>
 /** The raised items of every list, oldest first, settled or open. */
 export const listedItemsOf = (raised: Raised): readonly ListedItem[] =>
   raised.items.map((each) => each.item);
-
-/** The raised Decide items, oldest first, settled or open: those a reply draws under its text. */
-export const decideItemsOf = (raised: Raised): readonly DecideItem[] =>
-  listedItemsOf(raised).filter(isDecide);
 
 /** Each of `all` by its ref, the last one for a ref given twice. */
 const lastByRef = <T>(
@@ -167,11 +164,9 @@ export const stillOpen = (raised: Raised): readonly ListedItem[] =>
     .filter((each) => each.state.tag === "open")
     .map((each) => each.item);
 
-/** The open Decide items raised since the last look: what opens the pane by itself; a new Todo item doesn't. */
-export const unseen = (raised: Raised): readonly DecideItem[] =>
-  stillOpen(raised)
-    .filter(isDecide)
-    .filter((item) => !raised.seenRefs.includes(refOf(item)));
+/** The open items raised since the last look, of every list the pane draws: what opens the pane by itself. */
+export const unseen = (raised: Raised): readonly ListedItem[] =>
+  stillOpen(raised).filter((item) => !raised.seenRefs.includes(refOf(item)));
 
 /** The items with every one of them looked at. */
 export const seen = (raised: Raised): Raised => ({
@@ -179,19 +174,29 @@ export const seen = (raised: Raised): Raised => ({
   seenRefs: listedItemsOf(raised).map(refOf),
 });
 
-/** What Submit sends of the draft's answer to `item`: a Decide item's letters and note, another list's settling word and note; none for an answer that settles nothing, a note alone to a Todo item. */
+/**
+ * What Submit sends of an answer, by its item's list's feedback: by
+ * options, its letters and note; by settling words, its word and note; by
+ * none, nothing.
+ */
+const SENDING: Readonly<Record<Feedback, (ref: string, answer: Answer) => readonly Settlement[]>> = {
+  options: (ref, answer) => [{ ref, how: "sent", letters: answer.letters, note: answer.note }],
+  "settling-words": (ref, answer) => [
+    { ref, how: "sent-word", word: answer.word, note: answer.note },
+  ],
+  none: () => [],
+};
+
+/** What Submit sends of the draft's answer to `item`, as `SENDING` says; none for an answer that settles nothing, a note alone to an item answered by settling words. */
 const sentFor = (
   item: ListedItem,
   draft: string,
 ): readonly Settlement[] => {
   const answer = choiceTo(draft, item);
-  const ref = refOf(item);
 
   return answer === undefined || !settles(draft, item)
     ? []
-    : isDecide(item)
-      ? [{ ref, how: "sent", letters: answer.letters, note: answer.note }]
-      : [{ ref, how: "sent-word", word: answer.word, note: answer.note }];
+    : SENDING[feedbackOfItem(item)](refOf(item), answer);
 };
 
 /**

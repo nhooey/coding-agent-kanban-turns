@@ -28,6 +28,10 @@
 // - a separator anywhere but between two items (fix: separator);
 // - a line ending on `\r` (fix: CRLF).
 //
+// `linkedQuestions` links a summary line only in its list's section, and a
+// numbered item's summary that runs on into its sentence too (fix: one rule
+// per list), so it's held to the old scanner over a Decide list alone.
+//
 // `sectionsOf` gives, for the same reply, the old sections cut where the 📌
 // roll-up starts (fix: roll-up ends a section). A loose random reply writes
 // the shapes `itemsOfText` read alike before and after, and the others
@@ -47,7 +51,7 @@ import {
   itemsOfText,
 } from "../../../src/items/outstanding.ts";
 import { isKanbanReply } from "../../../src/lint/reply.ts";
-import { decideListCut, linkedQuestions } from "../../../src/pane/links.ts";
+import { linkedSummaries, listCut } from "../../../src/pane/links.ts";
 import { FRAGMENTS } from "../../../src/protocol/fragments.ts";
 import { filled, placeholderValues } from "../../../src/protocol/prose.ts";
 import { SPEC } from "../../../src/protocol/spec.ts";
@@ -59,9 +63,17 @@ import type { DecideItem } from "../../../types/index.d.ts";
 import * as oracle from "../../oracle/reply-text.ts";
 import {
   decideItemsArb,
+  decideListArb,
   replyArb,
   replyWithItemsArb,
 } from "../../fixtures/replies.ts";
+
+/** The one cut every list takes, read for the Decide list, as the old scanner cut it alone. */
+const decideListCut = (text: string, items: readonly DecideItem[]) =>
+  listCut(text, SPEC.lists.decide, items);
+
+/** The one linking every list takes, given the Decide items the old scanner linked alone. */
+const linkedQuestions = linkedSummaries;
 
 const RUNS = 600;
 const SEED = 0x7265706c;
@@ -182,8 +194,12 @@ describe("the readers of a reply against the old scanners", () => {
     expect(cut.length).toBeGreaterThan(50);
   });
 
-  test("linkedQuestions: the same text and links", () => {
-    property(withItemsArb, ({ text, items }) => {
+  test("linkedQuestions: the same text and links, over a Decide list printing its items", () => {
+    const listArb = decideItemsArb.chain((items) =>
+      decideListArb(items).map((lines) => ({ text: lines.join("\n"), items })),
+    );
+
+    property(listArb, ({ text, items }) => {
       expect(linkedQuestions(text, items)).toEqual(oracle.linkedQuestions(text, items));
     });
   });
@@ -503,10 +519,16 @@ describe("where the readers part: kept", () => {
     expect(itemsOfText(gap).map((found) => found.number)).toEqual([1, 2]);
   });
 
-  test("a question's summary line links wherever it is, a list's or not; itemsOfText reads only a list's that rolls up", () => {
+  test("a question's summary line links only under its list's header, run on or alone, where the old linked it anywhere alone (fix: one rule per list); itemsOfText reads only a list's that rolls up", () => {
     const bare = lines(...CACHE);
+    const runOn = lines(DECIDE_HEADER, "1. **Which cache to keep**, pick one", "   🔘 A. **Disk**");
 
-    expect(linkedQuestions(bare, [cache]).hrefs.length).toBe(1);
+    expect(oracle.linkedQuestions(bare, [cache]).hrefs.length).toBe(1);
+    expect(linkedQuestions(bare, [cache]).hrefs).toEqual([]);
+    expect(linkedQuestions(lines(DECIDE_HEADER, ...CACHE), [cache]).hrefs.length).toBe(1);
+    expect(linkedQuestions(lines("✅ **Done:**", ...CACHE), [cache]).hrefs).toEqual([]);
+    expect(oracle.linkedQuestions(runOn, [cache]).hrefs).toEqual([]);
+    expect(linkedQuestions(runOn, [cache]).hrefs.length).toBe(1);
     expect(itemsOfText(bare)).toEqual([]);
   });
 });

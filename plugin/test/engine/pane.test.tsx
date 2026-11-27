@@ -619,7 +619,7 @@ test("with no defaults file, no settings are used, and /answers, the pane and /a
   const missing = "/defaults/config.yaml: is missing";
 
   const answered = (await $.command.run(ANSWERS)).text ?? "";
-  expect(answered).toMatch(/^No open Decide items: .*\/defaults\/config\.yaml: is missing\.$/);
+  expect(answered).toMatch(/^No open items: .*\/defaults\/config\.yaml: is missing\.$/);
   // The user's sound file gives no problem of its own.
   expect(answered).not.toContain(USER_FOLDER);
 
@@ -695,7 +695,7 @@ test("a user's config.jsonc is not read: the defaults are in effect", async ($, 
   expect(lines.filter((line) => line.startsWith("Not used"))).toEqual([]);
 
   // /answers's line for no open items, and the pane, name no settings problem.
-  expect((await $.command.run(ANSWERS)).text).toBe("No open Decide items.");
+  expect((await $.command.run(ANSWERS)).text).toBe("No open items.");
   const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
   expect(await ui.find({ type: "Text", text: "Nothing open" })).toBeDefined();
   expect(JSON.stringify(await ui.drawn())).not.toContain("config.jsonc");
@@ -1674,7 +1674,7 @@ test("a long option, its ➕ line, a title and a Done line wrap under their text
   await $.tool.call({ tool: TOOL, items: [long] } as never);
   const reply = await $.ui.mount({
     ...REPLY,
-    props: { ...REPLY.props, text: `Some work.\n\n1. **${long.summary}**  ` },
+    props: { ...REPLY.props, text: `Some work.\n\n🧠 **Decide:**  \n1. **${long.summary}**  ` },
   });
 
   // Each line's lead is a Box as wide as its cells, an emoji counting 2,
@@ -1768,7 +1768,7 @@ const REPLY = {
   component: "AssistantMessage",
   surface: "terminal",
   props: {
-    text: "Some work.\n\n1. **Which cache to keep**  \n   Or wait.\n3. **Ship tonight?**  ",
+    text: "Some work.\n\n🧠 **Decide:**  \n1. **Which cache to keep**  \n   Or wait.\n3. **Ship tonight?**  ",
     isFirstOfReply: true,
   },
 } as const;
@@ -2095,7 +2095,7 @@ test("the tool's result says what it ignored of an item's supersedes, as naming 
   const answer: Readonly<{ result?: unknown }> = await $.tool.call({ tool: TOOL, items: [given] } as never);
 
   expect(answer.result).toBe(
-    "Drew buttons for 1 Decide items under the final response and in the Decide pane: b2c3d4e5.Decide.1." +
+    "Drew buttons for 1 Decide items under the final response and in the Kanban pane: b2c3d4e5.Decide.1." +
       ` Ignored in b2c3d4e5.Decide.1's supersedes, as no Decide item's reference, <turn>.Decide.<n>: "Decide.2", "9efb08a1.Todo.1".`,
   );
 
@@ -2104,7 +2104,7 @@ test("the tool's result says what it ignored of an item's supersedes, as naming 
     items: [{ ...RESTATED, supersedes: "9efb08a1.Decide.1" }],
   } as never);
   expect(bare.result).toBe(
-    "Drew buttons for 1 Decide items under the final response and in the Decide pane: b2c3d4e5.Decide.1." +
+    "Drew buttons for 1 Decide items under the final response and in the Kanban pane: b2c3d4e5.Decide.1." +
       ` Ignored b2c3d4e5.Decide.1's supersedes, "9efb08a1.Decide.1", as no list, ["<turn>.Decide.<n>"];` +
       " so it replaces an earlier item on its subject, as with no supersedes.",
   );
@@ -2553,7 +2553,7 @@ test("a pane stored under the shape from before the settings moved into it is no
   // Read as absent, the stale value draws nothing: no items, and no
   // settings it never held.
   expect(await titles(ui)).toEqual([]);
-  expect(await ui.find({ type: "Text", text: /^No open Decide items/ })).toBeDefined();
+  expect(await ui.find({ type: "Text", text: /^No open items/ })).toBeDefined();
   await ui.unmount();
 });
 
@@ -2595,7 +2595,7 @@ test("a pane stored under the shape from before each raised item held where it s
 
   // Read as absent, the stale value draws nothing: no items, open or Done.
   expect(await titles(ui)).toEqual([]);
-  expect(await ui.find({ type: "Text", text: /^No open Decide items/ })).toBeDefined();
+  expect(await ui.find({ type: "Text", text: /^No open items/ })).toBeDefined();
   await ui.unmount();
 });
 
@@ -2640,7 +2640,7 @@ test("a pane stored under the shape from before a superseded item named what sup
   // Read as absent, the stale value draws nothing: no items, open or Done.
   expect(await titles(ui)).toEqual([]);
   expect(await ui.find({ type: "Button", key: "done" })).toBeUndefined();
-  expect(await ui.find({ type: "Text", text: /^No open Decide items/ })).toBeDefined();
+  expect(await ui.find({ type: "Text", text: /^No open items/ })).toBeDefined();
   await ui.unmount();
 });
 
@@ -2679,7 +2679,7 @@ test("a pane stored under the shape from before it held Todo items and the actio
 
   // Read as absent, the stale value draws nothing.
   expect(await titles(ui)).toEqual([]);
-  expect(await ui.find({ type: "Text", text: /^No open Decide items/ })).toBeDefined();
+  expect(await ui.find({ type: "Text", text: /^No open items/ })).toBeDefined();
   await ui.unmount();
 });
 
@@ -2742,6 +2742,18 @@ const listedDoneLines = async (ui: Drawing) =>
   (await ui.findAll({ type: "Box", text: /^(?:👉 Todo|🧠 Decide)\.\d+/ }))
     .filter((found) => found.key?.endsWith(".line-hang"))
     .map((found) => found.text.replace(/^(\S+ \S+\.\d+)/, "$1  "));
+
+test("a reply that raises a new Todo item opens the pane without the keyboard, as a new Decide item does", async ($, on) => {
+  const state = engine(on, () => [], withTodoList);
+  await $.turn.complete(replyDone("t1"));
+  expect(state.isPaneOpen).toBe(true);
+  expect(state.opens).toEqual([false]);
+
+  // Closed by the person, it stays closed for the items it has shown.
+  state.isPaneOpen = false;
+  await $.turn.complete(replyDone("t2"));
+  expect(state.isPaneOpen).toBe(false);
+});
 
 test("a reply's Todo list shows its items in the pane, in their turn before its Decide items, each with its body, Done, Skip and a notes field", async ($, on) => {
   engine(on, () => [ITEMS[0]], withTodoList);
@@ -2896,7 +2908,7 @@ test("a Todo item a later reply prints again on its subject is Done, superseded,
 test("/answers with only Todo items open counts them and opens the pane; a Submit leaving one open keeps it open", async ($, on) => {
   const state = engine(on, () => ITEMS, withTodoList);
   const answered = await $.command.run(ANSWERS);
-  expect(answered.text).toBe("Decide pane opened: 2 open Todo items, 3 open Decide items.");
+  expect(answered.text).toBe("Kanban pane opened: 2 open Todo items, 3 open Decide items.");
   const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
 
   // Every Decide item answered, both Todo items still open: the pane stays.
@@ -2920,8 +2932,52 @@ test("/answers over Todo items alone names them", async ($, on) => {
   const state = engine(on, () => [], withTodoList);
   await $.turn.complete(replyDone("t1"));
 
-  expect((await $.command.run(ANSWERS)).text).toBe("Decide pane opened: 2 open Todo items.");
+  expect((await $.command.run(ANSWERS)).text).toBe("Kanban pane opened: 2 open Todo items.");
   expect(state.isPaneOpen).toBe(true);
+});
+
+test("/answers passes over a Todo item the draft gives a note alone, as it does a Decide item, opening the turn of the first one it gives nothing", async ($, on) => {
+  const later: TranscriptRecord[] = [];
+  engine(on, () => [], withTodoList, () => later);
+  await $.turn.complete(replyDone("t1"));
+  const newer = ["👉 **Todo:**  ", "▔▔▔▔▔▔▔▔", "1. **Tag the build**", "2. **Clear the queue**", ""].join("\n");
+  later.push(human("b2c3d4e5", "go on"), assistant(newer));
+  await $.turn.complete(replyDone("t2"));
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  await ui.press({ key: "open.9efb08a1" });
+  expect((await ui.find({ type: "Button", key: "open.9efb08a1" }))?.text).toStartWith("▸ ");
+
+  // Nothing given the newer turn's items: /answers stays at them.
+  await $.command.run(ANSWERS);
+  expect((await ui.find({ type: "Button", key: "open.9efb08a1" }))?.text).toStartWith("▸ ");
+
+  // A note alone to each answers it, so /answers opens the older turn.
+  await ui.input({ key: "b2c3d4e5.Todo.1.notes", text: "after the deploy" });
+  await ui.input({ key: "b2c3d4e5.Todo.2.notes", text: "tomorrow" });
+  await $.command.run(ANSWERS);
+  expect((await ui.find({ type: "Button", key: "open.9efb08a1" }))?.text).toStartWith("▾ ");
+  await ui.unmount();
+});
+
+test("a Todo note that asks a question leaves its item open on Submit, as a Decide answer that asks one does", async ($, on) => {
+  const state = engine(on, () => [], withTodoList);
+  await $.turn.complete(replyDone("t1"));
+  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  await ui.input({ key: "9efb08a1.Todo.1.notes", text: "done? or after the deploy?" });
+
+  // Waiting in the draft, the question leaves the item Open, not Queued.
+  expect(await ui.find({ type: "Button", key: "queued" })).toBeUndefined();
+  expect((await ui.find({ type: "Button", key: "open" }))?.text).toBe("▾ Open (2)");
+  await ui.press({ key: "submit" });
+
+  // Sent, and the item still open: a question settles nothing.
+  expect(state.sent).toEqual([`${HEADER}9efb08a1.Todo.1: done? or after the deploy?\n`]);
+  expect(await listedTitles(ui)).toEqual([
+    "👉 Todo.1 · Rotate the deploy token",
+    "👉 Todo.2 · Announce the release",
+  ]);
+  expect(await ui.find({ type: "Button", key: "done" })).toBeUndefined();
+  await ui.unmount();
 });
 
 test("a fenced command in a Todo item's body stays in its box, each line drawn as code", async ($, on) => {
@@ -3019,13 +3075,64 @@ test("a Todo item's Done or Skip in a reply's box shows in the pane's, and the p
   await reply.unmount();
 });
 
-test("a reply's Todo list not found intact is drawn as written, its items' boxes under the reply", async ($, on) => {
-  const loose = withTodoList([]).replace("2. **Announce the release**", "2. **Announce the release** to the team");
-  const state = engine(on, () => [], () => loose);
+test("a reply's Todo list not found intact is drawn as written, its summaries links as a Decide list's are, its items' boxes under the reply", async ($, on) => {
+  const state = engine(on, () => [], withTodoList);
   await $.turn.complete(replyDone("t1"));
+  const text = extraTodo(withTodoList([]));
+  const reply = await $.ui.mount(replyOf(text));
+
+  const whole = await reply.find({ type: "Markdown", key: "kanban-questions" });
+  expect(whole?.props["text"]).toContain(
+    "1. **[Rotate the deploy token](https://kanban-turns.invalid/9efb08a1.Todo.1)**",
+  );
+  expect(whole?.props["text"]).toContain("3. **Rotate the backup key**");
+  expect(whole?.props["pressableLinks"]).toEqual([
+    "https://kanban-turns.invalid/9efb08a1.Todo.1",
+    "https://kanban-turns.invalid/9efb08a1.Todo.2",
+  ]);
+  expect(await reply.find({ type: "Markdown", key: "kanban-before" })).toBeUndefined();
+  const drawn = JSON.stringify(await reply.drawn());
+  expect(drawn.indexOf("Rotate the backup key")).toBeLessThan(drawn.indexOf(" 👉 Todo.1 "));
+  expect(await listedTitles(reply)).toEqual([
+    "👉 Todo.1 · Rotate the deploy token",
+    "👉 Todo.2 · Announce the release",
+  ]);
+  await reply.press({ key: "9efb08a1.Todo.2.skip" });
+  expect(state.box).toBe(`${HEADER}9efb08a1.Todo.2: skip\n`);
+  await reply.unmount();
+});
+
+test("a later turn's Todo item sharing a Decide item's summary leaves the earlier reply's Decide list cut, its own box in place", async ($, on) => {
+  const later: TranscriptRecord[] = [];
+  engine(on, () => ITEMS, listsText, () => later);
+  await $.tool.call({ tool: TOOL, items: ITEMS } as never);
+  await $.turn.complete(replyDone("t1"));
+  const sharing = ["👉 **Todo:**  ", "▔▔▔▔▔▔▔▔", "1. **Which cache to keep**", ""].join("\n");
+  later.push(human("b2c3d4e5", "go on"), assistant(sharing));
+  await $.turn.complete(replyDone("t2"));
+  const reply = await $.ui.mount(replyOf(listsText(ITEMS)));
+
+  expect(await reply.find({ type: "Markdown", key: "kanban-before" })).toBeDefined();
+  expect(JSON.stringify(await reply.drawn())).not.toContain("**Decide:**");
+  expect(await reply.find({ type: "Button", key: "9efb08a1.Decide.1.A" })).toBeDefined();
+  expect(await reply.find({ type: "Button", key: "b2c3d4e5.Todo.1.done" })).toBeUndefined();
+  await reply.unmount();
+});
+
+test("a reply's Todo list with an item whose summary runs on into its sentence is drawn as written, every item it prints boxed under the reply, each summary a link", async ($, on) => {
+  engine(on, () => [], withTodoList);
+  await $.turn.complete(replyDone("t1"));
+  const loose = withTodoList([]).replace("2. **Announce the release**", "2. **Announce the release** to the team");
   const reply = await $.ui.mount(replyOf(loose));
 
-  expect((await reply.find({ type: "Markdown", key: "kanban-questions" }))?.props["text"]).toBe(loose);
+  const whole = await reply.find({ type: "Markdown", key: "kanban-questions" });
+  expect(whole?.props["text"]).toContain(
+    "2. **[Announce the release](https://kanban-turns.invalid/9efb08a1.Todo.2)** to the team",
+  );
+  expect(whole?.props["pressableLinks"]).toEqual([
+    "https://kanban-turns.invalid/9efb08a1.Todo.1",
+    "https://kanban-turns.invalid/9efb08a1.Todo.2",
+  ]);
   expect(await reply.find({ type: "Markdown", key: "kanban-before" })).toBeUndefined();
   const drawn = JSON.stringify(await reply.drawn());
   expect(drawn.indexOf("to the team")).toBeLessThan(drawn.indexOf(" 👉 Todo.1 "));
@@ -3033,8 +3140,6 @@ test("a reply's Todo list not found intact is drawn as written, its items' boxes
     "👉 Todo.1 · Rotate the deploy token",
     "👉 Todo.2 · Announce the release",
   ]);
-  await reply.press({ key: "9efb08a1.Todo.2.skip" });
-  expect(state.box).toBe(`${HEADER}9efb08a1.Todo.2: skip\n`);
   await reply.unmount();
 });
 
@@ -3068,27 +3173,30 @@ test("the note button under a reply says what the actions.note setting says", as
   await reply.unmount();
 });
 
-/** A Todo list whose item 2's summary runs on into its sentence, so the list isn't found intact. */
-const looseTodo = (text: string): string =>
-  text.replace("2. **Announce the release**", "2. **Announce the release** to the team");
+/** A Todo list with a third item no turn raised, so the list isn't found intact. */
+const extraTodo = (text: string): string =>
+  text.replace(
+    "2. **Announce the release**\n",
+    "2. **Announce the release**\n3. **Rotate the backup key**\n",
+  );
 
 /** A Decide list whose item leaves out its option B, so the list isn't found intact. */
 const partialDecide = (text: string): string => text.replace("   🔘 B. **Memory**\n", "");
 
 test("a reply whose Decide list alone is cut draws the Todo boxes under the whole reply, after the text that follows the Decide list", async ($, on) => {
-  const text = looseTodo(withTodoList([ITEMS[0]]));
+  const text = withTodoList([ITEMS[0]]);
   engine(on, () => [ITEMS[0]], () => text);
   await $.tool.call({ tool: TOOL, items: [ITEMS[0]] } as never);
   await $.turn.complete(replyDone("t1"));
-  const reply = await $.ui.mount(replyOf(text));
+  const reply = await $.ui.mount(replyOf(extraTodo(text)));
 
   const after = (await reply.find({ type: "Markdown", key: "kanban-after" }))?.props["text"];
   expect(after).toContain("👉 **Todo:**");
-  expect(after).toContain("to the team");
+  expect(after).toContain("Rotate the backup key");
   const drawn = JSON.stringify(await reply.drawn());
   expect(drawn).not.toContain("**Decide:**");
-  expect(drawn.indexOf(" 🧠 Decide.1 ")).toBeLessThan(drawn.indexOf("to the team"));
-  expect(drawn.indexOf("to the team")).toBeLessThan(drawn.indexOf(" 👉 Todo.1 "));
+  expect(drawn.indexOf(" 🧠 Decide.1 ")).toBeLessThan(drawn.indexOf("Rotate the backup key"));
+  expect(drawn.indexOf("Rotate the backup key")).toBeLessThan(drawn.indexOf(" 👉 Todo.1 "));
   expect(await listedTitles(reply)).toEqual([
     "🧠 Decide.1 · Which cache to keep",
     "👉 Todo.1 · Rotate the deploy token",
@@ -3097,17 +3205,21 @@ test("a reply whose Decide list alone is cut draws the Todo boxes under the whol
   await reply.unmount();
 });
 
-test("a reply whose Todo and Decide lists are both not intact draws both as written, the boxes under it, Todo's first", async ($, on) => {
-  const text = partialDecide(looseTodo(withTodoList([ITEMS[0]])));
+test("a reply whose Todo and Decide lists are both not intact draws both as written, every list's summaries links, the boxes under it, Todo's first", async ($, on) => {
+  const text = partialDecide(withTodoList([ITEMS[0]]));
   engine(on, () => [ITEMS[0]], () => text);
   await $.tool.call({ tool: TOOL, items: [ITEMS[0]] } as never);
   await $.turn.complete(replyDone("t1"));
-  const reply = await $.ui.mount(replyOf(text));
+  const reply = await $.ui.mount(replyOf(extraTodo(text)));
 
   const whole = await reply.find({ type: "Markdown", key: "kanban-questions" });
   expect(whole?.props["text"]).toContain("👉 **Todo:**");
   expect(whole?.props["text"]).toContain("🧠 **Decide:**");
-  expect(whole?.props["pressableLinks"]).toEqual(["https://kanban-turns.invalid/9efb08a1.Decide.1"]);
+  expect(whole?.props["pressableLinks"]).toEqual([
+    "https://kanban-turns.invalid/9efb08a1.Decide.1",
+    "https://kanban-turns.invalid/9efb08a1.Todo.1",
+    "https://kanban-turns.invalid/9efb08a1.Todo.2",
+  ]);
   expect(await listedTitles(reply)).toEqual([
     "👉 Todo.1 · Rotate the deploy token",
     "👉 Todo.2 · Announce the release",
@@ -3138,15 +3250,15 @@ test("a reply whose Decide list isn't intact but whose Todo list is cuts the Tod
   await reply.unmount();
 });
 
-test("while a turn runs, a reply printing a Todo list an earlier turn raised draws it as written, and the turn's end draws its own turn's boxes", async ($, on) => {
+test("while a turn runs, a reply printing a Todo list an earlier turn raised draws that turn's boxes, as a Decide list before its call, and the turn's end draws its own turn's", async ($, on) => {
   const later: TranscriptRecord[] = [];
   engine(on, () => [], withTodoList, () => later);
   await $.turn.complete(replyDone("t1"));
   await $.turn.start({ text: "go on", turnId: "t2" });
   const reply = await $.ui.mount(replyOf(withTodoList([])));
 
-  expect(await reply.find({ type: "Button", key: "9efb08a1.Todo.1.done" })).toBeUndefined();
-  expect(await reply.find({ type: "Markdown", key: "kanban-before" })).toBeUndefined();
+  expect(await reply.find({ type: "Button", key: "9efb08a1.Todo.1.done" })).toBeDefined();
+  expect(await reply.find({ type: "Markdown", key: "kanban-before" })).toBeDefined();
 
   later.push(human("b2c3d4e5", "go on"), assistant(withTodoList([])));
   await $.turn.complete(replyDone("t2"));

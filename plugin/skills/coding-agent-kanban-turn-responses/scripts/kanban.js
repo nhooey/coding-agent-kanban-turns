@@ -6703,7 +6703,8 @@ var SPEC = {
       "aliases": [],
       "rolls-up": false,
       "settled-by": "none",
-      "settling-words": {}
+      "settling-words": {},
+      "feedback": "none"
     },
     "pending": {
       "header": "Pending",
@@ -6714,7 +6715,8 @@ var SPEC = {
       ],
       "rolls-up": true,
       "settled-by": "none",
-      "settling-words": {}
+      "settling-words": {},
+      "feedback": "none"
     },
     "logged": {
       "header": "Logged",
@@ -6722,7 +6724,8 @@ var SPEC = {
       "aliases": [],
       "rolls-up": false,
       "settled-by": "none",
-      "settling-words": {}
+      "settling-words": {},
+      "feedback": "none"
     },
     "waiting": {
       "header": "Waiting",
@@ -6730,7 +6733,8 @@ var SPEC = {
       "aliases": [],
       "rolls-up": true,
       "settled-by": "report",
-      "settling-words": {}
+      "settling-words": {},
+      "feedback": "none"
     },
     "answers": {
       "header": "Answers",
@@ -6740,7 +6744,8 @@ var SPEC = {
       ],
       "rolls-up": false,
       "settled-by": "none",
-      "settling-words": {}
+      "settling-words": {},
+      "feedback": "none"
     },
     "authorizations": {
       "header": "Authorizations",
@@ -6748,7 +6753,8 @@ var SPEC = {
       "aliases": [],
       "rolls-up": true,
       "settled-by": "none",
-      "settling-words": {}
+      "settling-words": {},
+      "feedback": "none"
     },
     "review": {
       "header": "Review",
@@ -6758,7 +6764,8 @@ var SPEC = {
       ],
       "rolls-up": true,
       "settled-by": "merged-pull-request",
-      "settling-words": {}
+      "settling-words": {},
+      "feedback": "none"
     },
     "todo": {
       "header": "Todo",
@@ -6771,7 +6778,8 @@ var SPEC = {
       "settling-words": {
         "done": "settles it, the person having done it",
         "skip": "settles it, the person not doing it"
-      }
+      },
+      "feedback": "settling-words"
     },
     "decide": {
       "header": "Decide",
@@ -6782,7 +6790,8 @@ var SPEC = {
       ],
       "rolls-up": true,
       "settled-by": "answer",
-      "settling-words": {}
+      "settling-words": {},
+      "feedback": "options"
     }
   },
   "options": {
@@ -6975,8 +6984,10 @@ var DEFAULT_KIND = "radio";
 var namesOf = (list) => [list.header, ...list.aliases];
 var SECTION_NAMES = Object.values(SPEC.lists).flatMap(namesOf);
 var DECISIONS = namesOf(DECIDE);
-var DRAWN = ["todo", "decide"];
-var PANE_LISTS = Object.keys(SPEC.lists).filter((key) => DRAWN.includes(key)).map((key) => SPEC.lists[key]);
+var NO_FEEDBACK = "none";
+var PANE_LISTS = Object.values(SPEC.lists).filter(
+  (list) => list.feedback !== NO_FEEDBACK
+);
 var paneListOf = (header) => PANE_LISTS.find((list) => list.header === header);
 var settlingWordsOf = (list) => Object.keys(list["settling-words"]);
 var TURN2 = SPEC.reference["turn-id"];
@@ -6991,8 +7002,7 @@ var SUBSCRIPT_CHAR = classOf(SPEC.tag.digits + SPEC.tag.minus);
 var isLineOf = (char, line) => line.trim() !== "" && [...line.trim()].every((c) => c === char);
 
 // src/items/items.ts
-var refOf = (item) => item.ref || `${item.turn}.${listOf(item).header}.${item.number}`;
-var listOf = (item) => paneListOf(item.list) ?? DECIDE;
+var refOf = (item) => item.ref || `${item.turn}.${item.list || DECIDE.header}.${item.number}`;
 var isSameTurn = (a, b) => a !== "" && b !== "" && (a.startsWith(b) || b.startsWith(a));
 var isOption = (value) => isObject(value) && typeof value.letter === "string" && typeof value.name === "string";
 var isItem = (value) => isObject(value) && typeof value.turn === "string" && typeof value.number === "number" && typeof value.summary === "string" && Array.isArray(value.options) && value.options.every(isOption);
@@ -7444,7 +7454,7 @@ var ITEM_SCHEMA = {
   }
 };
 var TOOL_DESCRIPTION = [
-  `Draws clickable buttons for this turn's ${DECIDE.header} items in the transcript, just under the final response, and lists them in the plugin's ${DECIDE.header} pane.`,
+  `Draws clickable buttons for this turn's ${DECIDE.header} items in the transcript, just under the final response, and lists them in the plugin's pane, beside every other list's items.`,
   `Call it once, right before writing the final response, with every ${DECIDE.header} item that response will hold, in its order: each item's turn id, number, summary, kind, frees and supersedes, and each option's letter, name, consequence, pros and cons.`,
   `An item that restates an earlier turn's ${DECIDE.header} item names it in supersedes, \`<turn>.${DECIDE.header}.<n>\`, which moves the earlier one to ${DONE.header}.`,
   `\`${OUTSTANDING_TOOL}\` gives earlier turns' open ${DECIDE.header} items in this shape.`,
@@ -8058,9 +8068,10 @@ var cutAt = (block, at2) => block.kind === "item" ? { ...block, lines: block.lin
 var appended = (done, block) => done.map(
   (section, n) => n === done.length - 1 ? { ...section, blocks: [...section.blocks, block] } : section
 );
+var endsSection = (block) => block.kind === "roll-up" || block.kind === "stop" || block.kind === "topic";
 var sectioned = ({ isOpen, done }, block) => {
   const stop = stopAt(block);
-  return block.kind === "header" ? { isOpen: true, done: [...done, { name: block.name, blocks: [block] }] } : block.kind === "roll-up" || block.kind === "stop" || block.kind === "topic" ? { isOpen: false, done } : !isOpen ? { isOpen, done } : stop >= 0 ? { isOpen: false, done: appended(done, cutAt(block, stop)) } : { isOpen, done: appended(done, block) };
+  return block.kind === "header" ? { isOpen: true, done: [...done, { name: block.name, blocks: [block] }] } : endsSection(block) ? { isOpen: false, done } : !isOpen ? { isOpen, done } : stop >= 0 ? { isOpen: false, done: appended(done, cutAt(block, stop)) } : { isOpen, done: appended(done, block) };
 };
 var sectionsIn = (blocks) => blocks.reduce(sectioned, { isOpen: false, done: [] }).done;
 

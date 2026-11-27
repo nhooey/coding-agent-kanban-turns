@@ -10,7 +10,7 @@
 // The 📌 roll-up and the count line read the same words, by Todo's
 // `settled-by`, `settling-word`, in outstanding.ts, from the same facts.
 
-import { factsOf, itemsOfText, subjectKey, summaryOf } from "./outstanding.ts";
+import { factsOf, subjectKey, summaryOf } from "./outstanding.ts";
 import type { Facts, ListItem } from "./outstanding.ts";
 import { latestWord } from "./word-answers.ts";
 import type { HeldWordAnswer } from "./word-answers.ts";
@@ -32,12 +32,6 @@ const todoItemOf = (turn: string, item: Omit<ListItem, "at">): TodoItem => ({
   ...(item.body === undefined ? {} : { note: item.body }),
   ...(item.frees.length > 0 ? { frees: item.frees } : {}),
 });
-
-/** The numbered items one reply text's own Todo lists print, in order, by the turn id `turn`, each freeing what its `Frees:` line names as written; a 📌 roll-up's bullets are none. */
-export const todoItemsOfText = (text: string, turn: string): readonly TodoItem[] =>
-  itemsOfText(text)
-    .filter(isOwnTodo)
-    .map((item) => todoItemOf(turn, item));
 
 /** A Todo item a reply printed, and the place of its turn. */
 type Printed = Readonly<{ item: TodoItem; at: number }>;

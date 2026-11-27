@@ -22,15 +22,16 @@ touches: [plugin/hooks/register.tsx, plugin/src/pane/links.ts, plugin/src/pane/v
 - The notes field writes the note after the word, or alone.
 - A Done Todo item's box is dimmed and says `Done: done` or `Done: skipped`, with any note, and its actions still write the draft.
 
-## Already true for Todo, in the reply
+## Already true for every list the pane draws, in the reply
 
-- A reply's Todo list found intact is cut out and its items' boxes drawn in its place, with **Done**, **Skip** and `✏️ Add a note`, which opens the pane at the item's notes field, its label the `actions.note.label` setting. Intact is Decide's rule: exactly one Todo list before any 📌 roll-up, its numbered summaries, each alone on its line, naming the items, every one and no other, in order, a summary compared as `summaryOf` reads it (`todoListSpan` in `plugin/src/pane/links.ts`).
-- A Todo list that isn't intact is drawn as written, its boxes under the whole reply, before the Decide boxes there: one printing an item twice, or some of whose items no turn raised, among them.
-- A reply with both lists intact has each cut out, each list's boxes in its own place (`replyParts`); where only the Decide list is cut, the Todo boxes follow the text after it.
-- The reply's boxes are the pane's `itemBoxes`, so both write the same draft lines and each shows the other's presses.
-- A reply block's Todo items are those of the turn that raised the most of the items it prints, by number and summary, the newest of those that tie, each once (`printedTodoItems`), since the engine doesn't say which turn drew the block.
-- While a main-loop turn runs, no reply draws Todo boxes, each Todo list drawn as written, since the running turn's reply may print a list an earlier turn raised, and its own items are raised only at its end.
-- A Todo list that isn't intact gets no links on its summaries, as a Decide list does; that waits on the user's choice (411b1c98.Decide.1).
+The pane, the reply's drawing and the draft's answers take one path for every list: what sets a list apart there is its spec `feedback` (`options`, `settling-words` or `none`) and the settings' labels, never its name. Raising and settling stay per list, by the spec.
+
+- A reply names an item by its summary under its list's header: each numbered summary there names the newest raised item of that list with that summary, compared as `summaryOf` reads it, each item once (`linkedSummaries` in `plugin/src/pane/links.ts`). A line under no drawn list's header names nothing. A summary no raised item has is drawn as written, so a reply drawn while a turn runs draws the boxes of the items raised so far, until the turn's end raises its own Todo items.
+- A list found intact is cut out and its items' boxes drawn in its place (`listSpan`): exactly one such list before any 📌 roll-up, its numbered summaries, each alone on its line, naming the items, every one and no other, in order, an options item's block also holding its options' letters and names. A Todo item's box has **Done**, **Skip** and `✏️ Add a note`, which opens the pane at the item's notes field, its label the `actions.note.label` setting.
+- A list that isn't intact is drawn as written, its summaries links, every raised item it prints boxed under the whole reply in the spec's list order: one printing an item twice, some of whose items no turn raised, or with an item whose summary runs on into its sentence, among them.
+- A reply with several lists intact has each cut out, each list's boxes in its own place (`replyDrawing`, then `replyParts`).
+- The reply's boxes are the pane's `itemBoxes`, one frame for every list, whose answer row the feedback picks (`ANSWER_VIEWS` in `plugin/hooks/register.tsx`), so both write the same draft lines and each shows the other's presses.
+- A new item of any list opens the pane by itself, and `/answers` scrolls to the first item of any list the draft writes nothing for.
 
 Still to come:
 

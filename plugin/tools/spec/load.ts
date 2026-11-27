@@ -46,6 +46,7 @@ export type SpecShape = Readonly<{
         "rolls-up": boolean;
         "settled-by": string;
         "settling-words": Readonly<Record<string, string>>;
+        feedback: string;
       }>
     >
   >;
@@ -112,6 +113,32 @@ const settledByProblems = (spec: SpecShape): readonly string[] =>
     ...(list["settled-by"] === SETTLED_BY_WORD &&
     Object.keys(list["settling-words"]).length === 0
       ? [`${key} is settled by ${SETTLED_BY_WORD}, yet it has no settling-words`]
+      : []),
+  ]);
+
+/** The feedback of a list whose items an option answers: the one a list settled by an answer takes. */
+const FEEDBACK_OPTIONS = "options";
+
+/** The feedback of a list whose items a settling word answers: the one a list with settling words takes. */
+const FEEDBACK_WORDS = "settling-words";
+
+/**
+ * Each list whose feedback its other keys belie: `options` on a list not
+ * settled by an answer, or another feedback on one that is; and
+ * `settling-words` on a list with none, or another feedback on one with
+ * some.
+ */
+const feedbackProblems = (spec: SpecShape): readonly string[] =>
+  Object.entries(spec.lists).flatMap(([key, list]) => [
+    ...((list.feedback === FEEDBACK_OPTIONS) !== (list["settled-by"] === SETTLED_BY_ANSWER)
+      ? [
+          `${key}'s feedback is ${list.feedback} and it's settled by ${list["settled-by"]}: a list is answered by ${FEEDBACK_OPTIONS} exactly when it's settled by ${SETTLED_BY_ANSWER}`,
+        ]
+      : []),
+    ...((list.feedback === FEEDBACK_WORDS) !== Object.keys(list["settling-words"]).length > 0
+      ? [
+          `${key}'s feedback is ${list.feedback} and it has ${Object.keys(list["settling-words"]).length} settling-words: a list is answered by ${FEEDBACK_WORDS} exactly when it has some`,
+        ]
       : []),
   ]);
 
@@ -238,6 +265,9 @@ const kindGlyphProblems = (spec: SpecShape): readonly string[] =>
  * - a glyph or a name two lists share;
  * - a list that doesn't roll up yet is settled by a way other than `none`,
  *   or a list other than Decide settled by `answer`;
+ * - a list answered by `options` that isn't settled by `answer`, or the
+ *   other way round, and one answered by `settling-words` that has none,
+ *   or the other way round;
  * - a word that settles two lists differently;
  * - a command name that starts another's;
  * - a turn id's shortest prefix longer than the id;
@@ -261,6 +291,7 @@ export const specProblems = (spec: SpecShape): readonly string[] => {
       (name) => `the name ${JSON.stringify(name)} names more than one list`,
     ),
     ...settledByProblems(spec),
+    ...feedbackProblems(spec),
     ...clashingWords(spec),
     ...clashingCommands(spec),
     ...turnIdProblems(spec),

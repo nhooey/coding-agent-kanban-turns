@@ -44,7 +44,8 @@ definitions:
   list:
     type: object
     additionalProperties: false
-    required: [header, glyph, aliases, rolls-up, settled-by, settling-words]
+    required:
+      [header, glyph, aliases, rolls-up, settled-by, settling-words, feedback]
     properties:
       header: { $ref: "#/definitions/name" }
       glyph: { $ref: "#/definitions/glyph" }
@@ -59,6 +60,11 @@ definitions:
         type: object
         propertyNames: { $ref: "#/definitions/word" }
         additionalProperties: { type: string, minLength: 1 }
+      # Each feedback has an entry in every table keyed by it: READERS and
+      # SETTLING in src/items/answers.ts, SENDING in src/items/raised.ts,
+      # NOTE_PLACEHOLDERS in src/pane/view.ts and ANSWER_VIEWS in
+      # hooks/register.tsx.
+      feedback: { enum: [options, settling-words, none] }
   kind:
     type: object
     additionalProperties: false
